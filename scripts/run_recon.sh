@@ -24,7 +24,9 @@ log() { echo "[$(date +%H:%M:%S)] $1" | tee -a "$LOG_FILE"; }
 
 send_telegram() {
     [ -z "${RECON_TELEGRAM_TOKEN:-}" ] && { log "Telegram not configured"; return; }
-    local t="$1" i=0 len=${#t}
+    local t="${1:-}"
+    local i=0
+    local len=${#t}
     while [ $i -lt $len ]; do
         curl -s -X POST "https://api.telegram.org/bot${RECON_TELEGRAM_TOKEN}/sendMessage" \
             -H "Content-Type: application/json" \
@@ -703,6 +705,7 @@ send_telegram "$brief"
 
 # ─── ARCHIVE DATA FOR KNOWLEDGE BASE ──────────────────────
 log "Archiving daily data..."
+DATA_DIR="$RECON_HOME/data-sources"
 ARCHIVE_DIR="$RECON_HOME/archive/$TODAY"
 mkdir -p "$ARCHIVE_DIR"
 

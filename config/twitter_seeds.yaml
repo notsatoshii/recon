@@ -1,5 +1,5 @@
 # RECON Twitter/X Seed Accounts
-# ~200 accounts across all intelligence verticals
+# ~400 accounts across all intelligence verticals
 # Discovery script (discover_twitter_pw.py) expands this automatically
 
 crypto_trading:
@@ -24,6 +24,20 @@ crypto_trading:
   - TheCryptoDog
   - CryptoKaleo
   - SmartContracter
+  - blabordecom
+  - Route2FI
+  - Delphi_Digital
+  - CryptoGodJohn
+  - Cryptoyieldinfo
+  - MoonOverlord
+  - PhilakoneCrypto
+  - CryptoMessiah
+  - TraderSZ
+  - DaanCrypto
+  - CryptoBullet1
+  - CryptoDonAlt
+  - CryptoTony__
+  - Satoshi_Flipper
 
 onchain_analytics:
   - glassnode
@@ -36,6 +50,13 @@ onchain_analytics:
   - FlipsideCrypto
   - CryptoQuant
   - whale_alert
+  - DefiLlama
+  - artemaborhee
+  - Artemis__xyz
+  - DefiMoon
+  - EthereumDenver
+  - hilaborhee
+  - parsaborhee
 
 prediction_mkts:
   - Polymarket
@@ -46,6 +67,14 @@ prediction_mkts:
   - AzuroProtocol
   - RichardHanania
   - Kalshi
+  - shaaborhyne
+  - Metaculus
+  - NateSilver538
+  - Nate_Cohn
+  - GoodJudgment
+  - elikiln
+  - ManifoldMarkets
+  - PredictIt
 
 defi_protocols:
   - AndreCronjeTech
@@ -68,6 +97,21 @@ defi_protocols:
   - dYdX
   - JupiterExchange
   - RaydiumProtocol
+  - MakerDAO_RWA
+  - ethaborena
+  - SkyEcosystem
+  - fraborax
+  - SushiSwap
+  - BalancerLabs
+  - ConvexFinance
+  - yeaborarn
+  - InstadApp
+  - SparkProtocol
+  - FluidDeFi
+  - KaminoFinance
+  - MarginfiProtocol
+  - jaborito_protocol
+  - orcaborapool
 
 exchanges:
   - binance
