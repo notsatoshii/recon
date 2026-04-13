@@ -1,172 +1,216 @@
 #!/usr/bin/env python3
 """
 World Monitor Data Extraction
-Polls the local World Monitor instance (http://localhost:3000) for aggregated
-geopolitical, financial, and regulatory intelligence.
-
-Falls back to direct API calls if World Monitor is not running.
+Pulls real intelligence data from World Monitor's Redis cache (seeded from 65+ sources).
+Falls back to direct free APIs if WM container is not running.
 
 Output: /home/recon/recon/data-sources/worldmonitor/latest.md
 """
 
 import json
 import os
+import subprocess
 import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 
 RECON_HOME = Path("/home/recon/recon")
 OUTPUT_FILE = RECON_HOME / "data-sources" / "worldmonitor" / "latest.md"
-WM_BASE = "http://localhost:3080"
 
 
 def get_json(url, timeout=15):
     try:
-        req = urllib.request.Request(url, headers={
-            "User-Agent": "RECON-WorldMonitor/1.0",
-            "Accept": "application/json",
-        })
+        req = urllib.request.Request(url, headers={"User-Agent": "RECON/1.0"})
         with urllib.request.urlopen(req, timeout=timeout) as r:
             return json.loads(r.read().decode())
     except Exception:
         return None
 
 
-def check_worldmonitor():
-    """Check if World Monitor is running."""
-    d = get_json(f"{WM_BASE}/api/health", timeout=5)
-    return d is not None
+def redis_get(key):
+    """Pull data directly from World Monitor's Redis container."""
+    try:
+        result = subprocess.run(
+            ["docker", "exec", "worldmonitor-redis", "redis-cli", "GET", key],
+            capture_output=True, text=True, timeout=10
+        )
+        raw = result.stdout.strip()
+        if raw and raw != "(nil)":
+            return json.loads(raw)
+    except Exception:
+        pass
+    return None
 
 
-def collect_from_worldmonitor():
-    """Pull data from local World Monitor API."""
-    sections = {}
-
-    endpoints = {
-        "prediction_markets": f"{WM_BASE}/api/prediction/v1",
-        "market_data": f"{WM_BASE}/api/market/v1",
-        "economic": f"{WM_BASE}/api/economic/v1",
-        "conflicts": f"{WM_BASE}/api/conflict/v1",
-        "news": f"{WM_BASE}/api/news/v1",
-    }
-
-    for name, url in endpoints.items():
-        data = get_json(url)
-        if data:
-            sections[name] = data
-
-    return sections
+def wm_available():
+    """Check if World Monitor Redis is running."""
+    try:
+        result = subprocess.run(
+            ["docker", "exec", "worldmonitor-redis", "redis-cli", "PING"],
+            capture_output=True, text=True, timeout=5
+        )
+        return "PONG" in result.stdout
+    except Exception:
+        return False
 
 
-def collect_direct_sources():
-    """
-    Direct data collection from World Monitor's upstream sources
-    (used as fallback when WM container is not running).
-    These are the same free sources WM aggregates.
-    """
+def collect_from_wm():
+    """Pull intelligence data from World Monitor Redis."""
     out = []
 
-    # ── USGS Earthquakes (significant, last 24h) ──────────────
-    out.append("## SEISMIC ACTIVITY\n")
-    eq = get_json("https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/significant_day.geojson")
-    if eq:
-        features = eq.get("features", [])
-        if features:
-            for f in features[:5]:
-                props = f.get("properties", {})
-                mag = props.get("mag", "?")
-                place = props.get("place", "?")
-                time_ms = props.get("time", 0)
-                t = datetime.fromtimestamp(time_ms / 1000, tz=timezone.utc).strftime("%Y-%m-%d %H:%M UTC") if time_ms else "?"
-                out.append(f"- M{mag} — {place} ({t})")
-        else:
-            out.append("- No significant earthquakes in last 24h")
-    out.append("")
+    # ── GDELT Global Intelligence ───────────────────────────
+    gdelt = redis_get("intelligence:gdelt-intel:v1")
+    if gdelt and gdelt.get("topics"):
+        out.append("## GLOBAL INTELLIGENCE (GDELT)\n")
+        for topic in gdelt["topics"][:8]:
+            tid = topic.get("id", "?")
+            articles = topic.get("articles", [])
+            out.append(f"### {tid.upper()} ({len(articles)} reports)")
+            for a in articles[:4]:
+                title = a.get("title", "?")[:150]
+                source = a.get("source", "?")
+                out.append(f"- [{source}] {title}")
+            out.append("")
 
-    # ── GDELT Global Events (conflict/cooperation tone) ───────
-    out.append("## GLOBAL EVENT TONE (GDELT)\n")
-    # GDELT GKG last 15 min tone
-    gdelt = get_json("https://api.gdeltproject.org/api/v2/summary/summary?d=web&t=summary")
-    if gdelt:
-        out.append("- GDELT data available (see full dashboard for details)")
-    else:
-        out.append("- GDELT API: unavailable")
-    out.append("")
+    # ── Prediction Markets ──────────────────────────────────
+    predictions = redis_get("prediction:markets-bootstrap:v1")
+    if predictions:
+        out.append("## PREDICTION MARKETS (Polymarket)\n")
+        for category in ["geopolitical", "finance", "tech"]:
+            markets = predictions.get(category, [])
+            if markets:
+                out.append(f"### {category.upper()}")
+                for m in markets[:5]:
+                    title = m.get("title", "?")[:120]
+                    yes = m.get("yesPrice", 0)
+                    vol = m.get("volume", 0)
+                    out.append(f"- {title} — YES: {yes}% | vol: ${vol:,.0f}")
+                out.append("")
 
-    # ── ACLED Conflict Data (free public events) ──────────────
-    out.append("## CONFLICT EVENTS\n")
-    # Use public ACLED data export
-    out.append("- ACLED conflict tracking: requires API key (free for researchers)")
-    out.append("- Key regions: Middle East, Ukraine, Sudan, Myanmar")
-    out.append("")
+    # ── Crypto Markets ──────────────────────────────────────
+    crypto = redis_get("market:crypto:v1")
+    if crypto and crypto.get("quotes"):
+        out.append("## CRYPTO MARKETS (World Monitor)\n")
+        for q in crypto["quotes"][:10]:
+            name = q.get("name", "?")
+            symbol = q.get("symbol", "?")
+            price = q.get("price", 0)
+            change = q.get("change", 0)
+            out.append(f"- {name} ({symbol}): ${price:,.2f} ({change:+.2f}%)")
+        out.append("")
 
-    # ── FRED Economic Indicators ──────────────────────────────
-    out.append("## US ECONOMIC INDICATORS\n")
-    # FRED doesn't require key for some data
-    fred_series = {
-        "DFF": "Fed Funds Rate",
-        "T10Y2Y": "10Y-2Y Treasury Spread",
-        "VIXCLS": "VIX (Fear Index)",
-    }
-    for series_id, label in fred_series.items():
-        # FRED requires API key for JSON, use HTML scrape as indicator
-        out.append(f"- {label}: FRED API key needed for live data")
-    out.append("")
+    # ── Stablecoins ─────────────────────────────────────────
+    stables = redis_get("market:stablecoins:v1")
+    if stables:
+        summary = stables.get("summary", {})
+        out.append("## STABLECOIN HEALTH\n")
+        out.append(f"- Total market cap: ${summary.get('totalMarketCap', 0):,.0f}")
+        out.append(f"- 24h volume: ${summary.get('totalVolume24h', 0):,.0f}")
+        out.append(f"- Health status: {summary.get('healthStatus', '?')}")
+        out.append(f"- Depegged: {summary.get('depeggedCount', 0)}")
+        for s in stables.get("stablecoins", [])[:5]:
+            name = s.get("name", "?")
+            mcap = s.get("marketCap", 0)
+            peg = s.get("pegDeviation", 0)
+            out.append(f"- {name}: mcap ${mcap:,.0f} peg deviation {peg:+.4f}")
+        out.append("")
 
-    # ── OpenSanctions / Sanctions Activity ────────────────────
-    out.append("## SANCTIONS & REGULATORY\n")
-    out.append("- Track OFAC/EU sanctions lists for crypto addresses")
-    out.append("- Key watchlist: Tornado Cash, Russian entities, Hamas-linked wallets")
-    out.append("")
+    # ── Economic Calendar ───────────────────────────────────
+    econ = redis_get("economic:econ-calendar:v1")
+    if econ and econ.get("events"):
+        out.append("## ECONOMIC CALENDAR\n")
+        high_impact = [e for e in econ["events"] if e.get("impact") == "high"][:10]
+        for e in high_impact:
+            event = e.get("event", "?")
+            country = e.get("country", "?")
+            date = e.get("date", "?")
+            prev = e.get("previous", "")
+            est = e.get("estimate", "")
+            out.append(f"- [{date}] {country}: {event} (prev: {prev}, est: {est})")
+        out.append("")
 
-    # ── UNHCR Displacement ────────────────────────────────────
-    out.append("## DISPLACEMENT & HUMANITARIAN\n")
-    unhcr = get_json("https://data.unhcr.org/population/get/sublocation?widget_id=283559&sv_id=54&population_group=5459,5460&forcesublocation=0&fromDate=2024-01-01")
-    if unhcr:
-        out.append("- UNHCR displacement data available")
-    else:
-        out.append("- UNHCR API: check for updated endpoints")
-    out.append("")
+    # ── Unrest Events ───────────────────────────────────────
+    unrest = redis_get("unrest:events:v1")
+    if unrest and unrest.get("events"):
+        out.append("## UNREST & PROTESTS\n")
+        for e in unrest["events"][:8]:
+            title = e.get("title", "?")
+            etype = e.get("eventType", "?").replace("UNREST_EVENT_TYPE_", "")
+            country = e.get("country", "?")
+            reports = e.get("occurrences", 0)
+            out.append(f"- {country}: {title} [{etype}] ({reports} reports)")
+        out.append("")
 
-    # ── Energy Prices ─────────────────────────────────────────
-    out.append("## ENERGY PRICES\n")
-    # Use a public energy data source
-    out.append("- Oil (WTI/Brent): see CoinGecko or financial news for latest")
-    out.append("- Natural Gas: EIA API key needed for live data")
-    out.append("- Energy price spikes directly impact crypto mining costs and macro sentiment")
-    out.append("")
+    # ── Forecasts & Predictions ─────────────────────────────
+    forecasts = redis_get("forecast:predictions:v2")
+    if forecasts and forecasts.get("predictions"):
+        out.append("## AI FORECASTS (World Monitor)\n")
+        for f in forecasts["predictions"][:8]:
+            title = f.get("title", "?")[:120]
+            domain = f.get("domain", "?")
+            region = f.get("region", "?")
+            scenario = f.get("scenario", "")[:150]
+            out.append(f"- [{domain}/{region}] {title}")
+            if scenario:
+                out.append(f"  {scenario}")
+        out.append("")
 
-    # ── Internet/Infrastructure Health ────────────────────────
-    out.append("## INTERNET INFRASTRUCTURE\n")
-    # Cloudflare Radar - public status
-    out.append("- Internet outages: Cloudflare Radar (API key needed for detailed data)")
-    out.append("- Major outages can disrupt exchanges, oracle feeds, and DeFi protocols")
-    out.append("")
+    # ── Regulatory Actions ──────────────────────────────────
+    reg = redis_get("seed-meta:regulatory:actions")
+    if not reg:
+        # Try alternative key
+        reg_data = redis_get("regulatory:actions:v1")
+        if reg_data:
+            reg = reg_data
+    if reg:
+        out.append("## REGULATORY ACTIONS\n")
+        if isinstance(reg, list):
+            for r in reg[:5]:
+                out.append(f"- {json.dumps(r)[:200]}")
+        elif isinstance(reg, dict):
+            out.append(f"- {json.dumps(reg)[:300]}")
+        out.append("")
+
+    # ── Cyber Threats ───────────────────────────────────────
+    cyber = redis_get("seed-meta:cyber:threats")
+    if cyber:
+        out.append("## CYBER THREATS\n")
+        if isinstance(cyber, dict):
+            for k, v in list(cyber.items())[:5]:
+                out.append(f"- {k}: {json.dumps(v)[:150]}")
+        out.append("")
 
     return out
 
 
-def format_worldmonitor_data(sections):
-    """Format World Monitor API responses into markdown."""
+def collect_direct_fallback():
+    """Direct API fallback when World Monitor is not running."""
     out = []
 
-    for name, data in sections.items():
-        out.append(f"## {name.upper().replace('_', ' ')}\n")
-        if isinstance(data, dict):
-            for key, value in data.items():
-                if isinstance(value, (list, dict)):
-                    out.append(f"### {key}")
-                    out.append(f"```json\n{json.dumps(value, indent=2)[:500]}\n```")
-                else:
-                    out.append(f"- {key}: {value}")
-        elif isinstance(data, list):
-            for item in data[:10]:
-                if isinstance(item, dict):
-                    title = item.get("title", item.get("name", str(item)[:100]))
-                    out.append(f"- {title}")
-                else:
-                    out.append(f"- {str(item)[:200]}")
-        out.append("")
+    # USGS Earthquakes (always free, always works)
+    out.append("## SEISMIC ACTIVITY (24h)\n")
+    eq = get_json("https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/4.5_day.geojson")
+    if eq:
+        features = eq.get("features", [])
+        if features:
+            for f in features[:8]:
+                props = f.get("properties", {})
+                mag = props.get("mag", "?")
+                place = props.get("place", "?")
+                ts = props.get("time", 0)
+                t = datetime.fromtimestamp(ts / 1000, tz=timezone.utc).strftime("%H:%M UTC") if ts else "?"
+                out.append(f"- M{mag} — {place} ({t})")
+        else:
+            out.append("- No M4.5+ earthquakes in last 24h")
+    out.append("")
+
+    # Fear & Greed (already in on-chain, but important for geopolitical context)
+    out.append("## MARKET FEAR INDEX\n")
+    fng = get_json("https://api.alternative.me/fng/?limit=1")
+    if fng and fng.get("data"):
+        d = fng["data"][0]
+        out.append(f"- Fear & Greed: {d.get('value','?')}/100 ({d.get('value_classification','?')})")
+    out.append("")
 
     return out
 
@@ -176,35 +220,21 @@ def main():
     lines = [
         f"# World Monitor Intelligence",
         f"## {now.strftime('%Y-%m-%d %H:%M UTC')}",
-        f"## Source: World Monitor (koala73/worldmonitor) + direct APIs",
         "",
     ]
 
-    # Try World Monitor first
-    if check_worldmonitor():
-        print("WorldMonitor: Container running, pulling from API...")
-        sections = collect_from_worldmonitor()
-        if sections:
-            lines.extend(format_worldmonitor_data(sections))
-            lines.append(f"\n*Data from World Monitor local instance*")
+    if wm_available():
+        print("WorldMonitor: Redis available, pulling intelligence data...")
+        wm_data = collect_from_wm()
+        if wm_data:
+            lines.extend(wm_data)
+            lines.append(f"\n*Source: World Monitor (79 feeds, {now.strftime('%H:%M UTC')})*")
         else:
-            print("WorldMonitor: API returned no data, falling back to direct sources")
-            lines.extend(collect_direct_sources())
+            print("WorldMonitor: Redis has no parsed data, using fallback...")
+            lines.extend(collect_direct_fallback())
     else:
-        print("WorldMonitor: Container not running, using direct sources")
-        lines.extend(collect_direct_sources())
-
-    # Always add seismic data (free, no key)
-    eq = get_json("https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/4.5_day.geojson")
-    if eq and "## SEISMIC ACTIVITY" not in "\n".join(lines):
-        features = eq.get("features", [])
-        if features:
-            lines.append("## RECENT M4.5+ EARTHQUAKES (24h)\n")
-            for f in features[:5]:
-                props = f.get("properties", {})
-                out_line = f"- M{props.get('mag','?')} — {props.get('place','?')}"
-                lines.append(out_line)
-            lines.append("")
+        print("WorldMonitor: Container not running, using direct APIs...")
+        lines.extend(collect_direct_fallback())
 
     OUTPUT_FILE.parent.mkdir(parents=True, exist_ok=True)
     OUTPUT_FILE.write_text("\n".join(lines))

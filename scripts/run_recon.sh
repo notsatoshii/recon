@@ -12,7 +12,7 @@ source /home/recon/.recon.env
 source "$RECON_HOME/scripts/ask_hermes.sh"
 
 AGENTS=(trader narrator builder analyst skeptic regulator user_agent)
-ALWAYS_ACTIVE=(skeptic)
+ALWAYS_ACTIVE=(skeptic regulator)
 TENSIONS=("trader:narrator" "narrator:trader" "builder:user_agent" "user_agent:builder" "analyst:skeptic" "skeptic:analyst")
 
 # Max parallel agent calls (keep under API rate limits / memory)
@@ -62,7 +62,7 @@ PRESERVE the sentiment analysis and geopolitical sections intact — agents need
 FILTER the on-chain data, news, and social sections: pass through items relevant to prediction markets, DeFi, crypto, LEVER Protocol (leveraged prediction market perpetuals on Base), and XMarket (UGC prediction market on BNB Chain). Score 3+/10 passes. Keep raw form. Drop irrelevant items.
 
 INTELLIGENCE PACKAGE:
-$(echo "$DATA" | head -c 14000)")
+$(echo "$DATA" | head -c 60000)")
 echo "$FILTERED" > "$RUN_DIR/01_filtered.md"
 log "  Filtered: $(echo "$FILTERED" | wc -c) bytes"
 
@@ -86,7 +86,7 @@ for agent in "${AGENTS[@]}"; do
     (
         check=$(ask_hermes "$PERSONAS/$agent.md" \
             "Quick check: review the sentiment summary and key signals below. Anything significant for your domain today? YES or NO, one sentence.
-$(head -c 3000 "$FILTERED_FILE")")
+$(head -c 15000 "$FILTERED_FILE")")
         if echo "$check" | grep -qi "yes"; then
             echo "ACTIVE" > "$RUN_DIR/.activation_${agent}"
         else
@@ -113,8 +113,6 @@ send_telegram "📡 ${#active_agents[@]} agents active: ${!active_agents[*]}"
 # ─── PHASE 3: INDEPENDENT TAKES (parallel) ─────────────────
 log "PHASE 3: Independent takes (parallel)..."
 for agent in "${!active_agents[@]}"; do
-    [[ "$agent" == "regulator" ]] && continue
-
     throttle_wait
     (
         extra=""
@@ -134,7 +132,7 @@ $(cat "$RECON_HOME/config/analyst_model.md")
 Ground your analysis in the sentiment and geopolitical context. Follow your output format. 200-400 words.
 
 INTELLIGENCE PACKAGE:
-$(head -c 10000 "$FILTERED_FILE")")
+$(head -c 50000 "$FILTERED_FILE")")
         echo "$take" > "$RUN_DIR/03_take_${agent}.md"
     ) &
     log "  $agent launched..."
@@ -196,7 +194,8 @@ if [[ -n "${active_agents[regulator]:-}" ]]; then
     (
         audit_input=""
         for a in "${!all_takes[@]}"; do
-            audit_input+="### ${a^^}: $(echo "${all_takes[$a]}" | head -c 400)...
+            audit_input+="### ${a^^}:
+${all_takes[$a]}
 
 "
         done
@@ -211,7 +210,7 @@ if [ ${#all_takes[@]} -ge 4 ]; then
     (
         takes_summary=""
         for a in "${!all_takes[@]}"; do
-            takes_summary+="- $a: $(echo "${all_takes[$a]}" | head -c 100)...
+            takes_summary+="- $a: $(echo "${all_takes[$a]}" | head -c 1000)...
 "
         done
         wc_assign=$(ask_hermes "$PERSONAS/synthesizer.md" \
@@ -289,7 +288,9 @@ done
 # ─── PHASE 6: CONVERGENCE (parallel) ───────────────────────
 log "PHASE 6: Votes (parallel)..."
 ctx=""
-for a in "${!all_takes[@]}"; do ctx+="$a: $(echo "${all_takes[$a]}" | head -c 150)...
+for a in "${!all_takes[@]}"; do ctx+="### ${a^^}:
+${all_takes[$a]}
+
 "; done
 
 for agent in "${!all_takes[@]}"; do
@@ -360,14 +361,61 @@ log "  BRIEF PRODUCED ($(echo "$brief" | wc -w) words)"
 
 # ─── SAVE ANALYST MODEL UPDATE ──────────────────────────────
 if [ -f "$RUN_DIR/03_take_analyst.md" ]; then
+    log "  Updating analyst model..."
+    model_update=$(ask_hermes "$PERSONAS/analyst.md" \
+        "You just produced today's analysis. Extract ONLY the structural model updates from your take and format them as a changelog entry.
+
+Output EXACTLY this format (nothing else):
+### $TODAY
+- [METRIC]: [old value] → [new value] (reason)
+- Confidence: [level] (reason for any change)
+- Thesis: [unchanged/revised] — [1-sentence summary if revised]
+
+If nothing in your model changed, output:
+### $TODAY
+- No model update — thesis unchanged
+
+YOUR TAKE:
+$(cat "$RUN_DIR/03_take_analyst.md")" "claude-sonnet-4-20250514")
+
+    # Append to model file, keeping it under 100 lines
     echo "" >> "$RECON_HOME/config/analyst_model.md"
-    echo "### Update: $TODAY" >> "$RECON_HOME/config/analyst_model.md"
-    grep -i 'updat\|revis\|chang\|estimat\|confiden' "$RUN_DIR/03_take_analyst.md" | head -5 >> "$RECON_HOME/config/analyst_model.md" 2>/dev/null || echo "No model update detected" >> "$RECON_HOME/config/analyst_model.md"
+    echo "$model_update" >> "$RECON_HOME/config/analyst_model.md"
+
+    # Trim old entries if file gets too long (keep header + last 80 lines)
+    model_lines=$(wc -l < "$RECON_HOME/config/analyst_model.md")
+    if [ "$model_lines" -gt 100 ]; then
+        head -20 "$RECON_HOME/config/analyst_model.md" > "$RECON_HOME/config/analyst_model.md.tmp"
+        echo "" >> "$RECON_HOME/config/analyst_model.md.tmp"
+        echo "### [older entries trimmed]" >> "$RECON_HOME/config/analyst_model.md.tmp"
+        echo "" >> "$RECON_HOME/config/analyst_model.md.tmp"
+        tail -60 "$RECON_HOME/config/analyst_model.md" >> "$RECON_HOME/config/analyst_model.md.tmp"
+        mv "$RECON_HOME/config/analyst_model.md.tmp" "$RECON_HOME/config/analyst_model.md"
+    fi
 fi
 
 # ─── DELIVER ────────────────────────────────────────────────
 log "DELIVERING..."
 send_telegram "$brief"
+
+# ─── ARCHIVE DATA FOR KNOWLEDGE BASE ──────────────────────
+log "Archiving daily data..."
+ARCHIVE_DIR="$RECON_HOME/archive/$TODAY"
+mkdir -p "$ARCHIVE_DIR"
+
+# Archive raw data sources (snapshot for historical analysis)
+for src in reddit twitter onchain news worldmonitor bettafish; do
+    [ -f "$DATA_DIR/$src/latest.md" ] && cp "$DATA_DIR/$src/latest.md" "$ARCHIVE_DIR/${src}.md"
+done
+
+# Archive the brief and debate record
+[ -f "$RUN_DIR/07_daily_brief.md" ] && cp "$RUN_DIR/07_daily_brief.md" "$ARCHIVE_DIR/brief.md"
+[ -f "$RUN_DIR/07_full_record.md" ] && cp "$RUN_DIR/07_full_record.md" "$ARCHIVE_DIR/debate.md"
+
+# Append to rolling knowledge index
+echo "- [$TODAY](archive/$TODAY/brief.md) — $(head -c 200 "$RUN_DIR/07_daily_brief.md" 2>/dev/null | tr '\n' ' ' | head -c 150)" >> "$RECON_HOME/archive/INDEX.md" 2>/dev/null
+
+log "  Archived to $ARCHIVE_DIR"
 
 log "=============================================="
 log "RECON COMPLETE in $((SECONDS/60))m $((SECONDS%60))s"
