@@ -7,10 +7,10 @@
 - Structural volume floor (excluding event spikes): TBD
 - Growth driver breakdown: TBD
 
-### LEVER Positioning
-- Competitive gap: Leverage on prediction market positions (no competitor offers this)
-- Oracle dependency risk: High (Polymarket price feeds)
-- Stage: Pre-testnet (~1 month to testnet, ~3 months to mainnet)
+### Market Positioning
+- Focus: Leveraged prediction market positions, derivatives, DeFi infrastructure
+- Oracle dependency risk: High (prediction market price feeds)
+- Stage: tracking emerging protocols and market structure
 
 ### Key Assumptions
 - (Will populate after first run)

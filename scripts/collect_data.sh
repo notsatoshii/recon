@@ -192,8 +192,8 @@ if isinstance(hist, list) and len(hist) > 0:
         if prev30: out.append(f"- 30d change: {((cur-prev30)/prev30)*100:+.1f}%")
     out.append("")
 
-# ── CHAIN TVLs (LEVER's chains + competitors) ──────────────
-out.append("## CHAIN TVLs (LEVER-RELEVANT)\n")
+# ── CHAIN TVLs (KEY CHAINS) ──────────────
+out.append("## CHAIN TVLs (KEY CHAINS)\n")
 chains = get("https://api.llama.fi/v2/chains")
 if isinstance(chains, list):
     target_chains = {"Base", "BSC", "Ethereum", "Solana", "Polygon", "Arbitrum", "Optimism"}
@@ -292,7 +292,7 @@ if "_error" not in fees:
     out.append("")
 
 # ── COMPETITORS (detailed) ─────────────────────────────────
-out.append("## LEVER COMPETITORS (TVL + Details)\n")
+out.append("## DERIVATIVES PROTOCOLS (TVL + Details)\n")
 for slug in ["synthetix","dydx","drift-protocol","hyperliquid","gmx"]:
     d = get(f"https://api.llama.fi/protocol/{slug}")
     if "_error" not in d:
@@ -318,8 +318,8 @@ if "_error" not in stables:
         out.append(f"- {s['name']} ({s['symbol']}): ${mcap:,.0f}")
     out.append("")
 
-# Stablecoin supply on LEVER's chains
-out.append("### Stablecoin Supply by Chain (LEVER-relevant)\n")
+# Stablecoin Supply by Chain (key chains)
+out.append("### Stablecoin Supply by Chain (key chains)\n")
 sc_chains = get("https://stablecoins.llama.fi/stablecoinchains")
 if isinstance(sc_chains, list):
     target = {"Base", "BSC", "Ethereum", "Solana", "Polygon", "Arbitrum"}
@@ -329,7 +329,7 @@ if isinstance(sc_chains, list):
             out.append(f"- {c['name']}: ${supply:,.0f}")
     out.append("")
 
-# ── YIELDS (opportunity cost for LEVER users) ──────────────
+# ── YIELDS (opportunity cost benchmarks) ──────────────
 out.append("## TOP STABLECOIN YIELDS (opportunity cost)\n")
 yields = get("https://yields.llama.fi/pools")
 if "_error" not in yields:
@@ -341,7 +341,7 @@ if "_error" not in yields:
         out.append(f"- {pool['project']}/{pool.get('symbol','?')}: APY {apy:.1f}% TVL ${tvl:,.0f} ({pool.get('chain','?')})")
     out.append("")
 
-# ── BASE CHAIN ECOSYSTEM (LEVER's home) ────────────────────
+# ── BASE CHAIN ECOSYSTEM (key ecosystem) ────────────────────
 out.append("## BASE CHAIN ECOSYSTEM\n")
 protocols = get("https://api.llama.fi/protocols")
 if isinstance(protocols, list):
@@ -352,7 +352,7 @@ if isinstance(protocols, list):
         out.append(f"- {p['name']}: TVL ${tvl:,.0f} [{cat}]")
     out.append("")
 
-    # BNB Chain ecosystem (XMarket's home)
+    # BNB Chain ecosystem (key ecosystem)
     out.append("## BNB CHAIN ECOSYSTEM\n")
     bnb_protos = [p for p in protocols if "BSC" in (p.get("chains",[])) and p.get("category") not in ("CEX",)]
     for p in sorted(bnb_protos, key=lambda x: x.get("tvl",0) or 0, reverse=True)[:10]:
@@ -500,7 +500,7 @@ log "  Raw data: $(wc -c < "$RAW_PKG") bytes"
 
 log "LAYER 2: World Monitor (geopolitical intelligence)..."
 mkdir -p "$DATA_DIR/worldmonitor"
-python3 "$RECON_HOME/scripts/collect_worldmonitor.py" 2>&1 | while read line; do log "  $line"; done
+sg docker -c "python3 $RECON_HOME/scripts/collect_worldmonitor.py" 2>&1 | while read line; do log "  $line"; done
 log "  WorldMonitor: $(wc -l < "$DATA_DIR/worldmonitor/latest.md" 2>/dev/null || echo SKIPPED) lines"
 
 # ─── LAYER 3: BETTAFISH (sentiment analysis on raw data) ────
@@ -579,4 +579,39 @@ echo "" >> "$PKG"
 echo "" >> "$PKG"
 
 log "  Intelligence package: $(wc -c < "$PKG") bytes ($(wc -l < "$PKG") lines)"
+
+# ═══════════════════════════════════════════════════════════
+# LAYER 4: DAILY DISCOVERY (expand source lists)
+# Runs after collection so it doesn't slow down the main pipeline.
+# New discoveries are added to seed lists for tomorrow's collection.
+# ═══════════════════════════════════════════════════════════
+
+log "LAYER 4: Source discovery (background, for tomorrow)..."
+
+# Discover new subreddits (lightweight, uses Reddit search API)
+if python3 -c "import yaml" 2>/dev/null; then
+    python3 "$RECON_HOME/scripts/discover_subreddits.py" >> "$LOG_FILE" 2>&1 &
+    log "  Subreddit discovery launched (background)"
+fi
+
+# Discover new Twitter accounts (requires twscrape account)
+if python3 -c "import twscrape" 2>/dev/null; then
+    # Only run discovery if twscrape has active accounts
+    has_accounts=$(python3 -c "
+import asyncio
+from twscrape import AccountsPool
+async def check():
+    pool = AccountsPool('/home/recon/.recon_twscrape.db')
+    accs = await pool.accounts_info()
+    print('yes' if any(a['active'] for a in accs) else 'no')
+asyncio.run(check())
+" 2>/dev/null)
+    if [ "$has_accounts" = "yes" ]; then
+        python3 "$RECON_HOME/scripts/discover_twitter.py" --method retweets >> "$LOG_FILE" 2>&1 &
+        log "  Twitter discovery launched (background, retweet mining)"
+    else
+        log "  Twitter discovery skipped (no active twscrape accounts)"
+    fi
+fi
+
 log "========== DATA COLLECTION & PROCESSING COMPLETE =========="
