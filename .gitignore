@@ -1,0 +1,10 @@
+*.env
+.env
+briefs/
+logs/
+data-sources/*/latest.md
+__pycache__/
+*.pyc
+recon-venv/
+.hermes/
+.DS_Store

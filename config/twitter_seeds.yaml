@@ -1,0 +1,77 @@
+# RECON Twitter/X Seed Accounts
+# Scraped daily via twscrape (no API key needed).
+# Handles WITHOUT the @. Add/remove as you discover signal.
+#
+# To activate: python3 scripts/collect_twitter.py --add-account YOUR_X_USERNAME YOUR_X_PASSWORD
+
+crypto_trading:
+  - thedefiedge         # DeFi edge, strategies, alpha threads
+  - lookonchain         # Major transaction alerts, whale tracking
+  - arkham              # On-chain intelligence platform
+  - RohOnChain          # On-chain analytics
+  - zachxbt             # On-chain investigator, fraud exposure
+  - surgence_io         # Crypto analytics
+  - EmberCN             # On-chain whale tracking
+  - DefiIgnas           # DeFi strategies, yield
+  - Pentosh1            # Technical analysis, macro
+  - CryptoCred          # Market structure, trading
+  - inversebrah         # Contrarian takes
+  - HsakaTrades         # Derivatives, positioning
+  - alpha_pls           # Alpha hunting, early signals
+
+prediction_mkts:
+  - Polymarket          # Largest prediction market
+  - PolymarketTrade     # Polymarket trading community
+  - zscdao              # Prediction market analytics
+  - dunleavy89          # Prediction market commentary
+  - DriftProtocol       # Perps + prediction markets
+  - AzuroProtocol       # Prediction market infra
+  - RichardHanania      # Prediction market + politics
+
+defi_builders:
+  - AndreCronjeTech     # DeFi OG, Sonic/Fantom
+  - StaniKulechov       # Aave founder
+  - jessepollak         # Base chain lead
+  - BuildOnBase         # Base ecosystem
+  - SynthetixIO         # Derivatives protocol
+  - HyperliquidX        # Perps DEX
+
+ct_narrative:
+  - cobie               # CT OG, narrative cycles
+  - mdudas              # The Block founder, crypto media/narrative
+  - RoundtableSpace     # Crypto roundtable, multi-voice takes
+  - om_patel5           # CT commentary
+  - DefiWimar           # DeFi narrative, CT culture
+  - heynavtoor          # Crypto content, narrative tracking
+  - cryptorover         # Crypto content creator, sentiment gauge
+  - coinbureau          # Crypto education, market narrative
+  - DegenSpartan        # CT culture, meme takes
+  - autism_capital      # CT aggregator, breaking news
+  - TicTocTick          # Breaking crypto news
+  - tier10k             # CT news aggregator
+  - MustStopMurad       # Memecoin/culture narratives
+
+news_media:
+  - cryptodotnews       # Crypto news aggregator
+  - Cointelegraph       # Major crypto news outlet
+  - WatcherGuru         # Crypto + macro breaking news
+
+regulation:
+  - Jake_Chervinsky     # Blockchain Association policy
+  - MetaLawMan          # Crypto legal analysis
+  - gabriel_shapiro     # DeFi legal frameworks
+  - CryptoHayes         # Arthur Hayes, macro + regulation
+  - EleanorTerrett      # Fox journalist, SEC/crypto beat
+
+ai_crypto:
+  - NousResearch        # Open-source AI, Hermes
+  - RitualNet           # AI inference on-chain
+  - AethirCloud         # Decentralized AI compute
+  - shawmakesmagic      # AI agent frameworks (ai16z)
+  - MorpheusAIs         # Decentralized AI agents
+
+macro_politics:
+  - unusual_whales      # Options flow, political trading
+  - WalterBloomberg     # Breaking financial news
+  - FinancialJuice      # Real-time macro headlines
+  - KobeissiLetter      # Macro market analysis
