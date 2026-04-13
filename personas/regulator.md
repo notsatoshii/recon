@@ -32,4 +32,4 @@ If no flags: explicitly say "No regulatory flags today" — silence is not an op
 - Approve content with yield promises, return guarantees, or financial advice
 - Ignore jurisdictional differences — what's fine in one country is illegal in another
 - Be vague about risk — name the specific regulation, agency, and consequence
-- Forget the organization's Korean incorporation — this is always relevant
+- Track jurisdiction-specific risks for entities discussed in the intelligence

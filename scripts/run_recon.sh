@@ -65,15 +65,25 @@ log "PHASE 0.1: Loading historical context..."
 YESTERDAY=$(date -d "yesterday" +%Y-%m-%d 2>/dev/null || date -v-1d +%Y-%m-%d 2>/dev/null || echo "")
 HIST_CONTEXT=""
 
-# Yesterday's brief (if available)
-if [ -n "$YESTERDAY" ] && [ -f "$RECON_HOME/archive/$YESTERDAY/brief.md" ]; then
+# Try knowledge database first (richest context)
+if [ -f "$RECON_HOME/config/knowledge.db" ]; then
+    KB_CONTEXT=$(python3 "$RECON_HOME/scripts/knowledge_db.py" context --days 7 2>/dev/null)
+    if [ -n "$KB_CONTEXT" ]; then
+        HIST_CONTEXT="$KB_CONTEXT
+"
+        log "  Loaded 7-day context from knowledge database"
+    fi
+fi
+
+# Yesterday's brief (if knowledge DB didn't have it)
+if [ -z "$HIST_CONTEXT" ] && [ -n "$YESTERDAY" ] && [ -f "$RECON_HOME/archive/$YESTERDAY/brief.md" ]; then
     HIST_CONTEXT="## YESTERDAY'S BRIEF ($YESTERDAY)
 $(head -c 3000 "$RECON_HOME/archive/$YESTERDAY/brief.md")
 "
     log "  Loaded yesterday's brief ($YESTERDAY)"
 fi
 
-# Analyst model (persistent structural thesis)
+# Analyst model (always include — persistent structural thesis)
 if [ -f "$RECON_HOME/config/analyst_model.md" ]; then
     HIST_CONTEXT+="
 ## ANALYST STRUCTURAL MODEL
@@ -149,9 +159,18 @@ for agent in "${!active_agents[@]}"; do
     throttle_wait
     (
         extra=""
-        # Analyst gets persistent model
+        # Load agent's persistent memory
+        memory_file="$RECON_HOME/config/agent_memory/${agent}.md"
+        if [ -f "$memory_file" ]; then
+            extra="YOUR RUNNING MEMORY (items you're tracking, prior predictions, recurring themes):
+$(tail -40 "$memory_file")
+
+"
+        fi
+
+        # Analyst also gets the persistent structural model
         if [[ "$agent" == "analyst" && -f "$RECON_HOME/config/analyst_model.md" ]]; then
-            extra="YOUR CURRENT STRUCTURAL MODEL (update if warranted):
+            extra+="YOUR CURRENT STRUCTURAL MODEL (update if warranted):
 $(cat "$RECON_HOME/config/analyst_model.md")
 
 "
@@ -199,7 +218,6 @@ log "  All takes complete"
 
 # Load takes into associative array
 for agent in "${!active_agents[@]}"; do
-    [[ "$agent" == "regulator" ]] && continue
     if [ -f "$RUN_DIR/03_take_${agent}.md" ]; then
         all_takes[$agent]="$(cat "$RUN_DIR/03_take_${agent}.md")"
     fi
@@ -209,14 +227,32 @@ done
 log "PHASE 4A: Tension challenges (parallel)..."
 for agent in "${!all_takes[@]}"; do all_challenges[$agent]=""; done
 
+# Build list of active agents for fallback reassignment
+active_list=(${!all_takes[@]})
+
 for pair in "${TENSIONS[@]}"; do
     c="${pair%%:*}"; t="${pair##*:}"
-    [[ -z "${all_takes[$c]:-}" || -z "${all_takes[$t]:-}" ]] && continue
+
+    # If challenger has no take, skip entirely
+    [[ -z "${all_takes[$c]:-}" ]] && continue
+
+    # If target sat out, reassign challenger to a random active agent
+    if [[ -z "${all_takes[$t]:-}" ]]; then
+        # Find an active agent that isn't the challenger and isn't already in this pair
+        for fallback in "${active_list[@]}"; do
+            if [[ "$fallback" != "$c" && -n "${all_takes[$fallback]:-}" ]]; then
+                t="$fallback"
+                log "  $c -> $t (reassigned — original target sat out)"
+                break
+            fi
+        done
+        [[ -z "${all_takes[$t]:-}" ]] && continue
+    fi
 
     throttle_wait
     (
         ch=$(ask_hermes "$PERSONAS/$c.md" \
-            "CHALLENGE ${t^^}'s analysis. What did they get wrong?
+            "CHALLENGE ${t^^}'s analysis. What did they get wrong? Where are the blind spots?
 
 YOUR TAKE: ${all_takes[$c]}
 
@@ -231,12 +267,15 @@ log "  All challenges complete"
 # Load challenges
 for pair in "${TENSIONS[@]}"; do
     c="${pair%%:*}"; t="${pair##*:}"
-    if [ -f "$RUN_DIR/04a_${c}_vs_${t}.md" ]; then
-        all_challenges[$t]+="
+    # Check actual file (target may have been reassigned)
+    for f in "$RUN_DIR"/04a_${c}_vs_*.md; do
+        [ -f "$f" ] || continue
+        actual_t=$(basename "$f" .md | sed "s/04a_${c}_vs_//")
+        all_challenges[$actual_t]+="
 --- Challenge from ${c^^} ---
-$(cat "$RUN_DIR/04a_${c}_vs_${t}.md")
+$(cat "$f")
 "
-    fi
+    done
 done
 
 # ─── PHASE 4B: REGULATOR AUDIT ─────────────────────────────
@@ -374,7 +413,55 @@ for agent in "${!all_takes[@]}"; do
     fi
 done
 
-send_telegram "🧠 Debate complete. Synthesizing brief..."
+# ─── PHASE 6.5: UPDATE AGENT MEMORIES (parallel) ───────────
+log "PHASE 6.5: Updating agent memories (parallel)..."
+for agent in "${!all_takes[@]}"; do
+    memory_file="$RECON_HOME/config/agent_memory/${agent}.md"
+    [ ! -f "$memory_file" ] && continue
+
+    throttle_wait
+    (
+        update=$(ask_hermes "$PERSONAS/$agent.md" \
+            "Review your take, the challenges you faced, and your vote from today. Update your running memory file.
+
+Extract ONLY items worth tracking across future runs:
+- New items to watch (specific events, metrics, deadlines)
+- Predictions you made today (with dates, so we can check later)
+- Recurring themes you keep seeing
+- Items from your prior memory that are now resolved or outdated (mark as RESOLVED)
+
+Keep it concise — max 20 bullet points total. Output in this format:
+### Tracked Items
+- [items]
+
+### Prior Predictions
+- [date] [prediction] [status: pending/confirmed/wrong]
+
+### Recurring Themes
+- [themes]
+
+YOUR TAKE TODAY:
+${all_takes[$agent]}
+
+YOUR VOTE TODAY:
+${all_votes[$agent]:-none}
+
+YOUR CURRENT MEMORY:
+$(tail -30 "$memory_file")" "claude-sonnet-4-20250514")
+
+        # Replace memory content (keep header)
+        head -3 "$memory_file" > "${memory_file}.tmp"
+        echo "" >> "${memory_file}.tmp"
+        echo "### Last updated: $TODAY" >> "${memory_file}.tmp"
+        echo "" >> "${memory_file}.tmp"
+        echo "$update" >> "${memory_file}.tmp"
+        mv "${memory_file}.tmp" "$memory_file"
+    ) &
+done
+wait
+log "  Agent memories updated"
+
+send_telegram "Debate complete. Synthesizing brief..."
 
 # ─── PHASE 7: SYNTHESIS (OPUS) ─────────────────────────────
 log "PHASE 7: Synthesis (Opus 4.6)..."
@@ -496,7 +583,12 @@ echo "- [$TODAY](archive/$TODAY/brief.md) — $(head -c 200 "$RUN_DIR/07_daily_b
 
 log "  Archived to $ARCHIVE_DIR"
 
+# ─── INDEX INTO KNOWLEDGE DATABASE ────────────────────────
+log "Indexing into knowledge database..."
+python3 "$RECON_HOME/scripts/knowledge_db.py" index "$RUN_DIR" 2>&1 | while read line; do log "  $line"; done
+
 log "=============================================="
 log "RECON COMPLETE in $((SECONDS/60))m $((SECONDS%60))s"
 log "Brief: $RUN_DIR/07_daily_brief.md"
+log "Cost log: $RECON_HOME/logs/llm_calls.log"
 log "=============================================="

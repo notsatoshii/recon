@@ -496,6 +496,12 @@ done
 
 log "  Raw data: $(wc -c < "$RAW_PKG") bytes"
 
+# ─── LAYER 1.5: DEDUPLICATION ───────────────────────────────
+
+log "Deduplicating cross-source items..."
+DEDUP_REPORT="$BRIEF_DIR/00_dedup_report.md"
+python3 "$RECON_HOME/scripts/deduplicate.py" "$RAW_PKG" "$DEDUP_REPORT" 2>&1 | while read line; do log "  $line"; done
+
 # ─── LAYER 2: WORLD MONITOR (geopolitical context) ──────────
 
 log "LAYER 2: World Monitor (geopolitical intelligence)..."
@@ -530,13 +536,24 @@ cat > "$PKG" << PKGHEADER
 ## Assembled: $(date +'%H:%M:%S %Z')
 ## Structure: Sentiment → Geopolitical → On-Chain → News → Social
 
-This package has been pre-processed through BettaFish (sentiment analysis)
-and World Monitor (geopolitical intelligence). Use the sentiment layer and
-geopolitical context to frame your analysis of the raw data that follows.
+This package has been processed through three layers:
+1. Deduplication: cross-source signals identified and duplicate stories merged
+2. BettaFish: Claude-powered sentiment analysis on social and news data
+3. World Monitor: geopolitical intelligence from 79 global sources
 
 PKGHEADER
 
-# 1. Sentiment layer first — sets the mood for all agents
+# 0. Cross-source signals (highest priority — same story from multiple sources)
+if [ -f "$DEDUP_REPORT" ] && [ -s "$DEDUP_REPORT" ]; then
+    echo "---" >> "$PKG"
+    echo "" >> "$PKG"
+    echo "# SECTION 0: CROSS-SOURCE SIGNALS" >> "$PKG"
+    echo "" >> "$PKG"
+    cat "$DEDUP_REPORT" >> "$PKG"
+    echo "" >> "$PKG"
+fi
+
+# 1. Sentiment layer — sets the mood for all agents
 echo "---" >> "$PKG"
 echo "" >> "$PKG"
 echo "# SECTION 1: SENTIMENT & MARKET MOOD" >> "$PKG"

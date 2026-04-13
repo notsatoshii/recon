@@ -3,8 +3,13 @@
 briefs/
 logs/
 data-sources/*/latest.md
+archive/
+config/knowledge.db
+config/knowledge.db-wal
+config/knowledge.db-shm
 __pycache__/
 *.pyc
 recon-venv/
 .hermes/
 .DS_Store
+*.tmp
