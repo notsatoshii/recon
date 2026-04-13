@@ -448,6 +448,20 @@ PYNEWS
 
 log "  News: $(wc -l < "$DATA_DIR/news/latest.md" 2>/dev/null || echo FAILED) lines"
 
+# ─── WORLD MONITOR (geopolitical intelligence) ──────────────
+
+log "Collecting World Monitor data..."
+mkdir -p "$DATA_DIR/worldmonitor"
+python3 "$RECON_HOME/scripts/collect_worldmonitor.py" 2>&1 | while read line; do log "  $line"; done
+log "  WorldMonitor: $(wc -l < "$DATA_DIR/worldmonitor/latest.md" 2>/dev/null || echo SKIPPED) lines"
+
+# ─── BETTAFISH (sentiment analysis) ─────────────────────────
+
+log "Running BettaFish sentiment analysis..."
+mkdir -p "$DATA_DIR/bettafish"
+python3 "$RECON_HOME/scripts/collect_bettafish.py" 2>&1 | while read line; do log "  $line"; done
+log "  BettaFish: $(wc -l < "$DATA_DIR/bettafish/latest.md" 2>/dev/null || echo SKIPPED) lines"
+
 # ─── ASSEMBLE DATA PACKAGE ──────────────────────────────────
 
 log "Assembling data package..."
@@ -459,7 +473,7 @@ echo "# RECON DATA PACKAGE -- $TODAY" > "$PKG"
 echo "## Collected: $(date +'%H:%M:%S %Z')" >> "$PKG"
 echo "" >> "$PKG"
 
-for src in reddit twitter onchain news; do
+for src in reddit twitter onchain news worldmonitor bettafish; do
     [ -f "$DATA_DIR/$src/latest.md" ] && {
         echo "---" >> "$PKG"
         echo "" >> "$PKG"
