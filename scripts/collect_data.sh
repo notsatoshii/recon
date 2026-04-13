@@ -98,16 +98,18 @@ PYREDDIT
 
 log "  Reddit: $(wc -l < "$DATA_DIR/reddit/latest.md" 2>/dev/null || echo FAILED) lines"
 
-# ─── TWITTER/X (twscrape, no API key) ──────────────────────
+# ─── TWITTER/X (Playwright headless browser) ───────────────
 
 log "Collecting Twitter/X data..."
 mkdir -p "$DATA_DIR/twitter"
 
-if python3 -c "import twscrape" 2>/dev/null; then
+if python3 -c "import playwright" 2>/dev/null; then
     python3 "$RECON_HOME/scripts/collect_twitter.py" 2>&1 | while read line; do log "  $line"; done
 else
-    log "  twscrape not installed -- skipping Twitter collection"
-    echo "# Twitter/X Intelligence\n## NOT CONFIGURED\nInstall: pip install twscrape" > "$DATA_DIR/twitter/latest.md"
+    log "  Playwright not installed -- skipping Twitter collection"
+    echo "# Twitter/X Intelligence" > "$DATA_DIR/twitter/latest.md"
+    echo "## NOT CONFIGURED" >> "$DATA_DIR/twitter/latest.md"
+    echo "Install: pip install playwright && playwright install chromium" >> "$DATA_DIR/twitter/latest.md"
 fi
 
 log "  Twitter: $(wc -l < "$DATA_DIR/twitter/latest.md" 2>/dev/null || echo SKIPPED) lines"

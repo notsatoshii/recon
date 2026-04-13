@@ -1,246 +1,309 @@
 #!/usr/bin/env python3
 """
-RECON Twitter/X Data Collection (No API Key)
-Uses twscrape for authenticated scraping via account sessions.
+RECON Twitter/X Data Collection via Playwright + Nitter
+Scrapes public Twitter data through Nitter instances using headless Chromium.
+Playwright handles Cloudflare JS challenges automatically.
 
-Setup (one-time):
-    python3 scripts/collect_twitter.py --add-account USERNAME PASSWORD
-    python3 scripts/collect_twitter.py --add-account USERNAME PASSWORD EMAIL EMAIL_PASSWORD
+No API key needed, no Twitter account needed.
 
-Run:
-    python3 scripts/collect_twitter.py
+Output: /home/recon/recon/data-sources/twitter/latest.md
 """
 
 import asyncio
-import argparse
-import os
+import re
 import sys
 import yaml
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone
 from pathlib import Path
 
 RECON_HOME = Path("/home/recon/recon")
 SEEDS_FILE = RECON_HOME / "config" / "twitter_seeds.yaml"
 OUTPUT_FILE = RECON_HOME / "data-sources" / "twitter" / "latest.md"
-DB_PATH = Path("/home/recon/.recon_twscrape.db")
-TWEETS_PER_ACCOUNT = 5
-MAX_ACCOUNTS_PER_CATEGORY = 15
+
+NITTER_INSTANCE = "https://nitter.cz"
+MAX_ACCOUNTS_PER_CATEGORY = 12
+TWEETS_PER_ACCOUNT = 8
+CONCURRENT_PAGES = 2  # Nitter is rate-sensitive, keep low
+CF_WAIT = 6  # Seconds to wait for Cloudflare challenge
 
 
 def load_seeds() -> dict:
-    """Load seed accounts from YAML config."""
     if not SEEDS_FILE.exists():
-        print(f"ERROR: Seeds file not found: {SEEDS_FILE}")
-        sys.exit(1)
+        return {}
     with open(SEEDS_FILE) as f:
         data = yaml.safe_load(f)
-    # Deduplicate within each category
     for cat in data:
         if isinstance(data[cat], list):
             seen = set()
             deduped = []
-            for handle in data[cat]:
-                h = handle.strip().lower()
-                if h not in seen:
-                    seen.add(h)
-                    deduped.append(handle.strip())
+            for h in data[cat]:
+                h = h.strip()
+                if h.lower() not in seen:
+                    seen.add(h.lower())
+                    deduped.append(h)
             data[cat] = deduped[:MAX_ACCOUNTS_PER_CATEGORY]
     return data
 
 
-async def add_account(username: str, password: str, email: str = "", email_password: str = ""):
-    """Add a scraper account to twscrape pool."""
-    from twscrape import AccountsPool
-    pool = AccountsPool(str(DB_PATH))
-    await pool.add_account(username, password, email, email_password)
-    await pool.login_all()
-    print(f"Account @{username} added and logged in.")
+async def solve_cloudflare(page):
+    """Wait for Cloudflare JS challenge to resolve."""
+    content = await page.content()
+    if "Just a moment" in content or "Checking your browser" in content:
+        await page.wait_for_timeout(CF_WAIT * 1000)
 
 
-async def check_accounts():
-    """Check status of scraper accounts."""
-    from twscrape import AccountsPool
-    pool = AccountsPool(str(DB_PATH))
-    accounts = await pool.accounts_info()
-    if not accounts:
-        print("No scraper accounts configured.")
-        print("Add one: python3 scripts/collect_twitter.py --add-account USERNAME PASSWORD")
-        return False
-    for acc in accounts:
-        print(f"  @{acc['username']}: {'ACTIVE' if acc['active'] else 'INACTIVE'} (logged in: {acc['logged_in']})")
-    return any(a['active'] for a in accounts)
-
-
-async def scrape_user_tweets(api, handle: str, limit: int = TWEETS_PER_ACCOUNT) -> list:
-    """Get recent tweets from a single user."""
+async def scrape_profile(context, handle: str) -> list:
+    """Scrape tweets from a Nitter profile page."""
     tweets = []
+    page = await context.new_page()
+
     try:
-        async for tweet in api.user_tweets(handle, limit=limit):
-            # Skip if older than 48 hours
-            if tweet.date < datetime.now(timezone.utc) - timedelta(hours=48):
+        url = f"{NITTER_INSTANCE}/{handle}"
+        await page.goto(url, wait_until="domcontentloaded", timeout=20000)
+        await solve_cloudflare(page)
+
+        content = await page.content()
+
+        # Check if profile exists
+        if "User \"" in content and "not found" in content:
+            return []
+
+        # Parse Nitter HTML for timeline items
+        # Nitter uses .timeline-item for each tweet
+        items = await page.query_selector_all(".timeline-item")
+
+        for item in items[:TWEETS_PER_ACCOUNT]:
+            try:
+                # Tweet text
+                text_el = await item.query_selector(".tweet-content")
+                text = await text_el.inner_text() if text_el else ""
+
+                # Stats
+                stats = {}
+                stat_container = await item.query_selector(".tweet-stat")
+                # Nitter puts stats in icon-container spans
+                for stat_type, icon_class in [("replies", "icon-comment"), ("retweets", "icon-retweet"), ("likes", "icon-heart")]:
+                    el = await item.query_selector(f".{icon_class}")
+                    if el:
+                        parent = await el.evaluate_handle("el => el.parentElement")
+                        stat_text = await parent.inner_text() if parent else "0"
+                        stat_text = stat_text.strip().replace(",", "")
+                        try:
+                            stats[stat_type] = int(stat_text) if stat_text.isdigit() else 0
+                        except (ValueError, AttributeError):
+                            stats[stat_type] = 0
+
+                # Timestamp
+                time_el = await item.query_selector(".tweet-date a")
+                timestamp = ""
+                if time_el:
+                    title = await time_el.get_attribute("title") or ""
+                    timestamp = title[:16]
+
+                # Check if retweet
+                is_rt = False
+                rt_el = await item.query_selector(".retweet-header")
+                if rt_el:
+                    is_rt = True
+
+                if text and len(text.strip()) > 10:
+                    tweets.append({
+                        "text": text[:500],
+                        "likes": stats.get("likes", 0),
+                        "retweets": stats.get("retweets", 0),
+                        "replies": stats.get("replies", 0),
+                        "time": timestamp,
+                        "is_rt": is_rt,
+                    })
+
+            except Exception:
                 continue
-            tweets.append({
-                "text": tweet.rawContent[:500] if tweet.rawContent else "",
-                "likes": tweet.likeCount or 0,
-                "retweets": tweet.retweetCount or 0,
-                "replies": tweet.replyCount or 0,
-                "date": tweet.date.strftime("%Y-%m-%d %H:%M") if tweet.date else "",
-                "url": tweet.url or "",
-                "is_retweet": tweet.rawContent.startswith("RT @") if tweet.rawContent else False,
-                "views": tweet.viewCount or 0,
-            })
+
     except Exception as e:
         err = str(e)[:80]
-        # Don't spam errors for suspended/protected accounts
-        if "404" not in err and "403" not in err:
+        if "timeout" not in err.lower():
             print(f"  WARN: @{handle}: {err}")
+
+    finally:
+        await page.close()
+
     return tweets
 
 
-async def scrape_search(api, query: str, limit: int = 10) -> list:
-    """Search tweets by query (for topic monitoring)."""
+async def scrape_search(context, query: str) -> list:
+    """Search Nitter for a query."""
     tweets = []
+    page = await context.new_page()
+
     try:
-        async for tweet in api.search(query, limit=limit):
-            if tweet.date and tweet.date < datetime.now(timezone.utc) - timedelta(hours=48):
+        url = f"{NITTER_INSTANCE}/search?f=tweets&q={query.replace(' ', '+')}"
+        await page.goto(url, wait_until="domcontentloaded", timeout=20000)
+        await solve_cloudflare(page)
+
+        items = await page.query_selector_all(".timeline-item")
+
+        for item in items[:5]:
+            try:
+                text_el = await item.query_selector(".tweet-content")
+                text = await text_el.inner_text() if text_el else ""
+
+                # Get author
+                user_el = await item.query_selector(".username")
+                user = await user_el.inner_text() if user_el else ""
+                user = user.strip().lstrip("@")
+
+                # Likes
+                likes = 0
+                heart = await item.query_selector(".icon-heart")
+                if heart:
+                    parent = await heart.evaluate_handle("el => el.parentElement")
+                    stat_text = await parent.inner_text() if parent else "0"
+                    stat_text = stat_text.strip().replace(",", "")
+                    try:
+                        likes = int(stat_text) if stat_text.isdigit() else 0
+                    except ValueError:
+                        pass
+
+                if text:
+                    tweets.append({
+                        "text": text[:500],
+                        "user": user,
+                        "likes": likes,
+                    })
+            except Exception:
                 continue
-            tweets.append({
-                "text": tweet.rawContent[:500] if tweet.rawContent else "",
-                "likes": tweet.likeCount or 0,
-                "retweets": tweet.retweetCount or 0,
-                "user": tweet.user.username if tweet.user else "unknown",
-                "date": tweet.date.strftime("%Y-%m-%d %H:%M") if tweet.date else "",
-                "views": tweet.viewCount or 0,
-            })
-    except Exception as e:
-        print(f"  WARN: Search '{query}': {str(e)[:80]}")
+
+    except Exception:
+        pass
+    finally:
+        await page.close()
+
     return tweets
 
 
 def format_tweet(t: dict, include_user: bool = False) -> str:
-    """Format a single tweet for the intelligence report."""
-    engagement = f"{t.get('likes',0)}♥ {t.get('retweets',0)}🔁 {t.get('replies',0)}💬"
-    views = t.get('views', 0)
-    if views and views > 0:
-        engagement += f" {views:,}👁"
-    prefix = f"@{t['user']}: " if include_user and t.get('user') else ""
-    text = t.get('text', '').replace('\n', ' ').strip()
-    if t.get('is_retweet'):
-        text = f"[RT] {text}"
-    return f"- [{t.get('date','')}] ({engagement}) {prefix}{text[:300]}"
+    likes = t.get("likes", 0)
+    rts = t.get("retweets", 0)
+    replies = t.get("replies", 0)
+    parts = []
+    if likes: parts.append(f"{likes}♥")
+    if rts: parts.append(f"{rts}🔁")
+    if replies: parts.append(f"{replies}💬")
+    engagement = " ".join(parts) if parts else "0♥"
+    prefix = f"@{t['user']}: " if include_user and t.get("user") else ""
+    text = t.get("text", "").replace("\n", " ").strip()[:300]
+    time_str = f"[{t['time']}] " if t.get("time") else ""
+    rt_tag = "[RT] " if t.get("is_rt") else ""
+    return f"- {time_str}({engagement}) {rt_tag}{prefix}{text}"
 
 
-async def collect():
-    """Main collection routine."""
-    from twscrape import API
+async def main():
+    from playwright.async_api import async_playwright
 
-    api = API(str(DB_PATH))
     seeds = load_seeds()
-    now = datetime.now(timezone.utc)
+    if not seeds:
+        OUTPUT_FILE.parent.mkdir(parents=True, exist_ok=True)
+        OUTPUT_FILE.write_text("# Twitter/X Intelligence\n## NO SEEDS CONFIGURED\n")
+        return
 
+    now = datetime.now(timezone.utc)
     lines = [
         f"# Twitter/X Intelligence",
         f"## {now.strftime('%Y-%m-%d %H:%M UTC')}",
-        f"## Source: twscrape (no API key)",
+        f"## Source: Playwright + Nitter ({NITTER_INSTANCE})",
         "",
     ]
 
     total_tweets = 0
-    failed_accounts = []
+    failed = []
 
-    # ─── SEED ACCOUNT TWEETS ────────────────────────────────
-    for category, handles in seeds.items():
-        if not isinstance(handles, list):
-            continue
-        lines.append(f"\n---\n## {category.upper().replace('_', ' ')}\n")
+    async with async_playwright() as p:
+        browser = await p.chromium.launch(
+            headless=True,
+            args=["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage", "--disable-gpu"],
+        )
+        context = await browser.new_context(
+            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            viewport={"width": 1280, "height": 900},
+            locale="en-US",
+        )
 
-        for handle in handles:
-            tweets = await scrape_user_tweets(api, handle)
-            if tweets:
-                lines.append(f"### @{handle} ({len(tweets)} recent)")
-                for t in sorted(tweets, key=lambda x: x.get('likes', 0), reverse=True):
+        # Warm up — first request solves Cloudflare for the session
+        print("  Warming up Nitter session (solving Cloudflare)...")
+        warmup = await context.new_page()
+        await warmup.goto(f"{NITTER_INSTANCE}/Polymarket", wait_until="domcontentloaded", timeout=25000)
+        await warmup.wait_for_timeout(CF_WAIT * 1000)
+        await warmup.close()
+
+        # Scrape seed accounts
+        all_handles = []
+        handle_cats = {}
+        for cat, handles in seeds.items():
+            if not isinstance(handles, list):
+                continue
+            for h in handles:
+                all_handles.append(h)
+                handle_cats[h] = cat
+
+        current_cat = ""
+        for i in range(0, len(all_handles), CONCURRENT_PAGES):
+            batch = all_handles[i:i + CONCURRENT_PAGES]
+            tasks = [scrape_profile(context, h) for h in batch]
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+
+            for handle, result in zip(batch, results):
+                cat = handle_cats.get(handle, "uncategorized")
+
+                if isinstance(result, Exception) or not result:
+                    failed.append(handle)
+                    continue
+
+                # Category header
+                if cat != current_cat:
+                    lines.append(f"\n---\n## {cat.upper().replace('_', ' ')}\n")
+                    current_cat = cat
+
+                lines.append(f"### @{handle} ({len(result)} tweets)")
+                for t in sorted(result, key=lambda x: x.get("likes", 0), reverse=True):
                     lines.append(format_tweet(t))
                 lines.append("")
-                total_tweets += len(tweets)
-            else:
-                failed_accounts.append(handle)
+                total_tweets += len(result)
 
-    # ─── TOPIC SEARCHES (high-signal queries) ───────────────
-    SEARCHES = [
-        "prediction market regulation",
-        "Polymarket volume",
-        "leveraged prediction",
-        "DeFi leverage perpetual",
-        "Base chain DeFi",
-        "BNB prediction market",
-        "crypto regulation CFTC",
-        "prediction market manipulation",
-    ]
+            await asyncio.sleep(3)  # Rate limit between batches
 
-    lines.append(f"\n---\n## TOPIC SEARCHES\n")
-    for query in SEARCHES:
-        results = await scrape_search(api, query, limit=5)
-        if results:
-            lines.append(f"### \"{query}\" ({len(results)} results)")
-            for t in sorted(results, key=lambda x: x.get('likes', 0), reverse=True):
-                lines.append(format_tweet(t, include_user=True))
-            lines.append("")
-            total_tweets += len(results)
+        # Topic searches
+        SEARCHES = [
+            "prediction market",
+            "DeFi regulation",
+            "crypto macro outlook",
+            "AI agents crypto",
+        ]
 
-    # ─── SUMMARY ────────────────────────────────────────────
+        lines.append(f"\n---\n## TOPIC SEARCHES\n")
+        for query in SEARCHES:
+            results = await scrape_search(context, query)
+            if results:
+                lines.append(f"### \"{query}\" ({len(results)} results)")
+                for t in sorted(results, key=lambda x: x.get("likes", 0), reverse=True):
+                    lines.append(format_tweet(t, include_user=True))
+                lines.append("")
+                total_tweets += len(results)
+            await asyncio.sleep(3)
+
+        await browser.close()
+
+    # Summary
     lines.append(f"\n---\n## COLLECTION SUMMARY")
-    lines.append(f"- Total tweets collected: {total_tweets}")
-    lines.append(f"- Failed/empty accounts: {len(failed_accounts)}")
-    if failed_accounts:
-        lines.append(f"- Failed: {', '.join(failed_accounts[:20])}")
+    lines.append(f"- Total tweets: {total_tweets}")
+    lines.append(f"- Accounts scraped: {len(all_handles) - len(failed)}/{len(all_handles)}")
+    lines.append(f"- Failed/empty: {len(failed)}")
+    if failed:
+        lines.append(f"- Failed: {', '.join(failed[:20])}")
     lines.append("")
 
-    # Write output
     OUTPUT_FILE.parent.mkdir(parents=True, exist_ok=True)
-    with open(OUTPUT_FILE, "w") as f:
-        f.write("\n".join(lines))
-
-    print(f"Twitter: {total_tweets} tweets from {sum(len(v) for v in seeds.values() if isinstance(v, list))} accounts + {len(SEARCHES)} searches")
-    return total_tweets
-
-
-async def main():
-    parser = argparse.ArgumentParser(description="RECON Twitter/X collector")
-    parser.add_argument("--add-account", nargs="+", metavar="ARG",
-                        help="Add scraper account: USERNAME PASSWORD [EMAIL] [EMAIL_PASSWORD]")
-    parser.add_argument("--check", action="store_true", help="Check scraper account status")
-    parser.add_argument("--collect", action="store_true", default=True, help="Run collection")
-
-    args = parser.parse_args()
-
-    if args.add_account:
-        parts = args.add_account
-        if len(parts) < 2:
-            print("Usage: --add-account USERNAME PASSWORD [EMAIL] [EMAIL_PASSWORD]")
-            sys.exit(1)
-        await add_account(*parts[:4])
-        return
-
-    if args.check:
-        await check_accounts()
-        return
-
-    # Default: collect
-    try:
-        from twscrape import API
-        api = API(str(DB_PATH))
-    except Exception as e:
-        print(f"twscrape init failed: {e}")
-        # Write fallback file so pipeline doesn't break
-        OUTPUT_FILE.parent.mkdir(parents=True, exist_ok=True)
-        with open(OUTPUT_FILE, "w") as f:
-            f.write("# Twitter/X Intelligence\n## NOT CONFIGURED\n"
-                    "Add a scraper account: python3 scripts/collect_twitter.py --add-account USERNAME PASSWORD\n")
-        sys.exit(0)
-
-    count = await collect()
-    if count == 0:
-        print("WARNING: Zero tweets collected. Check account status: python3 scripts/collect_twitter.py --check")
+    OUTPUT_FILE.write_text("\n".join(lines))
+    print(f"Twitter: {total_tweets} tweets from {len(all_handles) - len(failed)}/{len(all_handles)} accounts ({len(failed)} failed)")
 
 
 if __name__ == "__main__":
