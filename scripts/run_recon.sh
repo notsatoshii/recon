@@ -56,10 +56,13 @@ log "Data package: $(echo "$DATA" | wc -c) bytes"
 # ─── PHASE 0.5: RELEVANCE FILTER ───────────────────────────
 log "PHASE 0.5: Filtering..."
 FILTERED=$(ask_hermes "$PERSONAS/analyst.md" \
-    "RELEVANCE FILTER MODE. Pass through items relevant to prediction markets, DeFi, crypto, LEVER Protocol (leveraged prediction market perpetuals on Base), and XMarket (UGC prediction market on BNB Chain). Score 3+/10 passes. Keep raw form. Drop irrelevant items.
+    "RELEVANCE FILTER MODE. You are receiving a pre-processed intelligence package. It has already been analyzed for sentiment (BettaFish) and geopolitical context (World Monitor).
 
-DATA:
-$(echo "$DATA" | head -c 12000)")
+PRESERVE the sentiment analysis and geopolitical sections intact — agents need this framing.
+FILTER the on-chain data, news, and social sections: pass through items relevant to prediction markets, DeFi, crypto, LEVER Protocol (leveraged prediction market perpetuals on Base), and XMarket (UGC prediction market on BNB Chain). Score 3+/10 passes. Keep raw form. Drop irrelevant items.
+
+INTELLIGENCE PACKAGE:
+$(echo "$DATA" | head -c 14000)")
 echo "$FILTERED" > "$RUN_DIR/01_filtered.md"
 log "  Filtered: $(echo "$FILTERED" | wc -c) bytes"
 
@@ -82,8 +85,8 @@ for agent in "${AGENTS[@]}"; do
     throttle_wait
     (
         check=$(ask_hermes "$PERSONAS/$agent.md" \
-            "Quick check: anything significant in today's data for you? YES or NO, one sentence.
-$(head -c 2000 "$FILTERED_FILE")")
+            "Quick check: review the sentiment summary and key signals below. Anything significant for your domain today? YES or NO, one sentence.
+$(head -c 3000 "$FILTERED_FILE")")
         if echo "$check" | grep -qi "yes"; then
             echo "ACTIVE" > "$RUN_DIR/.activation_${agent}"
         else
@@ -123,10 +126,15 @@ $(cat "$RECON_HOME/config/analyst_model.md")
         fi
 
         take=$(ask_hermes "$PERSONAS/$agent.md" \
-            "${extra}Analyze today's data. Follow your output format. 200-400 words.
+            "${extra}Analyze today's intelligence package. It has been pre-processed through two systems before reaching you:
+- SECTION 1 (SENTIMENT): BettaFish multi-agent sentiment analysis — overall mood, per-source breakdown, trending topics. Use this to calibrate your tone and flag divergences from your own read.
+- SECTION 2 (GEOPOLITICAL): World Monitor intelligence — macro events, conflicts, regulatory signals. Consider how this backdrop affects your domain.
+- SECTIONS 3-5: On-chain data, news headlines, and social discourse (Reddit/Twitter).
 
-DATA:
-$(head -c 8000 "$FILTERED_FILE")")
+Ground your analysis in the sentiment and geopolitical context. Follow your output format. 200-400 words.
+
+INTELLIGENCE PACKAGE:
+$(head -c 10000 "$FILTERED_FILE")")
         echo "$take" > "$RUN_DIR/03_take_${agent}.md"
     ) &
     log "  $agent launched..."

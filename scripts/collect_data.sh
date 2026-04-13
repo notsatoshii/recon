@@ -469,39 +469,114 @@ PYNEWS
 
 log "  News: $(wc -l < "$DATA_DIR/news/latest.md" 2>/dev/null || echo FAILED) lines"
 
-# ─── WORLD MONITOR (geopolitical intelligence) ──────────────
+# ═══════════════════════════════════════════════════════════
+# LAYER 1 COMPLETE: Raw data collected
+# Now run processing layers before assembling final package
+# ═══════════════════════════════════════════════════════════
 
-log "Collecting World Monitor data..."
+BRIEF_DIR="$RECON_HOME/briefs/$TODAY"
+
+# ─── ASSEMBLE RAW DATA (intermediate, for processing layers) ─
+
+log "Assembling raw data for processing..."
+RAW_PKG="$BRIEF_DIR/00_raw_data.md"
+
+echo "# RAW DATA -- $TODAY" > "$RAW_PKG"
+echo "## Collected: $(date +'%H:%M:%S %Z')" >> "$RAW_PKG"
+echo "" >> "$RAW_PKG"
+
+for src in reddit twitter onchain news; do
+    [ -f "$DATA_DIR/$src/latest.md" ] && {
+        echo "---" >> "$RAW_PKG"
+        echo "" >> "$RAW_PKG"
+        cat "$DATA_DIR/$src/latest.md" >> "$RAW_PKG"
+        echo "" >> "$RAW_PKG"
+    }
+done
+
+log "  Raw data: $(wc -c < "$RAW_PKG") bytes"
+
+# ─── LAYER 2: WORLD MONITOR (geopolitical context) ──────────
+
+log "LAYER 2: World Monitor (geopolitical intelligence)..."
 mkdir -p "$DATA_DIR/worldmonitor"
 python3 "$RECON_HOME/scripts/collect_worldmonitor.py" 2>&1 | while read line; do log "  $line"; done
 log "  WorldMonitor: $(wc -l < "$DATA_DIR/worldmonitor/latest.md" 2>/dev/null || echo SKIPPED) lines"
 
-# ─── BETTAFISH (sentiment analysis) ─────────────────────────
+# ─── LAYER 3: BETTAFISH (sentiment analysis on raw data) ────
 
-log "Running BettaFish sentiment analysis..."
+log "LAYER 3: BettaFish (sentiment analysis)..."
 mkdir -p "$DATA_DIR/bettafish"
 python3 "$RECON_HOME/scripts/collect_bettafish.py" 2>&1 | while read line; do log "  $line"; done
 log "  BettaFish: $(wc -l < "$DATA_DIR/bettafish/latest.md" 2>/dev/null || echo SKIPPED) lines"
 
-# ─── ASSEMBLE DATA PACKAGE ──────────────────────────────────
+# ─── ASSEMBLE PROCESSED INTELLIGENCE PACKAGE ─────────────────
+#
+# Structure for agents:
+#   1. SENTIMENT & MARKET MOOD (BettaFish) — read this first
+#   2. GEOPOLITICAL CONTEXT (World Monitor) — macro backdrop
+#   3. ON-CHAIN DATA — quantitative signals
+#   4. NEWS INTELLIGENCE — what just happened
+#   5. SOCIAL INTELLIGENCE — Reddit + Twitter discourse
+#
+# Agents receive processed context, not raw feeds.
+# ─────────────────────────────────────────────────────────────
 
-log "Assembling data package..."
-
-BRIEF_DIR="$RECON_HOME/briefs/$TODAY"
+log "Assembling processed intelligence package..."
 PKG="$BRIEF_DIR/00_data_package.md"
 
-echo "# RECON DATA PACKAGE -- $TODAY" > "$PKG"
-echo "## Collected: $(date +'%H:%M:%S %Z')" >> "$PKG"
+cat > "$PKG" << PKGHEADER
+# RECON INTELLIGENCE PACKAGE -- $TODAY
+## Assembled: $(date +'%H:%M:%S %Z')
+## Structure: Sentiment → Geopolitical → On-Chain → News → Social
+
+This package has been pre-processed through BettaFish (sentiment analysis)
+and World Monitor (geopolitical intelligence). Use the sentiment layer and
+geopolitical context to frame your analysis of the raw data that follows.
+
+PKGHEADER
+
+# 1. Sentiment layer first — sets the mood for all agents
+echo "---" >> "$PKG"
+echo "" >> "$PKG"
+echo "# SECTION 1: SENTIMENT & MARKET MOOD" >> "$PKG"
+echo "" >> "$PKG"
+[ -f "$DATA_DIR/bettafish/latest.md" ] && cat "$DATA_DIR/bettafish/latest.md" >> "$PKG"
 echo "" >> "$PKG"
 
-for src in reddit twitter onchain news worldmonitor bettafish; do
-    [ -f "$DATA_DIR/$src/latest.md" ] && {
-        echo "---" >> "$PKG"
-        echo "" >> "$PKG"
-        cat "$DATA_DIR/$src/latest.md" >> "$PKG"
-        echo "" >> "$PKG"
-    }
-done
+# 2. Geopolitical context — macro backdrop
+echo "---" >> "$PKG"
+echo "" >> "$PKG"
+echo "# SECTION 2: GEOPOLITICAL CONTEXT" >> "$PKG"
+echo "" >> "$PKG"
+[ -f "$DATA_DIR/worldmonitor/latest.md" ] && cat "$DATA_DIR/worldmonitor/latest.md" >> "$PKG"
+echo "" >> "$PKG"
 
-log "  Package: $(wc -c < "$PKG") bytes"
-log "========== DATA COLLECTION COMPLETE =========="
+# 3. On-chain data — quantitative signals
+echo "---" >> "$PKG"
+echo "" >> "$PKG"
+echo "# SECTION 3: ON-CHAIN & MARKET DATA" >> "$PKG"
+echo "" >> "$PKG"
+[ -f "$DATA_DIR/onchain/latest.md" ] && cat "$DATA_DIR/onchain/latest.md" >> "$PKG"
+echo "" >> "$PKG"
+
+# 4. News intelligence
+echo "---" >> "$PKG"
+echo "" >> "$PKG"
+echo "# SECTION 4: NEWS INTELLIGENCE" >> "$PKG"
+echo "" >> "$PKG"
+[ -f "$DATA_DIR/news/latest.md" ] && cat "$DATA_DIR/news/latest.md" >> "$PKG"
+echo "" >> "$PKG"
+
+# 5. Social intelligence (Reddit + Twitter)
+echo "---" >> "$PKG"
+echo "" >> "$PKG"
+echo "# SECTION 5: SOCIAL INTELLIGENCE" >> "$PKG"
+echo "" >> "$PKG"
+[ -f "$DATA_DIR/reddit/latest.md" ] && cat "$DATA_DIR/reddit/latest.md" >> "$PKG"
+echo "" >> "$PKG"
+[ -f "$DATA_DIR/twitter/latest.md" ] && cat "$DATA_DIR/twitter/latest.md" >> "$PKG"
+echo "" >> "$PKG"
+
+log "  Intelligence package: $(wc -c < "$PKG") bytes ($(wc -l < "$PKG") lines)"
+log "========== DATA COLLECTION & PROCESSING COMPLETE =========="
