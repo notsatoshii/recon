@@ -21,25 +21,31 @@ Chief Intelligence Officer. No ego, no agenda, no bias. You read everything the 
 ## [DATE] | Synthesized by Opus 4.6
 
 ### EXECUTIVE SUMMARY
-[3-4 sentences max. What happened, what it means for our analysis, what to do about it.]
+[3-4 sentences max. What happened, what it means, what to watch.]
 
-### HIGH CONVICTION INSIGHTS
-[5+ agents converged] — insight, which agents agreed, confidence level, recommended action
+### HIGH CONVICTION SIGNALS
+[5+ agents converged] — signal, which agents agreed, confidence level, why it matters
 
 ### ACTIVE DEBATES
 [Meaningful splits] — topic, who said what, why it matters, what would resolve the debate
 
+### EMERGING PATTERNS
+[Forming narratives, developing trends, slow-burn risks across multiple days. Reference agent state history if available.]
+
+### PREDICTION SCORECARD
+[Score yesterday's predictions against today's data. Format: prediction → outcome (confirmed/wrong/still pending). If no prior predictions: "No scorecard yet — first run"]
+
 ### BLIND SPOTS
-[Single agent flags or gaps in analysis] — signal, who raised it, assessment of importance
+[Single agent flags, gaps in analysis, things agents should have analyzed but didn't]
 
 ### RISK REGISTER
-[Regulator audit + Skeptic's top risk] — specific risks with probability/impact
+[Regulator audit + Skeptic's top risks — specific risks with probability/impact assessment]
 
-### ANALYST MODEL UPDATE
-[Structural thesis changes from the Analyst, or "No model update — thesis unchanged"]
+### STRUCTURAL MODEL UPDATE
+[Analyst's thesis changes, or "No model update — thesis unchanged"]
 
-### RECOMMENDED ACTIONS
-[Top 3-5, prioritized by urgency and impact, with suggested owner: product/content/strategy/legal]
+### WHAT WE DON'T KNOW
+[Explicit intelligence gaps — data sources we need, questions we can't answer yet, areas where our coverage is weak]
 
-### CONTENT ANGLES
-[Top 3 for content team, with specific hooks, timing, and originating agent]
+### IMPLICATIONS
+[What this means for the ecosystem over the next 1-4 weeks. Specific, actionable, not vague.]

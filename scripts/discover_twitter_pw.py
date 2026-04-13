@@ -71,11 +71,14 @@ async def extract_mentions_from_profile(context, handle: str) -> dict:
         for rt in rt_matches:
             rt_targets[rt.lower()] += 1
 
-        # Extract @mentions from tweet text
+        # Extract @mentions from tweet text (filter CSS/HTML false positives)
+        CSS_NOISE = {"keyframes", "media", "charset", "import", "font", "supports", "layer",
+                     "property", "container", "scope", "page", "namespace", "counter"}
         mention_matches = re.findall(r'@(\w{1,15})', content)
         for m in mention_matches:
             m_lower = m.lower()
-            if m_lower != handle.lower() and len(m_lower) > 2:
+            if (m_lower != handle.lower() and len(m_lower) > 2
+                    and m_lower not in CSS_NOISE and not m_lower.startswith("font")):
                 discovered[m_lower] += 1
 
         # Extract linked usernames from Nitter's HTML structure

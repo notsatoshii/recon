@@ -11,9 +11,9 @@ PERSONAS="$RECON_HOME/personas"
 source /home/recon/.recon.env
 source "$RECON_HOME/scripts/ask_hermes.sh"
 
-AGENTS=(trader narrator builder analyst skeptic regulator user_agent)
-ALWAYS_ACTIVE=(skeptic regulator)
-TENSIONS=("trader:narrator" "narrator:trader" "builder:user_agent" "user_agent:builder" "analyst:skeptic" "skeptic:analyst")
+AGENTS=(trader narrator builder analyst skeptic policy_analyst user_agent macro_strategist)
+ALWAYS_ACTIVE=(skeptic)
+TENSIONS=("trader:narrator" "narrator:trader" "builder:policy_analyst" "policy_analyst:builder" "analyst:skeptic" "skeptic:analyst" "macro_strategist:user_agent" "user_agent:macro_strategist")
 
 # Max parallel agent calls (keep under API rate limits / memory)
 MAX_PARALLEL=3
@@ -44,6 +44,12 @@ log "=============================================="
 log "RECON INTELLIGENCE CELL -- $TODAY"
 log "=============================================="
 send_telegram "RECON starting — $TODAY"
+
+# ─── PHASE -1: SCORE YESTERDAY'S PREDICTIONS ──────────────
+log "PHASE -1: Scoring yesterday's predictions..."
+source /home/recon/recon-venv/bin/activate 2>/dev/null || true
+python3 "$RECON_HOME/scripts/score_yesterday.py" 2>&1 | while read line; do log "  $line"; done
+sleep 3
 
 # ─── PHASE 0: DATA COLLECTION ──────────────────────────────
 log "PHASE 0: Collecting real data..."
@@ -83,21 +89,27 @@ $(head -c 3000 "$RECON_HOME/archive/$YESTERDAY/brief.md")
     log "  Loaded yesterday's brief ($YESTERDAY)"
 fi
 
-# Analyst model (always include — persistent structural thesis)
-if [ -f "$RECON_HOME/config/analyst_model.md" ]; then
-    HIST_CONTEXT+="
-## ANALYST STRUCTURAL MODEL
-$(cat "$RECON_HOME/config/analyst_model.md")
-"
-    log "  Loaded analyst structural model"
+# Load sector context (landscape document all agents read)
+SECTOR_CONTEXT=""
+if [ -f "$RECON_HOME/config/sector_context.md" ]; then
+    SECTOR_CONTEXT="$(cat "$RECON_HOME/config/sector_context.md")"
+    log "  Loaded sector context ($(echo "$SECTOR_CONTEXT" | wc -c) bytes)"
 fi
 
 # Save historical context for agents to reference
 echo "$HIST_CONTEXT" > "$RUN_DIR/00_historical_context.md"
 log "  Historical context: $(echo "$HIST_CONTEXT" | wc -c) bytes"
 
+# Load prediction scorecard if available
+SCORECARD=""
+if [ -f "$RUN_DIR/00_scorecard.md" ]; then
+    SCORECARD="$(cat "$RUN_DIR/00_scorecard.md")"
+    log "  Loaded prediction scorecard"
+fi
+
 # ─── PHASE 0.5: RELEVANCE FILTER ───────────────────────────
 log "PHASE 0.5: Filtering..."
+sleep 3
 FILTERED=$(ask_hermes "$PERSONAS/analyst.md" \
     "RELEVANCE FILTER MODE. You are receiving a pre-processed intelligence package. It has already been analyzed for sentiment (BettaFish) and geopolitical context (World Monitor).
 
@@ -127,6 +139,7 @@ for agent in "${AGENTS[@]}"; do
     # Run activation checks in parallel
     throttle_wait
     (
+        sleep 3
         check=$(ask_hermes "$PERSONAS/$agent.md" \
             "Quick check: review the sentiment summary and key signals below. Anything significant for your domain today? YES or NO, one sentence.
 $(head -c 15000 "$FILTERED_FILE")")
@@ -158,8 +171,10 @@ log "PHASE 3: Independent takes (parallel)..."
 for agent in "${!active_agents[@]}"; do
     throttle_wait
     (
+        sleep 3
         extra=""
-        # Load agent's persistent memory
+
+        # Load agent's persistent memory (legacy format)
         memory_file="$RECON_HOME/config/agent_memory/${agent}.md"
         if [ -f "$memory_file" ]; then
             extra="YOUR RUNNING MEMORY (items you're tracking, prior predictions, recurring themes):
@@ -168,10 +183,24 @@ $(tail -40 "$memory_file")
 "
         fi
 
-        # Analyst also gets the persistent structural model
-        if [[ "$agent" == "analyst" && -f "$RECON_HOME/config/analyst_model.md" ]]; then
-            extra+="YOUR CURRENT STRUCTURAL MODEL (update if warranted):
-$(cat "$RECON_HOME/config/analyst_model.md")
+        # Load agent's state file
+        # Map user_agent persona to user state file
+        state_name="$agent"
+        [[ "$agent" == "user_agent" ]] && state_name="user"
+        state_file="$RECON_HOME/config/agent_state/${state_name}_state.md"
+        if [ -f "$state_file" ]; then
+            extra+="YOUR STATE FROM PREVIOUS SESSIONS:
+$(cat "$state_file")
+
+"
+        fi
+
+        # Sector context for all agents
+        sector_file="$RECON_HOME/config/sector_context.md"
+        sector_ctx=""
+        if [ -f "$sector_file" ]; then
+            sector_ctx="SECTOR CONTEXT (prediction market + DeFi derivatives landscape):
+$(head -c 8000 "$sector_file")
 
 "
         fi
@@ -187,8 +216,19 @@ $(head -c 3000 "$RUN_DIR/00_historical_context.md")
 "
         fi
 
+        # Include scorecard if available
+        scorecard_ctx=""
+        if [ -f "$RUN_DIR/00_scorecard.md" ]; then
+            scorecard_ctx="
+--- YESTERDAY'S PREDICTIONS (check if any of yours were right or wrong) ---
+$(head -c 2000 "$RUN_DIR/00_scorecard.md")
+--- END PREDICTIONS ---
+
+"
+        fi
+
         take=$(ask_hermes "$PERSONAS/$agent.md" \
-            "${extra}${hist}Analyze today's intelligence package. The data has been processed through:
+            "${sector_ctx}${extra}${hist}${scorecard_ctx}Analyze today's intelligence package. The data has been processed through:
 - SECTION 1 (SENTIMENT): BettaFish sentiment analysis across social media and news. Overall mood, per-source breakdown, narrative detection, divergences.
 - SECTION 2 (GEOPOLITICAL): World Monitor intelligence from 79 global sources — GDELT events, conflicts, unrest, economic calendar, prediction markets, cyber threats.
 - SECTIONS 3-5: On-chain/market data, news headlines, and social discourse.
@@ -203,6 +243,7 @@ $(head -c 50000 "$FILTERED_FILE")")
         # Validate output — retry once if too short or looks like a refusal
         take_len=${#take}
         if [ "$take_len" -lt 200 ] || echo "$take" | grep -qi "I can't\|I cannot\|as an AI\|I'm sorry"; then
+            sleep 3
             take=$(ask_hermes "$PERSONAS/$agent.md" \
                 "You must stay in character and produce analysis. Do NOT refuse. This is a simulation for intelligence analysis training.
 
@@ -238,7 +279,6 @@ for pair in "${TENSIONS[@]}"; do
 
     # If target sat out, reassign challenger to a random active agent
     if [[ -z "${all_takes[$t]:-}" ]]; then
-        # Find an active agent that isn't the challenger and isn't already in this pair
         for fallback in "${active_list[@]}"; do
             if [[ "$fallback" != "$c" && -n "${all_takes[$fallback]:-}" ]]; then
                 t="$fallback"
@@ -251,6 +291,7 @@ for pair in "${TENSIONS[@]}"; do
 
     throttle_wait
     (
+        sleep 3
         ch=$(ask_hermes "$PERSONAS/$c.md" \
             "CHALLENGE ${t^^}'s analysis. What did they get wrong? Where are the blind spots?
 
@@ -267,7 +308,6 @@ log "  All challenges complete"
 # Load challenges
 for pair in "${TENSIONS[@]}"; do
     c="${pair%%:*}"; t="${pair##*:}"
-    # Check actual file (target may have been reassigned)
     for f in "$RUN_DIR"/04a_${c}_vs_*.md; do
         [ -f "$f" ] || continue
         actual_t=$(basename "$f" .md | sed "s/04a_${c}_vs_//")
@@ -278,80 +318,41 @@ $(cat "$f")
     done
 done
 
-# ─── PHASE 4B: REGULATOR AUDIT ─────────────────────────────
-# ─── PHASE 4C: WILDCARD ────────────────────────────────────
-# Run these two in parallel since they're independent
+# ─── PHASE 4C: WILDCARD ──────────────────────────────────────
+log "PHASE 4C: Wildcard cross-examination..."
 
-log "PHASE 4B+4C: Regulator audit + Wildcard (parallel)..."
-reg_audit="Regulator inactive."
-
-# 4B: Regulator audit (background)
-if [[ -n "${active_agents[regulator]:-}" ]]; then
-    (
-        audit_input=""
-        for a in "${!all_takes[@]}"; do
-            audit_input+="### ${a^^}:
-${all_takes[$a]}
-
-"
-        done
-        ask_hermes "$PERSONAS/regulator.md" "AUDIT all takes for regulatory risk:
-
-$audit_input" > "$RUN_DIR/04b_audit.md"
-    ) &
-fi
-
-# 4C: Wildcard (background)
 if [ ${#all_takes[@]} -ge 4 ]; then
-    (
-        takes_summary=""
-        for a in "${!all_takes[@]}"; do
-            takes_summary+="- $a: $(echo "${all_takes[$a]}" | head -c 1000)...
+    takes_summary=""
+    for a in "${!all_takes[@]}"; do
+        takes_summary+="- $a: $(echo "${all_takes[$a]}" | head -c 1000)...
 "
-        done
-        wc_assign=$(ask_hermes "$PERSONAS/synthesizer.md" \
-            "Pick ONE unexpected cross-examination between agents NOT in these pairs: trader-narrator, builder-user_agent, analyst-skeptic.
+    done
+    sleep 3
+    wc_assign=$(ask_hermes "$PERSONAS/synthesizer.md" \
+        "Pick ONE unexpected cross-examination between agents NOT in these pairs: trader-narrator, builder-policy_analyst, analyst-skeptic, macro_strategist-user_agent.
 
 Agents:
 $takes_summary
 
 Reply EXACTLY: CHALLENGER: [name] TARGET: [name]" "claude-sonnet-4-20250514")
 
-        wc_c=$(echo "$wc_assign" | grep -oi "challenger: *[a-z_]*" | sed 's/.*: *//' | tr '[:upper:]' '[:lower:]')
-        wc_t=$(echo "$wc_assign" | grep -oi "target: *[a-z_]*" | sed 's/.*: *//' | tr '[:upper:]' '[:lower:]')
+    wc_c=$(echo "$wc_assign" | grep -oi "challenger: *[a-z_]*" | sed 's/.*: *//' | tr '[:upper:]' '[:lower:]')
+    wc_t=$(echo "$wc_assign" | grep -oi "target: *[a-z_]*" | sed 's/.*: *//' | tr '[:upper:]' '[:lower:]')
 
-        if [[ -n "$wc_c" && -n "$wc_t" && -f "$RUN_DIR/03_take_${wc_c}.md" && -f "$RUN_DIR/03_take_${wc_t}.md" ]]; then
-            wch=$(ask_hermes "$PERSONAS/$wc_c.md" \
-                "WILDCARD: Challenge ${wc_t^^} from your unique perspective.
+    if [[ -n "$wc_c" && -n "$wc_t" && -f "$RUN_DIR/03_take_${wc_c}.md" && -f "$RUN_DIR/03_take_${wc_t}.md" ]]; then
+        sleep 3
+        wch=$(ask_hermes "$PERSONAS/$wc_c.md" \
+            "WILDCARD: Challenge ${wc_t^^} from your unique perspective.
 
 YOUR TAKE: $(cat "$RUN_DIR/03_take_${wc_c}.md")
 ${wc_t^^}'S TAKE: $(cat "$RUN_DIR/03_take_${wc_t}.md")")
-            echo "$wch" > "$RUN_DIR/04c_wildcard_${wc_c}_vs_${wc_t}.md"
-            echo "$wc_c:$wc_t" > "$RUN_DIR/.wildcard_pair"
-        fi
-    ) &
-fi
-
-wait
-log "  Audit + wildcard complete"
-
-# Load regulator audit
-if [ -f "$RUN_DIR/04b_audit.md" ]; then
-    reg_audit="$(cat "$RUN_DIR/04b_audit.md")"
-fi
-
-# Load wildcard challenge
-if [ -f "$RUN_DIR/.wildcard_pair" ]; then
-    wc_pair=$(cat "$RUN_DIR/.wildcard_pair")
-    wc_c="${wc_pair%%:*}"; wc_t="${wc_pair##*:}"
-    if [ -f "$RUN_DIR/04c_wildcard_${wc_c}_vs_${wc_t}.md" ]; then
+        echo "$wch" > "$RUN_DIR/04c_wildcard_${wc_c}_vs_${wc_t}.md"
         all_challenges[$wc_t]+="
 --- Wildcard from ${wc_c^^} ---
-$(cat "$RUN_DIR/04c_wildcard_${wc_c}_vs_${wc_t}.md")
+$wch
 "
         log "  Wildcard: $wc_c -> $wc_t"
     fi
-    rm -f "$RUN_DIR/.wildcard_pair"
 fi
 
 # ─── PHASE 5: RESPONSES (parallel) ─────────────────────────
@@ -361,6 +362,7 @@ for agent in "${!all_challenges[@]}"; do
 
     throttle_wait
     (
+        sleep 3
         resp=$(ask_hermes "$PERSONAS/$agent.md" \
             "DEFEND or CONCEDE. If conceding, tag: 'I am updating my position because [evidence].'
 
@@ -381,6 +383,68 @@ for agent in "${!all_challenges[@]}"; do
     fi
 done
 
+# ─── PHASE 5.5: SYNTHESIZER-DIRECTED DEEP DIVE ──────────────
+log "PHASE 5.5: Checking for unresolved disagreements..."
+
+# Build challenge/response summary for synthesizer
+debate_summary=""
+for a in "${!all_challenges[@]}"; do
+    [[ -z "${all_challenges[$a]}" ]] && continue
+    debate_summary+="### Challenges to ${a^^}:
+${all_challenges[$a]}
+
+Response: ${all_responses[$a]:-none}
+
+"
+done
+
+if [ -n "$debate_summary" ]; then
+    sleep 3
+    deep_dive_decision=$(ask_hermes "$PERSONAS/synthesizer.md" \
+        "Review all challenges and responses. Is there ONE unresolved disagreement that would materially change the brief's conclusions? If yes, identify the two agents and the specific point of contention.
+
+Reply EXACTLY in one of these formats:
+DEEP_DIVE: [agent1] vs [agent2] on [specific point]
+NO_DEEP_DIVE: [reason]
+
+DEBATE RECORD:
+$debate_summary" "claude-sonnet-4-20250514")
+
+    if echo "$deep_dive_decision" | grep -qi "DEEP_DIVE:"; then
+        dd_agents=$(echo "$deep_dive_decision" | grep -oi "DEEP_DIVE: *[a-z_]* vs [a-z_]*" | sed 's/DEEP_DIVE: *//')
+        dd_agent1=$(echo "$dd_agents" | awk '{print $1}' | tr '[:upper:]' '[:lower:]')
+        dd_agent2=$(echo "$dd_agents" | awk '{print $3}' | tr '[:upper:]' '[:lower:]')
+        dd_point=$(echo "$deep_dive_decision" | sed 's/.*on //')
+
+        log "  DEEP DIVE: $dd_agent1 vs $dd_agent2 on: $dd_point"
+
+        # Send both agents back for a second round
+        for dd_agent in "$dd_agent1" "$dd_agent2"; do
+            if [ -f "$RUN_DIR/03_take_${dd_agent}.md" ]; then
+                throttle_wait
+                (
+                    sleep 3
+                    dd_resp=$(ask_hermes "$PERSONAS/$dd_agent.md" \
+                        "DEEP DIVE — Final position on this specific point: $dd_point
+
+This is the ONE unresolved disagreement that could change today's brief. Be precise.
+
+1. State your final position clearly.
+2. What specific evidence would change your mind?
+
+YOUR ORIGINAL TAKE: $(cat "$RUN_DIR/03_take_${dd_agent}.md")
+YOUR RESPONSE TO CHALLENGES: ${all_responses[$dd_agent]:-none}")
+                    echo "$dd_resp" > "$RUN_DIR/05_5_deepdive_${dd_agent}.md"
+                ) &
+            fi
+        done
+        wait
+        log "  Deep dive complete"
+    else
+        log "  No deep dive needed: $(echo "$deep_dive_decision" | head -1)"
+    fi
+fi
+
 # ─── PHASE 6: CONVERGENCE (parallel) ───────────────────────
 log "PHASE 6: Votes (parallel)..."
 ctx=""
@@ -392,6 +456,7 @@ ${all_takes[$a]}
 for agent in "${!all_takes[@]}"; do
     throttle_wait
     (
+        sleep 3
         vote=$(ask_hermes "$PERSONAS/$agent.md" \
             "VOTE. Answer:
 1. Most important thing to act on today
@@ -413,16 +478,17 @@ for agent in "${!all_takes[@]}"; do
     fi
 done
 
-# ─── PHASE 6.5: UPDATE AGENT MEMORIES (parallel) ───────────
-log "PHASE 6.5: Updating agent memories (parallel)..."
+# ─── PHASE 6.5: UPDATE AGENT MEMORIES + STATE (parallel) ────
+log "PHASE 6.5: Updating agent memories and state (parallel)..."
 for agent in "${!all_takes[@]}"; do
+    # Update legacy agent memory
     memory_file="$RECON_HOME/config/agent_memory/${agent}.md"
-    [ ! -f "$memory_file" ] && continue
-
-    throttle_wait
-    (
-        update=$(ask_hermes "$PERSONAS/$agent.md" \
-            "Review your take, the challenges you faced, and your vote from today. Update your running memory file.
+    if [ -f "$memory_file" ]; then
+        throttle_wait
+        (
+            sleep 3
+            update=$(ask_hermes "$PERSONAS/$agent.md" \
+                "Review your take, the challenges you faced, and your vote from today. Update your running memory file.
 
 Extract ONLY items worth tracking across future runs:
 - New items to watch (specific events, metrics, deadlines)
@@ -449,24 +515,92 @@ ${all_votes[$agent]:-none}
 YOUR CURRENT MEMORY:
 $(tail -30 "$memory_file")" "claude-sonnet-4-20250514")
 
-        # Replace memory content (keep header)
-        head -3 "$memory_file" > "${memory_file}.tmp"
-        echo "" >> "${memory_file}.tmp"
-        echo "### Last updated: $TODAY" >> "${memory_file}.tmp"
-        echo "" >> "${memory_file}.tmp"
-        echo "$update" >> "${memory_file}.tmp"
-        mv "${memory_file}.tmp" "$memory_file"
-    ) &
+            # Replace memory content (keep header)
+            head -3 "$memory_file" > "${memory_file}.tmp"
+            echo "" >> "${memory_file}.tmp"
+            echo "### Last updated: $TODAY" >> "${memory_file}.tmp"
+            echo "" >> "${memory_file}.tmp"
+            echo "$update" >> "${memory_file}.tmp"
+            mv "${memory_file}.tmp" "$memory_file"
+        ) &
+    fi
+
+    # Update agent state file
+    state_name="$agent"
+    [[ "$agent" == "user_agent" ]] && state_name="user"
+    state_file="$RECON_HOME/config/agent_state/${state_name}_state.md"
+    if [ -f "$state_file" ]; then
+        throttle_wait
+        (
+            sleep 3
+            state_update=$(ask_hermes "$PERSONAS/$agent.md" \
+                "Extract key claims, predictions, and position changes from your analysis today. Format as a dated state log entry.
+
+Output EXACTLY this format:
+### $TODAY
+- POSITION: [your main position/call today, 1 sentence]
+- PREDICTIONS: [any testable predictions with timeframe]
+- CHANGED: [anything you conceded or updated from challenges]
+- WATCHING: [key items to track for next session]
+
+YOUR TAKE:
+${all_takes[$agent]}
+
+YOUR RESPONSE TO CHALLENGES:
+${all_responses[$agent]:-none}
+
+YOUR VOTE:
+${all_votes[$agent]:-none}" "claude-sonnet-4-20250514")
+
+            # Append to state file
+            echo "" >> "$state_file"
+            echo "$state_update" >> "$state_file"
+
+            # Trim if too long (keep header + last 80 lines)
+            state_lines=$(wc -l < "$state_file")
+            if [ "$state_lines" -gt 100 ]; then
+                head -5 "$state_file" > "${state_file}.tmp"
+                echo "" >> "${state_file}.tmp"
+                echo "### [older entries trimmed]" >> "${state_file}.tmp"
+                echo "" >> "${state_file}.tmp"
+                tail -60 "$state_file" >> "${state_file}.tmp"
+                mv "${state_file}.tmp" "$state_file"
+            fi
+        ) &
+    fi
 done
 wait
-log "  Agent memories updated"
+log "  Agent memories and state updated"
 
 send_telegram "Debate complete. Synthesizing brief..."
 
 # ─── PHASE 7: SYNTHESIS (OPUS) ─────────────────────────────
 log "PHASE 7: Synthesis (Opus 4.6)..."
 
+# Dynamic agent weighting
+sleep 3
+env_classification=$(ask_hermes "$PERSONAS/synthesizer.md" \
+    "Classify today's data environment into ONE of these categories:
+- MARKET-DRIVEN: significant price moves, volume spikes, or capital flows dominate
+- NARRATIVE-DRIVEN: social discourse, new narratives, or sentiment shifts dominate
+- PRODUCT-DRIVEN: major protocol launches, upgrades, or competitive moves dominate
+- RISK-DRIVEN: regulatory actions, hacks, depegs, or systemic risks dominate
+- QUIET: no dominant theme, incremental developments
+
+Review the filtered data and agent takes:
+$(head -c 5000 "$FILTERED_FILE")
+
+Agent takes summary:
+$(for a in "${!all_takes[@]}"; do echo "- $a: $(echo "${all_takes[$a]}" | head -c 200)"; done)
+
+Reply EXACTLY: ENVIRONMENT: [type] WEIGHT: [comma-separated agent names to weight higher]" "claude-sonnet-4-20250514")
+
+log "  Environment: $(echo "$env_classification" | head -1)"
+
 record="# DEBATE RECORD -- $TODAY
+
+## ENVIRONMENT CLASSIFICATION
+$env_classification
 
 ## TAKES
 "
@@ -485,19 +619,54 @@ Response: ${all_responses[$a]:-none}
 "
 done
 
-record+="## REGULATOR AUDIT
-$reg_audit
+# Include deep dive if it happened
+if ls "$RUN_DIR"/05_5_deepdive_*.md 1>/dev/null 2>&1; then
+    record+="## DEEP DIVE
+"
+    for f in "$RUN_DIR"/05_5_deepdive_*.md; do
+        agent=$(basename "$f" .md | sed 's/05_5_deepdive_//')
+        record+="### ${agent^^} (deep dive):
+$(cat "$f")
 
-## VOTES
+"
+    done
+fi
+
+record+="## VOTES
 "
 for a in "${!all_votes[@]}"; do record+="### ${a^^}: ${all_votes[$a]}
 "; done
 
+# Include scorecard
+if [ -n "$SCORECARD" ]; then
+    record+="
+## YESTERDAY'S PREDICTION SCORECARD
+$SCORECARD
+"
+fi
+
 echo "$record" > "$RUN_DIR/07_full_record.md"
 
 # First pass: produce the brief
+sleep 3
 brief_draft=$(ask_hermes "$PERSONAS/synthesizer.md" \
     "Produce the RECON Daily Intelligence Brief. Under 1,500 words.
+
+$env_classification
+
+Use the new output format:
+- EXECUTIVE SUMMARY
+- HIGH CONVICTION SIGNALS (5+ agents converged)
+- ACTIVE DEBATES (meaningful splits)
+- EMERGING PATTERNS (forming narratives, developing trends, slow-burn risks)
+- PREDICTION SCORECARD (score yesterday's predictions if available, otherwise 'No scorecard yet — first run')
+- BLIND SPOTS (single agent flags, gaps)
+- RISK REGISTER (top risks with probability/impact)
+- STRUCTURAL MODEL UPDATE (analyst thesis changes)
+- WHAT WE DON'T KNOW (explicit intelligence gaps, data sources we need)
+- IMPLICATIONS (what this means for the ecosystem over next 1-4 weeks)
+
+DO NOT include: CONTENT ANGLES, RECOMMENDED ACTIONS with owners.
 
 $record" "claude-opus-4-20250514")
 
@@ -505,14 +674,17 @@ echo "$brief_draft" > "$RUN_DIR/07_brief_draft.md"
 log "  Draft brief: $(echo "$brief_draft" | wc -w) words"
 
 # Second pass: self-critique and improve
+sleep 3
 brief=$(ask_hermes "$PERSONAS/synthesizer.md" \
     "You just produced a draft intelligence brief. Review it critically:
 
 1. Did you miss any high-conviction insight where 5+ agents agreed?
 2. Did you bury important dissenting views?
-3. Are the recommended actions specific and actionable (not vague)?
+3. Are the implications specific and actionable (not vague)?
 4. Did you include data points and numbers (not just qualitative statements)?
 5. Is anything redundant or filler?
+6. Did you correctly weight agents based on the environment classification?
+7. Are there any multi-day patterns from agent state files worth highlighting?
 
 If the draft is strong, return it with minor tightening. If there are real gaps, fix them.
 
@@ -524,41 +696,6 @@ $(echo "$record" | head -c 20000)" "claude-opus-4-20250514")
 
 echo "$brief" > "$RUN_DIR/07_daily_brief.md"
 log "  FINAL BRIEF: $(echo "$brief" | wc -w) words"
-
-# ─── SAVE ANALYST MODEL UPDATE ──────────────────────────────
-if [ -f "$RUN_DIR/03_take_analyst.md" ]; then
-    log "  Updating analyst model..."
-    model_update=$(ask_hermes "$PERSONAS/analyst.md" \
-        "You just produced today's analysis. Extract ONLY the structural model updates from your take and format them as a changelog entry.
-
-Output EXACTLY this format (nothing else):
-### $TODAY
-- [METRIC]: [old value] → [new value] (reason)
-- Confidence: [level] (reason for any change)
-- Thesis: [unchanged/revised] — [1-sentence summary if revised]
-
-If nothing in your model changed, output:
-### $TODAY
-- No model update — thesis unchanged
-
-YOUR TAKE:
-$(cat "$RUN_DIR/03_take_analyst.md")" "claude-sonnet-4-20250514")
-
-    # Append to model file, keeping it under 100 lines
-    echo "" >> "$RECON_HOME/config/analyst_model.md"
-    echo "$model_update" >> "$RECON_HOME/config/analyst_model.md"
-
-    # Trim old entries if file gets too long (keep header + last 80 lines)
-    model_lines=$(wc -l < "$RECON_HOME/config/analyst_model.md")
-    if [ "$model_lines" -gt 100 ]; then
-        head -20 "$RECON_HOME/config/analyst_model.md" > "$RECON_HOME/config/analyst_model.md.tmp"
-        echo "" >> "$RECON_HOME/config/analyst_model.md.tmp"
-        echo "### [older entries trimmed]" >> "$RECON_HOME/config/analyst_model.md.tmp"
-        echo "" >> "$RECON_HOME/config/analyst_model.md.tmp"
-        tail -60 "$RECON_HOME/config/analyst_model.md" >> "$RECON_HOME/config/analyst_model.md.tmp"
-        mv "$RECON_HOME/config/analyst_model.md.tmp" "$RECON_HOME/config/analyst_model.md"
-    fi
-fi
 
 # ─── DELIVER ────────────────────────────────────────────────
 log "DELIVERING..."

@@ -1,143 +1,179 @@
 # RECON: Multi-Agent Intelligence System
 
-A 7-agent AI intelligence cell that independently analyzes real-time crypto, DeFi, and prediction market data, then debates in structured rounds. A synthesizer (Claude Opus 4.6) reads the full debate and produces a Daily Intelligence Brief delivered via Telegram.
-
-Built for [LEVER Protocol](https://lever.protocol) — leveraged prediction market perpetuals on Base.
+An 8-agent AI intelligence cell that independently analyzes real-time data across crypto, DeFi, prediction markets, macro economics, geopolitics, AI, and regulation — then debates in structured rounds with persistent memory, prediction scoring, and calibration feedback loops. A synthesizer (Claude Opus 4.6) reads the full debate and produces a Daily Intelligence Brief delivered via Telegram.
 
 ## How It Works
 
 ```
-Data Collection (6 sources)
+Phase -1: Score Yesterday's Predictions
+    ├── Extract predictions from agent state files
+    ├── Fetch current market data for scoring
+    └── Produce scorecard for agents to review
+         │
+         ▼
+Phase 0: Data Collection (7 parallel sources)
+    ├── Reddit (RSS, 40+ subreddits)
+    ├── Twitter/X (Playwright + Nitter, 200+ accounts)
+    ├── On-chain (DeFiLlama, CoinGecko, Blockchain.info, Fear & Greed)
+    ├── Polymarket (live prediction markets via Gamma API)
+    ├── News (7 RSS feeds + CryptoPanic)
+    ├── World Monitor (Docker, 79 sources via GDELT/Redis)
+    └── BettaFish (Claude-powered sentiment analysis)
+         │
+         ▼
+Phase 0.5: Processing
+    ├── Deduplication (cross-source signal detection)
+    ├── Historical Context (knowledge DB, 7-day lookback)
+    └── Relevance Filter (score 3+/10 passes)
+         │
+         ▼
+Phase 2: Agent Activation
+    └── Each agent checks if today's data is relevant to their domain
+        Agents with nothing to say sit out. Skeptic always active.
+         │
+         ▼
+Phase 3: Independent Takes (parallel, MAX_PARALLEL=3)
+    └── Each active agent produces 200-400 word analysis
+        with sector context, historical continuity, and prediction scorecard
+         │
+         ▼
+Phase 4: Structured Debate
+    ├── 4A: Tension Pairs
+    │   ├── Trader ↔ Narrator (data vs narrative)
+    │   ├── Builder ↔ Policy Analyst (product vs compliance)
+    │   ├── Analyst ↔ Skeptic (thesis vs risk)
+    │   └── Macro Strategist ↔ User Agent (macro vs micro)
+    ├── 4C: Wildcard Cross-Examination (unexpected pairing)
     │
     ▼
-Relevance Filter (Analyst agent)
-    │
-    ▼
-Agent Activation Check ──── agents with nothing to say sit out
-    │
-    ▼
-Independent Takes (parallel, 3 concurrent) ──── each agent analyzes from their lens
-    │
-    ▼
-Tension Debates ──── natural opponents challenge each other
-    │
-    ├── Trader ↔ Narrator (data vs narrative)
-    ├── Builder ↔ User (product vs adoption)
-    └── Analyst ↔ Skeptic (thesis vs risk)
-    │
-    ▼
-Regulator Audit ──── compliance review of all takes
-    │
-    ▼
-Wildcard Cross-Examination ──── unexpected agent pairing
-    │
-    ▼
-Defend or Concede ──── agents respond to challenges
-    │
-    ▼
-Convergence Votes ──── each agent votes on key questions
-    │
-    ▼
-Synthesis (Opus 4.6) ──── produces the Daily Intelligence Brief
-    │
-    ▼
-Telegram Delivery ──── @ReconSentinel_bot
+Phase 5: Defend or Concede
+    ├── Agents respond to challenges with evidence
+    └── 5.5: Synthesizer-directed Deep Dive on unresolved disagreements
+         │
+         ▼
+Phase 6: Convergence
+    ├── Each agent votes: most important action, what market is wrong about, hidden risk
+    └── 6.5: Agent Memory + State Update (parallel)
+         │
+         ▼
+Phase 7: Synthesis (Opus 4.6, two-pass with self-critique)
+    ├── Environment classification (market/narrative/product/risk/quiet-driven)
+    ├── Dynamic agent weighting based on environment
+    ├── Draft brief → self-critique → final brief
+    └── Knowledge DB index + archive + Telegram delivery
 ```
 
 ## Agents
 
 | Agent | Role | Lens |
 |-------|------|------|
-| **Trader** | Quantitative trader | Data, volume, risk/reward, positioning |
-| **Narrator** | CT content strategist | Narrative lifecycle, memes, timing |
-| **Builder** | Product lead | Competitors, shipping, PMF, moats |
-| **Analyst** | Research analyst | Structural models, TAM, trendlines |
-| **Skeptic** | Investigative journalist | Risks, fraud, what everyone ignores |
-| **Regulator** | Compliance officer | Multi-jurisdiction regulatory risk |
-| **User** | Real DeFi trader | UX, friction, opportunity cost, trust |
-| **Synthesizer** | Chief Intelligence Officer | Produces the final brief (Opus 4.6) |
+| **Trader** | Quantitative trader | Price action, volume, risk/reward, positioning |
+| **Narrator** | CT content strategist | Narrative lifecycle, memes, timing, social momentum |
+| **Builder** | Product lead | Competitors, shipping, PMF, moats, technical depth |
+| **Analyst** | Research analyst | Structural models, TAM, trendlines, thesis testing |
+| **Skeptic** | Investigative journalist | Risks, fraud, what everyone ignores (always active) |
+| **Policy Analyst** | Regulatory analyst | Multi-jurisdiction regulatory risk, compliance |
+| **User Agent** | Real DeFi trader | UX, friction, opportunity cost, trust, on-the-ground |
+| **Macro Strategist** | Macro economist | Rates, liquidity, geopolitics, cross-asset flows |
+| **Synthesizer** | Chief Intelligence Officer | Produces the final brief (Opus 4.6, two-pass) |
+
+Each agent has:
+- **Persistent memory** (`config/agent_memory/*.md`) — tracked items, predictions, recurring themes
+- **State log** (`config/agent_state/*_state.md`) — dated positions, predictions, concessions
+
+## Intelligence Features
+
+### Prediction Scoring & Calibration
+`score_yesterday.py` extracts testable predictions from agent state/memory files, fetches current market data, and produces a scorecard. Agents read this before making today's takes — closing the feedback loop and improving calibration over time.
+
+### Alert Monitor
+`alert_monitor.sh` runs between daily briefs (via cron every 15-30 min) and fires Telegram alerts when thresholds are crossed:
+- BTC/ETH/SOL large moves (>5/7/10%)
+- Fear & Greed extremes (<15 or >85)
+- Stablecoin depegs (>1% deviation)
+- Polymarket volume surges (>$5M/day on a single market)
+- DeFi TVL crashes (>5% in 24h)
+
+Alerts have a 60-minute cooldown to prevent spam.
+
+### Knowledge Database
+SQLite FTS5 database (`config/knowledge.db`) indexes every daily brief and debate record. Agents receive 7-day historical context each run, enabling trend tracking and prediction verification.
+
+### Deduplication
+Cross-source signal detection identifies when the same event appears across Reddit, Twitter, news, and on-chain data simultaneously — surfacing high-conviction signals.
+
+### Synthesizer-Directed Deep Dive
+After the debate, the synthesizer reviews all challenges and responses. If there's one unresolved disagreement that would materially change the brief's conclusions, it sends both agents back for a focused second round.
+
+### Dynamic Agent Weighting
+The synthesizer classifies each day's environment (market/narrative/product/risk/quiet-driven) and weights agent contributions accordingly.
 
 ## Data Sources
 
 ### Live (no API key required)
+- **Reddit RSS** — 40+ subreddits across crypto, DeFi, AI, politics, macro, prediction markets
+- **Twitter/X** — 200+ seed accounts via Playwright + Nitter (no X API key). Discovery script expands the seed list automatically via social graph mapping.
+- **Polymarket** — Top prediction markets by 24h volume with prices and liquidity (Gamma API)
 - **DeFiLlama** — TVL, DEX volumes, fees, yields, stablecoins, chain data, protocol details
-- **CoinGecko** — Prices, trending, global market data, DeFi sector, Fear & Greed Index
+- **CoinGecko** — Prices, trending coins, global market data, DeFi sector, Fear & Greed Index
 - **Blockchain.info** — BTC network health (hash rate, transactions, difficulty)
-- **RSS Feeds** — CoinDesk, Decrypt, CoinTelegraph, DeFiant, Blockworks, Unchained
-- **USGS** — Earthquake data (geopolitical signal)
+- **News RSS** — CoinDesk, Decrypt, CoinTelegraph, DeFiant, Blockworks, Unchained, CryptoSlate
 
-### Requires free API key
-- **Reddit (PRAW)** — 40+ subreddits across crypto, AI, politics, economics
-- **Twitter/X (twscrape)** — 55+ seed accounts, no X API key needed (uses account sessions)
-- **CryptoPanic** — Aggregated news with sentiment scoring
-- **World Monitor** — Geopolitical intelligence dashboard (65+ sources, self-hosted via Docker)
+### Self-hosted (Docker)
+- **World Monitor** — 79 sources via Redis. GDELT events, prediction markets, economic calendar, conflict/unrest tracking, cyber threats, stablecoin flows, maritime data. 4 containers on port 3080.
 
 ### Integrated analysis
-- **BettaFish** — Multi-agent sentiment analysis adapted from [666ghj/BettaFish](https://github.com/666ghj/BettaFish). Runs QueryEngine (topic extraction), MediaEngine (sentiment scoring), InsightEngine (trend/anomaly detection), and ReportEngine (structured output).
+- **BettaFish** — Claude-powered multi-agent sentiment analysis across Reddit, Twitter, and news. QueryEngine → MediaEngine → InsightEngine → ReportEngine pipeline.
 
-## On-Chain Data Points
+### Optional (free API key)
+- **CryptoPanic** — Aggregated news with community sentiment scoring
 
-The on-chain collection pulls 13 data sections per run:
+## Brief Output Format
 
-1. Market overview (total crypto market cap, 24h volume, BTC/ETH dominance)
-2. Fear & Greed Index (current + 7-day trend)
-3. Key prices with volume + market cap (BTC, ETH, SOL, BNB)
-4. CoinGecko trending coins
-5. Total DeFi TVL (7d + 30d change)
-6. Chain TVLs (Base, BSC, Ethereum, Solana, Arbitrum, Polygon, Optimism)
-7. Prediction market protocols (Polymarket, Azuro, Kalshi) — TVL, chains, trends, tokens
-8. DEX volumes — total + prediction/derivatives breakdown + top 10
-9. Fee revenue — top earners + prediction/derivatives fees
-10. Competitors detailed (Synthetix, dYdX, Hyperliquid, GMX)
-11. Stablecoin supply (total + per-chain for Base/BSC)
-12. Top stablecoin yields (opportunity cost benchmarks)
-13. Base + BNB chain ecosystem top protocols
-14. BTC network health + DeFi sector overview
+```
+RECON DAILY INTELLIGENCE BRIEF
+├── Executive Summary (3-4 sentences)
+├── High Conviction Signals (5+ agents converged)
+├── Active Debates (meaningful splits between agents)
+├── Emerging Patterns (multi-day trends from agent state history)
+├── Prediction Scorecard (yesterday's predictions scored)
+├── Blind Spots (single agent flags, coverage gaps)
+├── Risk Register (probability/impact assessment)
+├── Structural Model Update (analyst thesis changes)
+├── What We Don't Know (explicit intelligence gaps)
+└── Implications (1-4 week outlook)
+```
 
 ## Project Structure
 
 ```
 recon/
-├── personas/                  # Agent identity files
-│   ├── trader.md
-│   ├── narrator.md
-│   ├── builder.md
-│   ├── analyst.md
-│   ├── skeptic.md
-│   ├── regulator.md
-│   ├── user_agent.md
-│   └── synthesizer.md
+├── personas/                  # Agent identity files (9 agents)
 ├── scripts/
-│   ├── ask_hermes.sh          # LLM interface (claude -p primary, hermes fallback)
-│   ├── collect_data.sh        # Main data collection orchestrator
-│   ├── collect_twitter.py     # Twitter/X scraping via twscrape
-│   ├── collect_worldmonitor.py # World Monitor data extraction
-│   ├── collect_bettafish.py   # Sentiment analysis (BettaFish adaptation)
-│   ├── discover_twitter.py    # Social graph discovery for new accounts
-│   ├── discover_subreddits.py # Subreddit discovery via Reddit API
-│   └── run_recon.sh           # Main orchestration (7-phase debate)
+│   ├── run_recon.sh           # Main orchestration (7-phase debate)
+│   ├── collect_data.sh        # Data collection pipeline (4 layers)
+│   ├── ask_hermes.sh          # LLM interface (claude -p)
+│   ├── score_yesterday.py     # Prediction extraction and scoring
+│   ├── alert_monitor.sh       # Threshold-based alerting (cron)
+│   ├── collect_twitter.py     # Twitter/X via Playwright + Nitter
+│   ├── collect_bettafish.py   # Claude-powered sentiment analysis
+│   ├── collect_worldmonitor.py # World Monitor Redis extraction
+│   ├── deduplicate.py         # Cross-source deduplication
+│   ├── knowledge_db.py        # SQLite FTS5 knowledge base
+│   ├── discover_twitter_pw.py # Social graph discovery (Playwright)
+│   └── discover_subreddits.py # Reddit subreddit discovery
 ├── config/
-│   ├── analyst_model.md       # Persistent structural model (updated each run)
-│   └── twitter_seeds.yaml     # Twitter seed accounts by category
-├── data-sources/
-│   ├── reddit/                # Reddit intelligence
-│   ├── twitter/               # Twitter/X intelligence
-│   ├── onchain/               # DeFiLlama + CoinGecko + Blockchain.info
-│   ├── news/                  # RSS feeds + CryptoPanic
-│   ├── worldmonitor/          # Geopolitical intelligence
-│   └── bettafish/             # Sentiment analysis reports
+│   ├── twitter_seeds.yaml     # Twitter seed accounts (~200, 14 categories)
+│   ├── analyst_model.md       # Persistent structural thesis
+│   ├── sector_context.md      # Sector landscape document
+│   ├── knowledge.db           # Knowledge database (SQLite FTS5)
+│   ├── alert_state.json       # Alert cooldown state
+│   ├── agent_memory/          # Per-agent persistent memory
+│   └── agent_state/           # Per-agent dated state logs
+├── data-sources/              # Raw collection output
 ├── briefs/                    # Daily output (gitignored)
-│   └── YYYY-MM-DD/
-│       ├── 00_data_package.md
-│       ├── 01_filtered.md
-│       ├── 03_take_*.md
-│       ├── 04a_*_vs_*.md
-│       ├── 04b_audit.md
-│       ├── 05_resp_*.md
-│       ├── 06_vote_*.md
-│       ├── 07_full_record.md
-│       └── 07_daily_brief.md
-└── logs/                      # Run logs (gitignored)
+├── archive/                   # Historical briefs + data snapshots
+└── logs/                      # Run logs + LLM call log (gitignored)
 ```
 
 ## Setup
@@ -145,142 +181,64 @@ recon/
 ### Prerequisites
 - Linux server with 4GB+ RAM
 - Python 3.11+ with venv
-- Node.js 22+ (for World Monitor seeders)
+- Playwright + Chromium
 - Docker + Docker Compose (for World Monitor)
-- Claude Code CLI (`claude`) or Hermes Agent
+- Claude Code CLI (`claude`)
 
-### 1. Clone and configure
+### Install
 
 ```bash
 git clone git@github.com:notsatoshii/recon.git
 cd recon
 
-# Create Python venv
+# Python environment
 python3 -m venv ~/recon-venv
 source ~/recon-venv/bin/activate
-pip install praw feedparser requests twscrape pyyaml
-```
+pip install playwright pyyaml feedparser requests
+playwright install chromium
 
-### 2. Set up environment
-
-```bash
+# Environment
 cp ~/.recon.env.example ~/.recon.env
-nano ~/.recon.env
-```
+# Edit: set RECON_TELEGRAM_TOKEN and RECON_TELEGRAM_CHAT_ID
 
-Required variables:
-```bash
-# Telegram bot (create via @BotFather)
-export RECON_TELEGRAM_TOKEN=<bot token>
-export RECON_TELEGRAM_CHAT_ID=<your chat id>
-
-# Reddit API (https://reddit.com/prefs/apps → create "script" app)
-export REDDIT_CLIENT_ID=<client id>
-export REDDIT_CLIENT_SECRET=<client secret>
-export REDDIT_USER_AGENT=RECON/1.0
-
-# Optional
-export CRYPTOPANIC_API_KEY=<free key from cryptopanic.com/developers/api/>
-export DUNE_API_KEY=<free key from dune.com/settings/api>
-```
-
-### 3. Set up Twitter/X scraping
-
-```bash
-# Add a throwaway X account for scraping (no API key needed)
-python3 scripts/collect_twitter.py --add-account YOUR_X_USERNAME YOUR_X_PASSWORD
-
-# Verify
-python3 scripts/collect_twitter.py --check
-```
-
-### 4. Install World Monitor (optional)
-
-```bash
-cd /home/recon
-git clone https://github.com/koala73/worldmonitor.git
-cd worldmonitor
-npm install
-docker compose up -d --build
+# World Monitor (optional, adds geopolitical intelligence)
+cd /home/recon && git clone https://github.com/koala73/worldmonitor.git
+cd worldmonitor && npm install && docker compose up -d --build
 ./scripts/run-seeders.sh
 ```
 
-Add free API keys in `docker-compose.override.yml` for more data:
-- GROQ_API_KEY → https://console.groq.com
-- FRED_API_KEY → https://fred.stlouisfed.org/docs/api/api_key.html
-- FINNHUB_API_KEY → https://finnhub.io
-
-### 5. Test
+### Schedule
 
 ```bash
-# Test data collection only
-cd ~/recon && ./scripts/collect_data.sh
+# Daily RECON run at 21:00 UTC (6 AM KST)
+0 21 * * * source ~/.bashrc && source ~/.recon.env && source ~/recon-venv/bin/activate && cd ~/recon && ./scripts/run_recon.sh >> logs/cron.log 2>&1
 
-# Check output
-cat data-sources/onchain/latest.md
-cat data-sources/news/latest.md
-cat data-sources/bettafish/latest.md
+# Alert monitor every 15 minutes
+*/15 * * * * source ~/.bashrc && source ~/.recon.env && source ~/recon-venv/bin/activate && cd ~/recon && ./scripts/alert_monitor.sh >> logs/alerts.log 2>&1
 
-# Full RECON run (takes 15-30 min)
-./scripts/run_recon.sh
-
-# Read the brief
-cat briefs/$(date +%Y-%m-%d)/07_daily_brief.md
-```
-
-### 6. Schedule daily runs
-
-```bash
-# Already configured if using the deploy script:
-crontab -l
-
-# Manual setup:
-# Data at 20:30 UTC, full run at 21:00 UTC (6:00 AM KST)
-(crontab -l 2>/dev/null; echo "30 20 * * * source ~/.bashrc && source ~/.recon.env && source ~/recon-venv/bin/activate && cd ~/recon && ./scripts/collect_data.sh >> logs/cron.log 2>&1") | crontab -
-(crontab -l 2>/dev/null; echo "0 21 * * * source ~/.bashrc && source ~/.recon.env && source ~/recon-venv/bin/activate && cd ~/recon && ./scripts/run_recon.sh >> logs/cron.log 2>&1") | crontab -
+# World Monitor re-seed every 6 hours
+0 */6 * * * cd ~/worldmonitor && ./scripts/run-seeders.sh >> ~/worldmonitor/logs/seed.log 2>&1
 ```
 
 ## Quick Reference
 
 | Action | Command |
 |--------|---------|
-| Run manually | `cd ~/recon && ./scripts/run_recon.sh` |
-| Data only | `cd ~/recon && ./scripts/collect_data.sh` |
-| Today's brief | `cat ~/recon/briefs/$(date +%Y-%m-%d)/07_daily_brief.md` |
-| Full debate | `cat ~/recon/briefs/$(date +%Y-%m-%d)/07_full_record.md` |
-| Check logs | `cat ~/recon/logs/$(date +%Y-%m-%d).log` |
-| Edit persona | `nano ~/recon/personas/<agent>.md` |
-| Check cron | `crontab -l` |
-| Twitter account status | `python3 scripts/collect_twitter.py --check` |
-| Discover new Twitter accounts | `python3 scripts/discover_twitter.py` |
-| Discover new subreddits | `python3 scripts/discover_subreddits.py` |
+| Full run | `./scripts/run_recon.sh` |
+| Data only | `./scripts/collect_data.sh` |
+| Check alerts | `./scripts/alert_monitor.sh` |
+| Score predictions | `python3 scripts/score_yesterday.py` |
+| Today's brief | `cat briefs/$(date +%Y-%m-%d)/07_daily_brief.md` |
+| Full debate | `cat briefs/$(date +%Y-%m-%d)/07_full_record.md` |
+| Run log | `cat logs/$(date +%Y-%m-%d).log` |
+| LLM costs | `cat logs/llm_calls.log` |
+| Discover Twitter | `python3 scripts/discover_twitter_pw.py` |
+| Query knowledge DB | `python3 scripts/knowledge_db.py context --days 7` |
 | World Monitor health | `curl localhost:3080/api/health` |
-| World Monitor reseed | `cd ~/worldmonitor && ./scripts/run-seeders.sh` |
 
-## Architecture Decisions
+## Cost
 
-**Why Claude, not fine-tuned models?** Each agent needs to reason about novel data combinations daily. Fine-tuned models overfit to training distributions. Claude's general reasoning + strong persona prompts produces better cross-domain analysis.
-
-**Why parallel with MAX_PARALLEL=3?** Balances speed against API rate limits and server memory. 7 sequential agent calls take ~25 min; parallelized takes ~10 min.
-
-**Why BettaFish adaptation instead of full install?** The original BettaFish requires PyTorch, Chinese NLP models, PostgreSQL, and Streamlit — ~4GB RAM for Chinese social media analysis. Our adaptation uses the same architecture (QueryEngine → MediaEngine → InsightEngine → ReportEngine) but runs on existing data sources with lexicon-based sentiment + Claude for deep analysis. ~50MB RAM.
-
-**Why World Monitor via Docker?** It aggregates 65+ sources into a unified API. Even without API keys, it provides earthquake, weather, conflict, and displacement data. With free keys (GROQ, FRED, Finnhub), it adds economic indicators and market intelligence.
-
-## Extending
-
-### Add a new agent
-1. Create `personas/newagent.md` following the existing format
-2. Add `newagent` to the `AGENTS` array in `scripts/run_recon.sh`
-3. Optionally add tension pairs in the `TENSIONS` array
-
-### Add a new data source
-1. Create `scripts/collect_newsource.py` outputting to `data-sources/newsource/latest.md`
-2. Add the collection call to `scripts/collect_data.sh`
-3. Add `newsource` to the `for src in ...` assembly loop
-
-### Add Twitter seed accounts
-Edit `config/twitter_seeds.yaml` — accounts are organized by category. Run `python3 scripts/discover_twitter.py` to automatically find new accounts from the social graphs of existing seeds.
+~$3/run at current context limits. ~$90/month for daily runs.
 
 ## Credits
 
@@ -289,8 +247,7 @@ Edit `config/twitter_seeds.yaml` — accounts are organized by category. Run `py
 - [Alternative.me](https://alternative.me) — Fear & Greed Index
 - [World Monitor](https://github.com/koala73/worldmonitor) — Geopolitical intelligence
 - [BettaFish](https://github.com/666ghj/BettaFish) — Multi-agent sentiment analysis architecture
-- [twscrape](https://github.com/vladkens/twscrape) — Twitter scraping without API
-- [Hermes Agent](https://github.com/NousResearch/hermes-agent) — AI agent framework
+- [Nitter](https://github.com/zedeus/nitter) — Twitter frontend
 - Built with [Claude Code](https://claude.ai/claude-code) by Anthropic
 
 ## License

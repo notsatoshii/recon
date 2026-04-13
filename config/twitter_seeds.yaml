@@ -5,7 +5,7 @@
 crypto_trading:
   - thedefiedge
   - lookonchain
-  - arkaborhee
+  - ArkhamIntel
   - RohOnChain
   - zachxbt
   - surgence_io
@@ -26,10 +26,10 @@ crypto_trading:
   - SmartContracter
 
 onchain_analytics:
-  - glaborheenode
+  - glassnode
   - santimentfeed
   - IntoTheBlock
-  - naborheesei
+  - nansen_ai
   - DuneAnalytics
   - TokenTerminal
   - MessariCrypto
@@ -65,17 +65,17 @@ defi_protocols:
   - MorphoLabs
   - CompoundFinance
   - 1inch
-  - daborheeX
+  - dYdX
   - JupiterExchange
   - RaydiumProtocol
 
 exchanges:
-  - binaborhee
-  - coinaborhee
+  - binance
+  - coinbase
   - krakenfx
-  - okaborhee
+  - okx
   - Bybit_Official
-  - bitaborhee
+  - bitget
   - cryptocom
   - Gemini
 
@@ -87,7 +87,7 @@ chains:
   - arbitrum
   - OptimismFND
   - 0xPolygon
-  - avaborhee
+  - avax
   - SuiNetwork
   - AptosLabs
   - CosmosHub
@@ -153,7 +153,7 @@ ai_crypto:
   - MorpheusAIs
   - virtuals_io
   - ai16zdao
-  - baborheeensor
+  - bittensor
   - FetchAI_
   - OceanProtocol
   - rendertoken
@@ -164,16 +164,16 @@ ai_tech:
   - AnthropicAI
   - GoogleDeepMind
   - MetaAI
-  - xaborhee
+  - xai
   - huggingface
-  - kaborheerpathy
+  - karpathy
   - ylecun
   - sama
   - DarioAmodei
   - demishassabis
   - ClementDelangue
   - DrJimFan
-  - elaborheemusk
+  - elonmusk
 
 macro_economics:
   - unusual_whales
@@ -184,7 +184,7 @@ macro_economics:
   - DeItaone
   - FirstSquawk
   - LiveSquawk
-  - Fedaborhee
+  - federalreserve
   - business
   - Reuters
   - FT
@@ -195,14 +195,14 @@ macro_economics:
   - MacroAlf
   - LynAldenContact
   - JeffAmazon
-  - jimcraborheer
+  - jimcramer
 
 geopolitics:
   - BBCWorld
   - AJEnglish
   - AFP
   - AP
-  - naborhee
+  - NATO
   - StateDept
   - WhiteHouse
   - EU_Commission
@@ -219,7 +219,7 @@ vc_institutional:
   - a16zcrypto
   - paradigm
   - hasufl
-  - DelphaboriDigital
+  - Delphi_Digital
   - GalaxyDigitalHQ
   - PanteraCapital
   - Grayscale
@@ -228,6 +228,6 @@ vc_institutional:
   - ARKInvest
   - circle
   - CathieDWood
-  - saborhee
+  - saylor
   - novogratz
   - BarrySilbert

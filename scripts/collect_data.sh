@@ -204,6 +204,36 @@ if isinstance(chains, list):
             out.append(f"- {c['name']}: TVL ${c.get('tvl',0):,.0f}")
     out.append("")
 
+# ── POLYMARKET LIVE MARKETS (direct API) ─────────────────
+out.append("## POLYMARKET LIVE MARKETS\n")
+try:
+    pm_url = "https://gamma-api.polymarket.com/markets?closed=false&order=volume24hr&ascending=false&limit=15"
+    pm_req = urllib.request.Request(pm_url, headers={"User-Agent": "RECON/1.0"})
+    with urllib.request.urlopen(pm_req, timeout=20) as pm_r:
+        pm_markets = json.loads(pm_r.read().decode())
+    if pm_markets:
+        for m in pm_markets:
+            question = m.get("question", "?")[:120]
+            volume = float(m.get("volume", 0) or 0)
+            volume_24h = float(m.get("volume24hr", 0) or 0)
+            liquidity = float(m.get("liquidityNum", 0) or 0)
+            # Get best price (outcome probabilities)
+            outcomes = m.get("outcomePrices", "")
+            if isinstance(outcomes, str) and outcomes:
+                try:
+                    prices = json.loads(outcomes)
+                    if prices:
+                        yes_price = float(prices[0]) * 100
+                        out.append(f"- {question}")
+                        out.append(f"  YES: {yes_price:.0f}% | 24h vol: ${volume_24h:,.0f} | total vol: ${volume:,.0f} | liq: ${liquidity:,.0f}")
+                except (json.JSONDecodeError, IndexError, ValueError):
+                    out.append(f"- {question} (vol: ${volume:,.0f})")
+            else:
+                out.append(f"- {question} (vol: ${volume:,.0f})")
+        out.append("")
+except Exception as e:
+    out.append(f"Polymarket API error: {str(e)[:60]}\n")
+
 # ── PREDICTION MARKET PROTOCOLS (CORE SECTOR) ──────────────
 out.append("## PREDICTION MARKET PROTOCOLS\n")
 for slug in ["polymarket", "azuro", "kalshi"]:
