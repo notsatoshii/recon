@@ -1,183 +1,151 @@
 # RECON Sector Context
 ## Last Updated: 2026-04-13
 
-This document provides the landscape context that ALL agents read before analysis. It covers the prediction market ecosystem, DeFi derivatives, key metrics, regulatory status, institutional players, and active narratives.
+This document provides broad landscape context for ALL agents. Cover every major sector — don't anchor on any single one. Your job is general intelligence, not sector advocacy.
 
 ---
 
-## Prediction Market Ecosystem Map
+## Crypto Market Structure
 
-### Polymarket
-- **Status:** Dominant on-chain prediction market. Backed by ICE/NYSE at $9B valuation ($2B + $600M investment rounds).
-- **Volume:** $10.57B March 2026 (monthly). Consistent 5x year-over-year growth.
-- **TVL:** ~$450M
-- **Architecture:** Polygon-based, CLOB (Central Limit Order Book) via CLOB API. UMA oracle for resolution.
-- **Key trend:** 8 of top 10 most profitable wallets are bots. Bot-driven liquidity is structural.
-- **Regulatory:** Received CFTC no-action letter January 2026. Operating legally in US for non-restricted event contracts.
-- **Founders Fund + Vitalik Buterin backed.**
+### Bitcoin
+- Dominant store-of-value asset. ~50%+ market dominance in risk-off periods.
+- ETF flows (BlackRock IBIT, Fidelity FBTC, etc.) are now the primary institutional channel.
+- MicroStrategy ($MSTR) as leveraged BTC proxy — $26B+ BTC holdings funded by convertible bonds.
+- Halving cycle: last halving April 2024. Historically 12-18 month post-halving rally.
+- Key metrics: ETF net flows, exchange reserves, miner revenue, hash rate, long-term holder supply.
 
-### Kalshi
-- **Status:** CFTC-regulated exchange (DCM license). TradFi-native, mobile-first.
-- **Volume:** $13.07B March 2026 (monthly). 87% sports betting volume. Overtook Polymarket on raw volume via sports.
-- **Key trend:** Sports as gateway drug — users who start with sports migrate to political/economic contracts.
-- **Regulatory:** CFTC-regulated but facing state lawsuits:
-  - Nevada suing Kalshi (gambling vs. regulated exchange jurisdictional fight)
-  - Arizona AG suing Kalshi (same jurisdictional argument)
-  - CFTC actively suing these states to defend federal authority over prediction markets
-- **Robinhood partnership** for distribution.
+### Ethereum
+- Smart contract platform. Transition to PoS complete. EIP-4844 (proto-danksharding) live.
+- L2 ecosystem growing (Base, Arbitrum, Optimism, zkSync, Starknet). ETH as settlement layer.
+- ETH ETF approved but flows underwhelming vs. BTC ETF.
+- Key debate: is L2 growth extracting value from L1 or adding it?
+- Key metrics: L2 TVL, blob fees, ETH burn rate, staking ratio, validator count.
 
-### Azuro Protocol
-- **Status:** B2B betting protocol. Provides infrastructure for other apps to build prediction/betting products.
-- **Architecture:** On-chain liquidity pools, multi-chain (Polygon, Gnosis, others).
-- **Volume:** Smaller than Polymarket/Kalshi but growing. Focused on sports and events.
-- **Token:** AZUR
+### Solana
+- High-throughput L1. Dominant for memecoin trading, DEX volume, retail activity.
+- Firedancer validator client (Jump Crypto) — performance upgrade.
+- Key risk: concentration, outage history, memecoin-dependency narrative.
+- Key metrics: DEX volume, active addresses, TPS, validator diversity.
 
-### Drift Protocol
-- **Status:** Solana-based. Combines prediction markets with perpetual futures.
-- **Architecture:** Cross-margined accounts, CLOB + AMM hybrid.
-- **Unique angle:** Perps + predictions in one venue. Users can hedge prediction positions with derivatives.
-
-### Other Notable Players
-- **predict.fun** — Prediction market aggregator/frontend
-- **Limitless** — $456M March 2026 volume. Fast-growing new entrant.
-- **Gnosis/Omen** — OG prediction market, lower volume but strong Ethereum-native community
-- **SX Network** — Sports-focused prediction market chain
+### BNB Chain
+- Binance ecosystem chain. Large user base, especially Asia.
+- Key metrics: DEX volume, stablecoin supply, active addresses.
 
 ---
 
-## DeFi Derivatives Landscape
+## DeFi Landscape
 
-### Hyperliquid
-- Dominant on-chain perps exchange. Own L1 chain (HyperEVM).
-- Massive volume growth. Airdrop-driven community. HYPE token.
-- Key risk: concentration — single chain, single team.
+### Lending & Borrowing
+- Aave (multi-chain, dominant), Compound, Morpho (optimization layer), Spark (MakerDAO).
+- Key metrics: total borrows, utilization rates, liquidation volumes, bad debt events.
 
-### dYdX
-- Cosmos-based (dYdX Chain). Previously StarkEx on Ethereum.
-- Governance token DYDX. Full order book, cross-margining.
-- Facing competition from Hyperliquid. Volume share declining.
+### DEXs & AMMs
+- Uniswap (Ethereum + L2s), Jupiter (Solana), Raydium, Aerodrome (Base), Curve (stableswap).
+- Key metrics: daily volume, volume/TVL ratio, fee revenue.
 
-### GMX
-- Arbitrum + Avalanche. GLP/GM liquidity model.
-- Pioneer of the "real yield" narrative. Still significant TVL.
-- V2 with isolated markets and synthetic assets.
+### Liquid Staking
+- Lido (stETH, dominant), Rocket Pool, Coinbase cbETH, Jito (Solana).
+- Key metrics: staking ratio, validator queue, yield spread vs. base rate.
 
-### Synthetix
-- Ethereum + Optimism + Base. Synthetic assets and perps.
-- V3 architecture: modular, multi-collateral.
-- Powers frontends like Kwenta, Polynomial.
+### Restaking
+- EigenLayer pioneered, now has competitors. Adds yield on top of staked ETH.
+- Key risk: rehypothecation cascade — leverage on top of leverage.
 
-### Drift Protocol
-- Solana-based. Perps + prediction markets + spot + lending in one venue.
-- Cross-margined accounts. Growing TVL.
+### Stablecoins
+- USDT ($110B+), USDC ($55B+), DAI/USDS, FDUSD, USDe (Ethena).
+- Stablecoin supply growth = capital inflow proxy. Watch per-chain supply shifts.
+- Key risk: depeg events, regulatory freeze authority (Circle/USDC), algorithmic stablecoin blowups.
 
----
+### Derivatives & Perps
+- Hyperliquid (own L1, dominant on-chain perps), dYdX (Cosmos), GMX (Arbitrum), Synthetix (Base/Optimism), Drift (Solana).
+- Key metrics: open interest, funding rates, liquidation volumes.
 
-## Key Metrics to Track
-
-### Volume Metrics
-- Polymarket monthly volume trajectory (track month-over-month)
-- Kalshi monthly volume trajectory (track sports vs. politics vs. crypto split)
-- Total prediction market TAM (Polymarket + Kalshi + Azuro + Drift + Limitless + others)
-- DeFi derivatives total daily volume (Hyperliquid + dYdX + GMX + Synthetix + Drift)
-
-### Market Structure
-- Sports vs. politics vs. crypto vs. economic volume split across platforms
-- Bot vs. human trading ratio (currently 8/10 top Polymarket wallets are bots)
-- Spread compression trend (tighter spreads = more efficient markets)
-- Cross-platform arbitrage activity
-
-### TVL & Capital Flows
-- DeFi derivatives total TVL
-- Stablecoin supply on key chains (capital availability)
-- Net flows into/out of prediction market protocols
-- Institutional allocation signals (ETF flows, OTC desk activity)
+### Prediction Markets
+- Polymarket (Polygon, CLOB), Kalshi (CFTC-regulated, 87% sports), Azuro (B2B infra), Drift.
+- Key metrics: volume, active markets, resolution accuracy.
+- One sector among many — don't over-index on this.
 
 ---
 
-## Regulatory Status by Jurisdiction
+## Macro Environment
+
+### Federal Reserve & Rates
+- Rate cycle position, dot plot, QT status.
+- Impact on crypto: lower rates = more risk appetite = crypto up, historically.
+- Watch: CPI, PCE, jobs data, Fed speeches, Treasury issuance.
+
+### Dollar (DXY)
+- Strong dollar = headwind for crypto. Weak dollar = tailwind.
+- Watch: DXY trend, EUR/USD, USD/JPY carry trade dynamics.
+
+### Equities Correlation
+- Crypto correlates with risk assets during stress. Decouples during crypto-specific narratives.
+- Watch: SPX, QQQ, VIX. When VIX spikes, crypto usually sells too.
+
+### Geopolitics
+- Wars, sanctions, trade policy directly affect risk appetite.
+- Crypto as safe haven narrative tested during real crises (usually fails for altcoins, sometimes works for BTC).
+- Watch: Middle East, US-China, tariffs, sanctions, energy prices.
+
+### Liquidity
+- Global M2, central bank balance sheets, repo/reverse repo.
+- Net liquidity = the tide that lifts or sinks all boats.
+
+---
+
+## AI x Crypto
+
+### AI Agent Tokens
+- ai16z, Virtuals, autonomous trading agents.
+- Thesis: AI agents need on-chain rails for autonomous economic activity.
+- Counter: most projects are vaporware riding the AI narrative.
+
+### AI Infrastructure
+- Render (GPU), Akash (compute), Bittensor (decentralized AI training), Ritual.
+- Real demand for decentralized compute vs. narrative-driven speculation.
+
+### AI Impact on Trading
+- Bot-driven volume increasing across all venues (not just prediction markets).
+- LLM-powered analysis tools. Automated strategy execution.
+
+---
+
+## Regulatory Landscape
 
 ### United States
-- **CFTC:** Pro-prediction markets under current chairman. Granted Polymarket no-action letter (January 2026). Actively suing Nevada and Arizona to defend federal authority over prediction markets vs. state gambling regulators.
-- **SEC:** Focused on token classification. Prediction market tokens (if any) could be securities.
-- **State-level:** Nevada and Arizona fighting to classify prediction markets as gambling (state jurisdiction). This is the key legal battleground.
-- **Trend:** Federal government broadly supportive. State resistance concentrated in gambling-revenue-dependent states.
+- SEC vs. CFTC jurisdiction battles ongoing.
+- Stablecoin legislation (most likely to pass).
+- Market structure bill (defines which tokens are securities vs. commodities).
+- Key players: SEC chair, CFTC chair, relevant House/Senate committee chairs.
 
 ### European Union
-- **MiCA:** Framework in effect. Prediction market tokens classified under utility token or e-money token categories depending on structure.
-- **Key question:** Are prediction market shares "financial instruments" under MiFID II? If yes, full securities regulation applies.
-- **Trend:** Regulatory clarity improving but classification debates ongoing.
+- MiCA framework in effect. Stablecoin rules active.
+- Key question: how strictly will DeFi protocols be classified?
 
-### South Korea
-- **FSC:** Sandbox approach. Crypto exchanges regulated, prediction markets in gray area.
-- **Key risk:** Korea has strict gambling laws. Prediction markets that look like gambling face enforcement risk.
-- **Trend:** Watching US regulatory developments closely. Likely to follow US framework with Korean characteristics.
-
-### United Kingdom
-- **FCA:** Strict crypto promotion rules. Prediction market advertising to UK retail requires compliance.
-- **Gambling Commission:** Could claim jurisdiction over prediction market products offered to UK consumers.
+### Asia
+- Hong Kong: pro-crypto regulatory framework, licensed exchanges.
+- Singapore: MAS licensing regime.
+- South Korea: strict but clear rules.
+- Japan: established regulatory framework, FSA oversight.
 
 ---
 
-## Institutional Players
+## Active Narratives (track lifecycle: emerging → peak → declining → dead)
 
-### ICE/NYSE + Polymarket
-- $2B initial investment + $600M follow-on. $9B valuation.
-- Signal: TradFi's largest bet on prediction markets. NYSE bringing institutional infrastructure.
-
-### Robinhood + Kalshi
-- Distribution partnership. Kalshi prediction markets accessible via Robinhood app.
-- Signal: Prediction markets going mainstream retail via existing brokerage distribution.
-
-### Founders Fund + Polymarket
-- Peter Thiel's fund. Deep belief in information markets thesis.
-
-### Vitalik Buterin
-- Published "Info Finance" thesis. Backed Polymarket. Sees prediction markets as public goods infrastructure for information aggregation.
+Track what CT/crypto twitter is talking about. Narratives drive short-term price action.
+- Note which narratives are emerging vs. peaking vs. dying.
+- Capital rotates between narratives faster than fundamentals change.
+- The narrative IS the trade in crypto — being early to narrative shifts is alpha.
 
 ---
 
-## AI x Crypto Intersection
+## Risk Factors (always monitor)
 
-### Bot-Driven Trading Dominance
-- 8 of top 10 most profitable Polymarket wallets are automated/bot-operated.
-- AI agents increasingly providing liquidity and market-making on prediction markets.
-- Trend: human traders becoming price-takers, AI agents becoming price-makers.
-
-### Vitalik's Info Finance Thesis
-- Prediction markets as coordination tools, not just speculation venues.
-- "Information markets" framing: markets that produce valuable public information as a byproduct of trading.
-
-### Agent-Driven Market Participation
-- AI agents autonomously placing and managing prediction market positions.
-- Projects like ai16z, Virtuals building autonomous trading agents.
-- Second-order: if AI agents dominate prediction markets, what does that mean for the "wisdom of crowds" thesis?
-
----
-
-## Active Narratives
-
-### "Information Markets" vs. "Gambling"
-- Core framing battle. Polymarket and supporters push "information markets" — markets that produce accurate probability estimates as public goods.
-- Opponents (state gambling regulators, incumbents) push "gambling" framing — same activity, different label.
-- Regulatory outcome depends on which frame wins.
-
-### The "Hypergambling" Thesis
-- Prediction markets + leverage + 24/7 trading = "hypergambling."
-- Bear case for the sector. Could trigger regulatory backlash if retail losses mount.
-- Counter-argument: prediction markets have natural position limits (binary outcomes, bounded payoffs).
-
-### Sports as Gateway Drug
-- Kalshi's 87% sports volume shows sports betting is the entry point.
-- Users start with sports, discover political/economic markets, become regular users.
-- Implication: sports betting legalization (US, 2018 onwards) created the user base for prediction markets.
-
-### Prediction Markets Pricing Faster Than TradFi
-- Multiple instances of prediction markets pricing geopolitical events (elections, Fed decisions, conflicts) faster and more accurately than traditional financial markets.
-- Eroding the information advantage of institutional traders.
-- Signal: prediction markets becoming a leading indicator that TradFi watches.
-
-### Convergence of Perps + Predictions
-- Drift Protocol combining perpetual futures and prediction markets.
-- Thesis: the distinction between "derivatives" and "prediction markets" is artificial. Both are contracts on future outcomes.
-- If this convergence happens, TAM expands dramatically.
+- Smart contract exploits / hacks (frequency, size, affected protocols)
+- Exchange insolvency risk (proof of reserves, regulatory actions)
+- Stablecoin depeg events
+- Regulatory enforcement actions (SEC wells notices, CFTC actions)
+- Macro shock transmission (how fast does a stock market crash hit crypto?)
+- Concentration risk (single points of failure in infrastructure)
+- Oracle failures
+- Bridge exploits

@@ -24,15 +24,74 @@ log() { echo "[$(date +%H:%M:%S)] $1" | tee -a "$LOG_FILE"; }
 
 send_telegram() {
     [ -z "${RECON_TELEGRAM_TOKEN:-}" ] && { log "Telegram not configured"; return; }
-    local t="${1:-}"
-    local i=0
-    local len=${#t}
-    while [ $i -lt $len ]; do
-        curl -s -X POST "https://api.telegram.org/bot${RECON_TELEGRAM_TOKEN}/sendMessage" \
-            -H "Content-Type: application/json" \
-            -d "{\"chat_id\":\"${RECON_TELEGRAM_CHAT_ID}\",\"text\":$(echo "${t:$i:4000}" | python3 -c 'import sys,json;print(json.dumps(sys.stdin.read()))')}" > /dev/null
-        i=$((i+4000)); sleep 1
-    done
+    local text="${1:-}"
+    [ -z "$text" ] && return
+
+    # Convert markdown to Telegram HTML and split by section
+    python3 -c "
+import sys, re, json, urllib.request
+
+text = sys.stdin.read().strip()
+
+# Convert markdown to Telegram HTML
+text = re.sub(r'^#{1,3}\s+(.+)$', r'<b>\1</b>', text, flags=re.MULTILINE)
+text = re.sub(r'\*\*(.+?)\*\*', r'<b>\1</b>', text)
+
+# Strip markdown table separators and horizontal rules
+text = re.sub(r'^\|[-| ]+\|$', '', text, flags=re.MULTILINE)
+text = re.sub(r'^---+$', '', text, flags=re.MULTILINE)
+
+# Collapse excessive newlines
+text = re.sub(r'\n{3,}', '\n\n', text)
+
+# Split into chunks at section boundaries, respecting 4096 char limit
+chunks = []
+current = ''
+for line in text.split('\n'):
+    # Start new chunk at bold headers if current chunk is getting long
+    if current and line.startswith('<b>') and len(current) > 3000:
+        chunks.append(current.strip())
+        current = ''
+    current += line + '\n'
+    if len(current) > 3800:
+        chunks.append(current.strip())
+        current = ''
+if current.strip():
+    chunks.append(current.strip())
+
+# Send each chunk
+token = '${RECON_TELEGRAM_TOKEN}'
+chat_id = '${RECON_TELEGRAM_CHAT_ID}'
+for chunk in chunks:
+    data = json.dumps({
+        'chat_id': chat_id,
+        'text': chunk,
+        'parse_mode': 'HTML'
+    }).encode()
+    req = urllib.request.Request(
+        f'https://api.telegram.org/bot{token}/sendMessage',
+        data=data,
+        headers={'Content-Type': 'application/json'}
+    )
+    try:
+        urllib.request.urlopen(req, timeout=10)
+    except Exception as e:
+        # Fallback: send without HTML if parsing fails
+        data = json.dumps({
+            'chat_id': chat_id,
+            'text': chunk
+        }).encode()
+        req = urllib.request.Request(
+            f'https://api.telegram.org/bot{token}/sendMessage',
+            data=data,
+            headers={'Content-Type': 'application/json'}
+        )
+        try:
+            urllib.request.urlopen(req, timeout=10)
+        except:
+            pass
+    import time; time.sleep(1)
+" <<< "$text"
 }
 
 # Helper: run up to MAX_PARALLEL background jobs, wait when full
@@ -112,7 +171,7 @@ fi
 # ─── PHASE 0.5: RELEVANCE FILTER ───────────────────────────
 log "PHASE 0.5: Filtering..."
 sleep 3
-FILTERED=$(ask_hermes "$PERSONAS/analyst.md" \
+FILTERED=$(ask_hermes "$PERSONAS/synthesizer.md" \
     "RELEVANCE FILTER MODE. You are receiving a pre-processed intelligence package. It has already been analyzed for sentiment (BettaFish) and geopolitical context (World Monitor).
 
 PRESERVE the sentiment analysis and geopolitical sections intact — agents need this framing.
@@ -201,7 +260,7 @@ $(cat "$state_file")
         sector_file="$RECON_HOME/config/sector_context.md"
         sector_ctx=""
         if [ -f "$sector_file" ]; then
-            sector_ctx="SECTOR CONTEXT (prediction market + DeFi derivatives landscape):
+            sector_ctx="SECTOR CONTEXT (crypto and macro landscape):
 $(head -c 8000 "$sector_file")
 
 "
@@ -238,6 +297,8 @@ $(head -c 2000 "$RUN_DIR/00_scorecard.md")
 If historical context is provided, reference yesterday's brief — note what changed, what predictions held, what was wrong. Continuity matters.
 
 Follow your output format. 200-400 words. Be specific — cite data points, name sources, give numbers.
+
+IMPORTANT: Cover the most significant development in YOUR domain today. Do NOT default to any single sector. The crypto ecosystem includes BTC, ETH, L1/L2s, DeFi lending, DEXs, stablecoins, derivatives, prediction markets, AI crypto, regulation, and macro. Analyze what matters most TODAY.
 
 INTELLIGENCE PACKAGE:
 $(head -c 50000 "$FILTERED_FILE")")
@@ -652,49 +713,40 @@ echo "$record" > "$RUN_DIR/07_full_record.md"
 # First pass: produce the brief
 sleep 3
 brief_draft=$(ask_hermes "$PERSONAS/synthesizer.md" \
-    "Produce the RECON Daily Intelligence Brief. Under 1,500 words.
+    "Produce the RECON Daily Brief. Under 800 words. This will be read on a phone screen in Telegram. No markdown tables. No academic language. Short sentences. Every sentence must earn its place.
 
 $env_classification
 
-Use the new output format:
-- EXECUTIVE SUMMARY
-- HIGH CONVICTION SIGNALS (5+ agents converged)
-- ACTIVE DEBATES (meaningful splits)
-- EMERGING PATTERNS (forming narratives, developing trends, slow-burn risks)
-- PREDICTION SCORECARD (score yesterday's predictions if available, otherwise 'No scorecard yet — first run')
-- BLIND SPOTS (single agent flags, gaps)
-- RISK REGISTER (top risks with probability/impact)
-- STRUCTURAL MODEL UPDATE (analyst thesis changes)
-- WHAT WE DON'T KNOW (explicit intelligence gaps, data sources we need)
-- IMPLICATIONS (what this means for the ecosystem over next 1-4 weeks)
+Use EXACTLY this format — 5 sections only:
+- WHAT HAPPENED (3-4 sentences, facts with numbers, no analysis)
+- WHAT IT MEANS (2-3 high-conviction signals where 4+ agents converged, one-line dissents where agents split, regulator audit result)
+- RISKS (top 2-3, one line each: Risk — Probability — Impact)
+- WHAT TO WATCH (3-5 specific things to monitor next 1-7 days, concrete and testable)
+- SCORECARD (score yesterday's predictions if available, otherwise 'First run — predictions logged for scoring tomorrow.')
 
-DO NOT include: CONTENT ANGLES, RECOMMENDED ACTIONS with owners.
+DO NOT add extra sections. DO NOT write markdown tables. DO NOT use academic hedging language.
 
 $record" "claude-opus-4-20250514")
 
 echo "$brief_draft" > "$RUN_DIR/07_brief_draft.md"
 log "  Draft brief: $(echo "$brief_draft" | wc -w) words"
 
-# Second pass: self-critique and improve
+# Second pass: compress and sharpen (not self-critique — that creates confirmation bias)
 sleep 3
 brief=$(ask_hermes "$PERSONAS/synthesizer.md" \
-    "You just produced a draft intelligence brief. Review it critically:
+    "Compress this draft brief ruthlessly. Rules:
 
-1. Did you miss any high-conviction insight where 5+ agents agreed?
-2. Did you bury important dissenting views?
-3. Are the implications specific and actionable (not vague)?
-4. Did you include data points and numbers (not just qualitative statements)?
-5. Is anything redundant or filler?
-6. Did you correctly weight agents based on the environment classification?
-7. Are there any multi-day patterns from agent state files worth highlighting?
+1. Cut any sentence that restates something already said.
+2. Cut any sentence that contains no specific data point, name, or number.
+3. If the brief is over 800 words, delete the least actionable content.
+4. Replace passive voice with active.
+5. If a section has zero substance, delete the section header too.
+6. Keep the 5-section structure: WHAT HAPPENED, WHAT IT MEANS, RISKS, WHAT TO WATCH, SCORECARD.
 
-If the draft is strong, return it with minor tightening. If there are real gaps, fix them.
+Return ONLY the final compressed brief. No commentary, no preamble.
 
-DRAFT BRIEF:
-$brief_draft
-
-FULL DEBATE RECORD (for reference):
-$(echo "$record" | head -c 20000)" "claude-opus-4-20250514")
+DRAFT:
+$brief_draft" "claude-opus-4-20250514")
 
 echo "$brief" > "$RUN_DIR/07_daily_brief.md"
 log "  FINAL BRIEF: $(echo "$brief" | wc -w) words"

@@ -8,7 +8,7 @@ Former compliance officer at a top-10 crypto exchange. Navigated three regulator
 - Multi-jurisdiction awareness:
   - **US:** SEC (is this a security?), CFTC (is this a swap/future?), FinCEN (BSA/AML), state regulators
   - **Korea:** FSC, FSS — Track multi-jurisdiction regulatory exposure across key markets (US, EU, Korea, UK)
-  - **EU:** MiCA framework — classification of prediction market tokens
+  - **EU:** MiCA framework — classification of DeFi protocol tokens, stablecoin rules
   - **UK:** FCA — crypto promotion rules are strict and actively enforced
 - Compliance lens on content: "If a regulator reads this tweet, blog post, or marketing material — is it financial advice? Is it a solicitation? Does it promise returns?"
 - Track enforcement actions across jurisdictions — patterns predict where regulators go next

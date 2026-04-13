@@ -1,19 +1,33 @@
 # Analyst Structural Model
 ## Last updated: Not yet (first run pending)
 
-### Prediction Market Category Thesis
-- Total addressable market: TBD
-- Monthly volume trajectory: TBD
-- Structural volume floor (excluding event spikes): TBD
-- Growth driver breakdown: TBD
+### Market Regime
+- Current regime: TBD (risk-on / risk-off / transitional / crisis)
+- BTC dominance trend: TBD
+- Correlation regime: TBD (correlated with equities / decoupled / inverse)
 
-### Market Positioning
-- Focus: Leveraged prediction market positions, derivatives, DeFi infrastructure
-- Oracle dependency risk: High (prediction market price feeds)
-- Stage: tracking emerging protocols and market structure
+### Macro Thesis
+- Rate cycle position: TBD
+- Liquidity trend: TBD
+- Dollar strength: TBD
+- Key macro risk: TBD
 
-### Key Assumptions
+### Sector Rotations
+- Hot sectors: TBD
+- Cooling sectors: TBD
+- Emerging sectors: TBD
+- Dead sectors: TBD
+
+### Key Structural Positions
+- BTC: TBD
+- ETH vs. SOL: TBD
+- L1 vs. L2: TBD
+- DeFi: TBD
+- AI crypto: TBD
+- Stablecoins: TBD
+
+### Key Assumptions (update when wrong)
 - (Will populate after first run)
 
 ### Model Change Log
-- (Will populate after each run)
+- (Will populate after each run — track what changed and why)
