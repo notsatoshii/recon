@@ -18,7 +18,17 @@ TENSIONS=("trader:narrator" "narrator:trader" "builder:policy_analyst" "policy_a
 # Max parallel agent calls (keep under API rate limits / memory)
 MAX_PARALLEL=3
 
+# Parse flags
+SKIP_COLLECT=false
+for arg in "$@"; do
+    case "$arg" in
+        --skip-collect) SKIP_COLLECT=true ;;
+    esac
+done
+
 mkdir -p "$RUN_DIR" "$(dirname "$LOG_FILE")"
+# Clean old run artifacts from same day (allows re-runs)
+rm -f "$RUN_DIR"/03_take_*.md "$RUN_DIR"/04a_*.md "$RUN_DIR"/04c_*.md "$RUN_DIR"/05_resp_*.md "$RUN_DIR"/05_5_*.md "$RUN_DIR"/06_vote_*.md "$RUN_DIR"/07_*.md "$RUN_DIR"/.activation_* 2>/dev/null
 
 log() { echo "[$(date +%H:%M:%S)] $1" | tee -a "$LOG_FILE"; }
 
@@ -113,8 +123,23 @@ python3 "$RECON_HOME/scripts/score_yesterday.py" 2>&1 | while read line; do log 
 sleep 3
 
 # ─── PHASE 0: DATA COLLECTION ──────────────────────────────
-log "PHASE 0: Collecting real data..."
-"$RECON_HOME/scripts/collect_data.sh"
+if $SKIP_COLLECT; then
+    log "PHASE 0: Skipping data collection (--skip-collect)"
+    # Assemble from existing data sources if no package exists
+    if [ ! -f "$RUN_DIR/00_data_package.md" ]; then
+        log "  Assembling from existing data-sources..."
+        DATA_DIR="$RECON_HOME/data-sources"
+        echo "# RECON INTELLIGENCE PACKAGE -- $TODAY" > "$RUN_DIR/00_data_package.md"
+        echo "## Assembled: $(date +'%H:%M:%S %Z')" >> "$RUN_DIR/00_data_package.md"
+        echo "" >> "$RUN_DIR/00_data_package.md"
+        for src in reddit twitter onchain news worldmonitor bettafish; do
+            [ -f "$DATA_DIR/$src/latest.md" ] && { echo "---"; echo ""; cat "$DATA_DIR/$src/latest.md"; echo ""; } >> "$RUN_DIR/00_data_package.md"
+        done
+    fi
+else
+    log "PHASE 0: Collecting real data..."
+    "$RECON_HOME/scripts/collect_data.sh"
+fi
 
 [ ! -f "$RUN_DIR/00_data_package.md" ] && { log "FATAL: No data package"; exit 1; }
 DATA=$(cat "$RUN_DIR/00_data_package.md")
@@ -168,19 +193,14 @@ if [ -f "$RUN_DIR/00_scorecard.md" ]; then
     log "  Loaded prediction scorecard"
 fi
 
-# ─── PHASE 0.5: RELEVANCE FILTER ───────────────────────────
-log "PHASE 0.5: Filtering..."
-sleep 3
-FILTERED=$(ask_hermes "$PERSONAS/synthesizer.md" \
-    "RELEVANCE FILTER MODE. You are receiving a pre-processed intelligence package. It has already been analyzed for sentiment (BettaFish) and geopolitical context (World Monitor).
-
-PRESERVE the sentiment analysis and geopolitical sections intact — agents need this framing.
-FILTER the on-chain data, news, and social sections: pass through items relevant to global markets, geopolitics, crypto, DeFi, prediction markets, AI, regulation, macro economics, and emerging risks. Score 3+/10 passes. Keep raw form. Drop only truly irrelevant noise (sports scores, celebrity gossip, etc.).
-
-INTELLIGENCE PACKAGE:
-$(echo "$DATA" | head -c 60000)")
+# ─── PHASE 0.5: DATA PASSTHROUGH ──────────────────────────
+# Data is already from curated sources (Reddit, Twitter, on-chain, news, World Monitor, BettaFish).
+# No LLM filter needed — it was timing out on 60KB input and killing the pipeline.
+# Agents receive the full package and decide what's relevant to their domain.
+log "PHASE 0.5: Preparing data for agents..."
+FILTERED="$DATA"
 echo "$FILTERED" > "$RUN_DIR/01_filtered.md"
-log "  Filtered: $(echo "$FILTERED" | wc -c) bytes"
+log "  Data package: $(echo "$FILTERED" | wc -c) bytes (passthrough, no filter)"
 
 # ─── PHASE 2: RELEVANCE CHECK (parallel) ───────────────────
 log "PHASE 2: Agent activation (parallel)..."
@@ -429,9 +449,9 @@ for agent in "${!all_challenges[@]}"; do
         resp=$(ask_hermes "$PERSONAS/$agent.md" \
             "DEFEND or CONCEDE. If conceding, tag: 'I am updating my position because [evidence].'
 
-YOUR TAKE: ${all_takes[$agent]}
+YOUR TAKE: ${all_takes[$agent]:-}
 
-CHALLENGES: ${all_challenges[$agent]}")
+CHALLENGES: ${all_challenges[$agent]:-}")
         echo "$resp" > "$RUN_DIR/05_resp_${agent}.md"
     ) &
     log "  $agent launched..."
