@@ -15,30 +15,13 @@ mkdir -p "$DATA_DIR"/{reddit,onchain,news} "$RECON_HOME/briefs/$TODAY" "$(dirnam
 
 log "========== DATA COLLECTION -- $TODAY =========="
 
-# ─── REDDIT (PRAW) ──────────────────────────────────────────
+# ─── REDDIT (RSS feeds, no API key needed) ─────────────────
 
 log "Collecting Reddit data..."
 
 python3 << 'PYREDDIT'
-import os, sys
-try:
-    import praw
-except ImportError:
-    print("PRAW not installed. Run: pip install praw")
-    with open("/home/recon/recon/data-sources/reddit/latest.md", "w") as f:
-        f.write("# Reddit Data\n## NOT CONFIGURED\nInstall PRAW: pip install praw\n")
-    sys.exit(0)
-
-cid = os.environ.get("REDDIT_CLIENT_ID", "")
-csec = os.environ.get("REDDIT_CLIENT_SECRET", "")
-if not cid or not csec:
-    print("Reddit API not configured. Set REDDIT_CLIENT_ID and REDDIT_CLIENT_SECRET.")
-    with open("/home/recon/recon/data-sources/reddit/latest.md", "w") as f:
-        f.write("# Reddit Data\n## NOT CONFIGURED\nSet REDDIT_CLIENT_ID and REDDIT_CLIENT_SECRET in ~/.recon.env\nCreate app at: https://www.reddit.com/prefs/apps\n")
-    sys.exit(0)
-
-reddit = praw.Reddit(client_id=cid, client_secret=csec,
-                     user_agent=os.environ.get("REDDIT_USER_AGENT", "RECON/1.0"))
+import sys, time, urllib.request, xml.etree.ElementTree as ET
+from datetime import datetime
 
 SUBS = {
     "crypto_core": ["cryptocurrency","Bitcoin","ethereum","CryptoMarkets","defi","ethfinance","CryptoTechnology","ethtrader","altcoin","web3","NFT"],
@@ -50,29 +33,67 @@ SUBS = {
     "economics": ["economics","finance","stocks","FluentInFinance"],
 }
 
-lines = [f"# Reddit Intelligence\n## {__import__('datetime').datetime.now().strftime('%Y-%m-%d %H:%M UTC')}\n"]
+NS = {"atom": "http://www.w3.org/2005/Atom"}
+headers = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "Accept": "application/atom+xml,application/xml,text/xml,*/*",
+}
+
+lines = [f"# Reddit Intelligence\n## {datetime.now().strftime('%Y-%m-%d %H:%M UTC')}\n"]
+total_subs = sum(len(v) for v in SUBS.values())
+fetched = 0
+failed = 0
 
 for cat, subs in SUBS.items():
     lines.append(f"\n---\n## {cat.upper()}\n")
     for sub_name in subs:
         try:
-            sub = reddit.subreddit(sub_name)
-            posts = [p for p in sub.hot(limit=6) if not p.stickied][:5]
-            lines.append(f"### r/{sub_name}")
-            for p in posts:
-                lines.append(f"- [{p.score}pts, {p.num_comments}cmt] {p.title[:180]}")
-                if p.num_comments > 20:
-                    p.comment_sort = "top"
-                    p.comments.replace_more(limit=0)
-                    for c in p.comments[:2]:
-                        lines.append(f"  > ({c.score}pts) {c.body[:120].replace(chr(10),' ')}")
-            lines.append("")
+            url = f"https://www.reddit.com/r/{sub_name}/hot.rss"
+            req = urllib.request.Request(url, headers=headers)
+            with urllib.request.urlopen(req, timeout=15) as r:
+                body = r.read().decode()
+
+            root = ET.fromstring(body)
+            entries = root.findall("atom:entry", NS)[:5]
+
+            if entries:
+                lines.append(f"### r/{sub_name}")
+                for e in entries:
+                    title_el = e.find("atom:title", NS)
+                    title = title_el.text[:180] if title_el is not None and title_el.text else "?"
+                    # Extract text content from HTML summary if available
+                    content_el = e.find("atom:content", NS)
+                    summary = ""
+                    if content_el is not None and content_el.text:
+                        import re
+                        text = re.sub(r'<[^>]+>', ' ', content_el.text)
+                        text = re.sub(r'\s+', ' ', text).strip()[:150]
+                        if text and text != title:
+                            summary = text
+                    lines.append(f"- {title}")
+                    if summary:
+                        lines.append(f"  {summary}")
+                lines.append("")
+                fetched += 1
+            else:
+                lines.append(f"### r/{sub_name} -- empty\n")
+                failed += 1
+
+            time.sleep(1.5)  # rate limit between subs
+
         except Exception as e:
-            lines.append(f"### r/{sub_name} -- ERROR: {str(e)[:60]}\n")
+            err = str(e)[:60]
+            lines.append(f"### r/{sub_name} -- ERROR: {err}\n")
+            failed += 1
+            if "429" in err:
+                print(f"Rate limited at r/{sub_name}, waiting 15s...")
+                time.sleep(15)
+            else:
+                time.sleep(1.5)
 
 with open("/home/recon/recon/data-sources/reddit/latest.md", "w") as f:
     f.write("\n".join(lines))
-print(f"Reddit: {len(lines)} lines from {sum(len(v) for v in SUBS.values())} subreddits")
+print(f"Reddit: {len(lines)} lines from {fetched}/{total_subs} subreddits ({failed} failed)")
 PYREDDIT
 
 log "  Reddit: $(wc -l < "$DATA_DIR/reddit/latest.md" 2>/dev/null || echo FAILED) lines"
