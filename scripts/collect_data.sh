@@ -114,6 +114,21 @@ fi
 
 log "  Twitter: $(wc -l < "$DATA_DIR/twitter/latest.md" 2>/dev/null || echo SKIPPED) lines"
 
+# ─── FUNDRAISING (RootData via Playwright) ────────────────
+
+log "Collecting fundraising data..."
+mkdir -p "$DATA_DIR/fundraising"
+
+if python3 -c "import playwright" 2>/dev/null; then
+    python3 "$RECON_HOME/scripts/collect_fundraising.py" 2>&1 | while read line; do log "  $line"; done
+else
+    log "  Playwright not installed -- skipping fundraising collection"
+    echo "# Fundraising Intelligence" > "$DATA_DIR/fundraising/latest.md"
+    echo "## NOT CONFIGURED" >> "$DATA_DIR/fundraising/latest.md"
+fi
+
+log "  Fundraising: $(wc -l < "$DATA_DIR/fundraising/latest.md" 2>/dev/null || echo SKIPPED) lines"
+
 # ─── ON-CHAIN (DeFiLlama + CoinGecko, free APIs) ───────────
 
 log "Collecting on-chain data..."
@@ -712,7 +727,7 @@ echo "# RAW DATA -- $TODAY" > "$RAW_PKG"
 echo "## Collected: $(date +'%H:%M:%S %Z')" >> "$RAW_PKG"
 echo "" >> "$RAW_PKG"
 
-for src in reddit twitter onchain news ai_tools; do
+for src in reddit twitter onchain news ai_tools fundraising; do
     [ -f "$DATA_DIR/$src/latest.md" ] && {
         echo "---" >> "$RAW_PKG"
         echo "" >> "$RAW_PKG"

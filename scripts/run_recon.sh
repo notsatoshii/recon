@@ -244,8 +244,10 @@ $BETTAFISH_DATA"
         SYNTH_PERSONA="$PERSONAS/synthesizer_fundraising.md"
         MODE_LABEL="FUNDRAISING RADAR"
         # Fundraising rounds + VC Twitter + market data + sentiment + news
-        # Note: DeFiLlama raises is paywalled. Primary sources are Twitter + news + BettaFish.
-        MODE_DATA="## ON-CHAIN MARKET DATA
+        MODE_DATA="## ROOTDATA FUNDRAISING ROUNDS
+$(cat "$DATA_DIR/fundraising/latest.md" 2>/dev/null || echo "No RootData scrape available")
+
+## ON-CHAIN MARKET DATA
 $(cat "$DATA_DIR/onchain/latest.md" 2>/dev/null | head -c 10000)
 
 ## TWITTER — VC & INSTITUTIONAL ACCOUNTS
