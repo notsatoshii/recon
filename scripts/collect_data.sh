@@ -404,6 +404,20 @@ if "_error" not in btc:
     out.append(f"- Difficulty: {btc.get('difficulty',0):,.0f}")
     out.append("")
 
+# ── AI x CRYPTO TOKENS ─────────────────────────────────────
+out.append("## AI x CRYPTO TOKENS\n")
+ai_ids = "render-token,bittensor,fetch-ai,ocean-protocol,the-graph,worldcoin,akash-network,nosana,virtuals-protocol"
+ai_prices = get(f"https://api.coingecko.com/api/v3/simple/price?ids={ai_ids}&vs_currencies=usd&include_24hr_change=true&include_market_cap=true")
+if "_error" not in ai_prices:
+    for token_id in sorted(ai_prices.keys(), key=lambda x: ai_prices[x].get("usd_market_cap", 0) or 0, reverse=True):
+        data = ai_prices[token_id]
+        price = data.get("usd", 0)
+        change = data.get("usd_24h_change", 0) or 0
+        mcap = data.get("usd_market_cap", 0) or 0
+        if price:
+            out.append(f"- {token_id}: ${price:.4f} ({change:+.1f}%) mcap ${mcap:,.0f}")
+    out.append("")
+
 # ── DEFI SECTOR OVERVIEW ───────────────────────────────────
 out.append("## DEFI SECTOR (CoinGecko)\n")
 defi = get("https://api.coingecko.com/api/v3/global/decentralized_finance_defi")
@@ -453,7 +467,31 @@ FEEDS = {
     "Unchained": "https://unchainedcrypto.com/feed/",
 }
 
+AI_FEEDS = {
+    "TechCrunch AI": "https://techcrunch.com/category/artificial-intelligence/feed/",
+    "The Verge AI": "https://www.theverge.com/rss/ai-artificial-intelligence/index.xml",
+    "Ars Technica AI": "https://feeds.arstechnica.com/arstechnica/technology-lab",
+}
+
 for name, url in FEEDS.items():
+    try:
+        feed = feedparser.parse(url)
+        entries = feed.entries[:5] if feed.entries else []
+        if entries:
+            out.append(f"### {name}")
+            for e in entries:
+                t = e.get("title","")[:180]
+                pub = e.get("published","")[:16]
+                s = e.get("summary","")[:120].replace("<p>","").replace("</p>","").replace("\n"," ")
+                out.append(f"- [{pub}] {t}")
+                if s: out.append(f"  {s}")
+            out.append("")
+    except:
+        out.append(f"### {name} -- FEED ERROR\n")
+
+# ─── AI & TECH NEWS ──────────────────────────────────────
+out.append("\n## AI & TECH NEWS\n")
+for name, url in AI_FEEDS.items():
     try:
         feed = feedparser.parse(url)
         entries = feed.entries[:5] if feed.entries else []
