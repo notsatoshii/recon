@@ -180,6 +180,98 @@ def collect_from_wm():
                 out.append(f"- {k}: {json.dumps(v)[:150]}")
         out.append("")
 
+    # ── Conflict Intelligence (ACLED) ──────────────────────
+    conflict = redis_get("seed-meta:conflict:acled-intel")
+    if conflict and isinstance(conflict, dict):
+        events = conflict.get("events", conflict.get("data", []))
+        if isinstance(events, list) and events:
+            out.append("## CONFLICT INTELLIGENCE\n")
+            for e in events[:8]:
+                if isinstance(e, dict):
+                    country = e.get("country", "?")
+                    etype = e.get("event_type", e.get("type", "?"))
+                    notes = e.get("notes", e.get("description", ""))[:150]
+                    out.append(f"- {country}: {etype}")
+                    if notes: out.append(f"  {notes}")
+            out.append("")
+
+    # ── Iran Events ────────────────────────────────────────
+    iran = redis_get("seed-meta:conflict:iran-events")
+    if not iran:
+        iran = redis_get("intelligence:snapshot:v1:mena:latest")
+    if iran and isinstance(iran, dict):
+        out.append("## IRAN / MIDDLE EAST\n")
+        if "events" in iran:
+            for e in iran["events"][:5]:
+                out.append(f"- {json.dumps(e)[:200]}")
+        elif "summary" in iran:
+            out.append(f"- {str(iran['summary'])[:500]}")
+        elif "analysis" in iran:
+            out.append(f"- {str(iran['analysis'])[:500]}")
+        else:
+            # Try to extract whatever we can
+            for k in ["headline", "title", "description", "content"]:
+                if k in iran:
+                    out.append(f"- {str(iran[k])[:300]}")
+                    break
+        out.append("")
+
+    # ── Hormuz Tracker ─────────────────────────────────────
+    hormuz = redis_get("supply_chain:hormuz_tracker:v1")
+    if hormuz and isinstance(hormuz, dict):
+        out.append("## STRAIT OF HORMUZ TRACKER\n")
+        status = hormuz.get("status", hormuz.get("summary", ""))
+        if status:
+            out.append(f"- Status: {str(status)[:300]}")
+        for k in ["vessels", "transits", "disruptions", "blockade"]:
+            if k in hormuz:
+                out.append(f"- {k}: {json.dumps(hormuz[k])[:200]}")
+        out.append("")
+
+    # ── Regional Intelligence Snapshots ────────────────────
+    regions = ["global", "mena", "europe", "north-america", "east-asia"]
+    briefs = redis_get("intelligence:regional-briefs:summary:v1")
+    if briefs and isinstance(briefs, dict):
+        out.append("## REGIONAL INTELLIGENCE BRIEFS\n")
+        for region in regions:
+            brief = briefs.get(region, "")
+            if brief:
+                out.append(f"### {region.upper()}")
+                out.append(f"{str(brief)[:300]}")
+                out.append("")
+
+    # ── Sanctions Pressure ─────────────────────────────────
+    sanctions = redis_get("seed-meta:conflict:sanctions-pressure")
+    if sanctions and isinstance(sanctions, dict):
+        out.append("## SANCTIONS & PRESSURE\n")
+        for k, v in list(sanctions.items())[:5]:
+            out.append(f"- {k}: {json.dumps(v)[:150]}")
+        out.append("")
+
+    # ── Market Sentiment ───────────────────────────────────
+    sentiment = redis_get("market:aaii-sentiment:v1")
+    if sentiment and isinstance(sentiment, dict):
+        out.append("## MARKET SENTIMENT (AAII)\n")
+        bull = sentiment.get("bullish", "?")
+        bear = sentiment.get("bearish", "?")
+        neutral = sentiment.get("neutral", "?")
+        out.append(f"- Bullish: {bull}% | Bearish: {bear}% | Neutral: {neutral}%")
+        out.append("")
+
+    # ── Disease Outbreaks ──────────────────────────────────
+    disease = redis_get("health:disease-outbreaks:v1")
+    if disease and isinstance(disease, (dict, list)):
+        items = disease if isinstance(disease, list) else disease.get("outbreaks", disease.get("events", []))
+        if isinstance(items, list) and items:
+            out.append("## DISEASE OUTBREAKS\n")
+            for d in items[:5]:
+                if isinstance(d, dict):
+                    name = d.get("disease", d.get("name", "?"))
+                    country = d.get("country", d.get("location", "?"))
+                    status = d.get("status", "")
+                    out.append(f"- {name} — {country} {status}")
+            out.append("")
+
     return out
 
 
