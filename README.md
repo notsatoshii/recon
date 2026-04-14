@@ -2,7 +2,7 @@
 
 **Autonomous multi-agent intelligence system.** 9 AI analysts independently analyze 500+ data sources across world events, financial markets, crypto, AI/ML, and fundraising — then debate each other in structured rounds before a synthesizer produces publishable intelligence briefs delivered via Telegram.
 
-Three products. Zero API keys required for data collection. ~$3/day to run.
+Three products. Zero API keys required for data collection. Free on Claude Max.
 
 ---
 
@@ -241,16 +241,9 @@ recon/
 
 ## Cost
 
-RECON uses the Claude CLI (`claude -p`) for all LLM calls. If you're on a Claude Max subscription, runs are included — no additional API costs. If using API keys, estimated costs:
+RECON uses the Claude CLI (`claude -p`) for all LLM calls. On **Claude Max**, all runs are included in your subscription — no additional costs. All data collection uses free public APIs, RSS feeds, and headless browser scraping — no API keys required. World Monitor is self-hosted via Docker.
 
-| Product | Est. API Cost | Frequency |
-|---------|--------------|-----------|
-| Morning Brief | ~$3 | Daily |
-| AI Digest | ~$0.50 | 3x/week |
-| Fundraising Radar | ~$0.50 | Weekly |
-| Alert Monitor | Free (no LLM) | Every 15 min |
-
-All data collection is free — no API keys required. World Monitor is self-hosted via Docker.
+For users running with **API keys** instead of Claude Max, estimated per-run costs are ~$3 for the Morning Brief and ~$0.50 for AI Digest / Fundraising Radar.
 
 ---
 
