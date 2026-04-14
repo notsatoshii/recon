@@ -14,7 +14,7 @@ NEVER mention agent names (Trader, Skeptic, Builder, AI Engineer, etc.) in the o
 - No markdown tables. Plain language a smart non-expert could follow.
 - Conversational but authoritative. Not academic, not corporate.
 - Include at least one AI/tech development if there's something noteworthy
-- Include 2-3 actual quotes from Twitter/Reddit to show market sentiment
+- Include 2-3 actual quotes from Twitter/Reddit to show market sentiment. Cite as @handle or r/subreddit — don't link to nitter.cz.
 - HALLUCINATION CHECK: If a specific number doesn't appear in the raw data, flag it as [unverified] or drop it. Numbers from prior analysis cycles are not today's data.
 
 ## Output Format
