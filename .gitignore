@@ -3,10 +3,15 @@
 briefs/
 logs/
 data-sources/*/latest.md
+data-sources/ai_tools/
 archive/
 config/knowledge.db
 config/knowledge.db-wal
 config/knowledge.db-shm
+config/alert_state.json
+config/discovered_accounts.csv
+config/discovered_accounts.yaml
+config/discovered_subreddits.yaml
 __pycache__/
 *.pyc
 recon-venv/

@@ -1,6 +1,6 @@
 # RECON: Multi-Agent Intelligence System
 
-An 8-agent AI intelligence cell that independently analyzes real-time data across crypto, DeFi, prediction markets, macro economics, geopolitics, AI, and regulation — then debates in structured rounds with persistent memory, prediction scoring, and calibration feedback loops. A synthesizer (Claude Opus 4.6) reads the full debate and produces a Daily Intelligence Brief delivered via Telegram.
+A 9-agent AI intelligence cell that analyzes real-time data across world events, financial markets, crypto, DeFi, AI/ML developments, fundraising, and regulation — then debates in structured rounds with persistent memory, prediction scoring, and calibration feedback loops. Produces three products: a Daily Intelligence Brief, an AI/Tools Digest, and a Fundraising Radar — all delivered via Telegram.
 
 ## How It Works
 
@@ -75,6 +75,7 @@ Phase 7: Synthesis (Opus 4.6, two-pass with self-critique)
 | **Policy Analyst** | Regulatory analyst | Multi-jurisdiction regulatory risk, compliance |
 | **User Agent** | Real DeFi trader | UX, friction, opportunity cost, trust, on-the-ground |
 | **Macro Strategist** | Macro economist | Rates, liquidity, geopolitics, cross-asset flows |
+| **AI Engineer** | AI/ML practitioner | Models, repos, inference costs, agentic systems, what's real vs. hype |
 | **Synthesizer** | Chief Intelligence Officer | Produces the final brief (Opus 4.6, two-pass) |
 
 Each agent has:
@@ -128,20 +129,39 @@ The synthesizer classifies each day's environment (market/narrative/product/risk
 ### Optional (free API key)
 - **CryptoPanic** — Aggregated news with community sentiment scoring
 
+## Three Products
+
+### Morning Brief (daily, full debate)
+```bash
+./scripts/run_recon.sh                    # Full run with data collection
+./scripts/run_recon.sh --skip-collect     # Reuse existing data
+```
+9-agent debate producing a 600-1000 word brief covering world events, markets, crypto, AI, and risks. ~$3/run, ~20 min.
+
+### AI/Tools Digest (2-3x/week, lightweight)
+```bash
+./scripts/run_recon.sh --mode ai-digest
+./scripts/run_recon.sh --mode ai-digest --skip-collect
+```
+Curated AI/ML developments with source links. GitHub trending repos, new models, tools you can use today. Single Opus call. ~$0.50/run, ~3 min.
+
+### Fundraising Radar (weekly, lightweight)
+```bash
+./scripts/run_recon.sh --mode fundraising
+./scripts/run_recon.sh --mode fundraising --skip-collect
+```
+Recent crypto/web3 funding rounds from DeFiLlama, VC activity, sector trends. Single Opus call. ~$0.50/run, ~3 min.
+
 ## Brief Output Format
 
 ```
-RECON DAILY INTELLIGENCE BRIEF
-├── Executive Summary (3-4 sentences)
-├── High Conviction Signals (5+ agents converged)
-├── Active Debates (meaningful splits between agents)
-├── Emerging Patterns (multi-day trends from agent state history)
-├── Prediction Scorecard (yesterday's predictions scored)
-├── Blind Spots (single agent flags, coverage gaps)
-├── Risk Register (probability/impact assessment)
-├── Structural Model Update (analyst thesis changes)
-├── What We Don't Know (explicit intelligence gaps)
-└── Implications (1-4 week outlook)
+RECON DAILY BRIEF
+├── What Happened (world events first, then markets, then crypto)
+├── What It Means (high-conviction signals, agent consensus/dissent)
+├── Where They Disagree (most interesting split between agents)
+├── Risks (top 2-3 with probability/impact)
+├── What To Watch (concrete items with dates)
+└── Scorecard (yesterday's predictions scored)
 ```
 
 ## Project Structure
@@ -225,6 +245,9 @@ cd worldmonitor && npm install && docker compose up -d --build
 | Action | Command |
 |--------|---------|
 | Full run | `./scripts/run_recon.sh` |
+| Skip data collection | `./scripts/run_recon.sh --skip-collect` |
+| AI Digest | `./scripts/run_recon.sh --mode ai-digest` |
+| Fundraising Radar | `./scripts/run_recon.sh --mode fundraising` |
 | Data only | `./scripts/collect_data.sh` |
 | Check alerts | `./scripts/alert_monitor.sh` |
 | Score predictions | `python3 scripts/score_yesterday.py` |
