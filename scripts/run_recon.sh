@@ -11,6 +11,7 @@ PERSONAS="$RECON_HOME/personas"
 source /home/recon/.recon.env
 source "$RECON_HOME/scripts/ask_hermes.sh"
 
+DATA_DIR="$RECON_HOME/data-sources"
 AGENTS=(trader narrator builder analyst skeptic policy_analyst user_agent macro_strategist ai_engineer)
 ALWAYS_ACTIVE=(skeptic)
 TENSIONS=("trader:narrator" "narrator:trader" "builder:policy_analyst" "policy_analyst:builder" "analyst:skeptic" "skeptic:analyst" "macro_strategist:user_agent" "user_agent:macro_strategist" "ai_engineer:builder" "builder:ai_engineer")
