@@ -603,25 +603,55 @@ def get(url, timeout=15):
     except Exception as e:
         return {"_error": str(e)}
 
-# ── GITHUB TRENDING (AI/ML repos, last 7 days) ────────────
-out.append("## GITHUB TRENDING (AI/ML, last 7 days)\n")
+# ── GITHUB TRENDING (AI/ML repos) ──────────────────────────
+# Two searches: (1) new repos gaining traction, (2) established repos with recent activity
 week_ago = (datetime.now() - timedelta(days=7)).strftime("%Y-%m-%d")
-gh = get(f"https://api.github.com/search/repositories?q=created:>{week_ago}+topic:ai+topic:machine-learning+stars:>50&sort=stars&order=desc&per_page=10")
-if "_error" not in gh and "items" in gh:
-    for repo in gh.get("items", [])[:10]:
+month_ago = (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d")
+
+out.append("## GITHUB TRENDING — NEW AI REPOS (created last 7 days)\n")
+searches = [
+    f"https://api.github.com/search/repositories?q=created:>{week_ago}+stars:>20&sort=stars&order=desc&per_page=15",
+]
+for search_url in searches:
+    gh = get(search_url)
+    if "_error" not in gh and "items" in gh:
+        ai_keywords = ["ai", "llm", "gpt", "claude", "agent", "model", "transformer", "neural",
+                       "ml", "machine-learning", "deep-learning", "inference", "rag", "embedding",
+                       "fine-tun", "prompt", "chat", "copilot", "diffusion", "vision", "nlp"]
+        for repo in gh.get("items", [])[:30]:
+            name = repo.get("full_name", "?")
+            desc = (repo.get("description") or "").lower()
+            topics = [t.lower() for t in repo.get("topics", [])]
+            # Filter for AI/ML relevance
+            all_text = f"{name.lower()} {desc} {' '.join(topics)}"
+            if any(kw in all_text for kw in ai_keywords):
+                stars = repo.get("stargazers_count", 0)
+                lang = repo.get("language", "?")
+                url = repo.get("html_url", "")
+                desc_clean = (repo.get("description") or "")[:120]
+                out.append(f"- [{name}]({url}) -- {stars} stars [{lang}]")
+                if desc_clean: out.append(f"  {desc_clean}")
+        out.append("")
+
+out.append("## GITHUB TRENDING — HOT AI REPOS (most starred recently)\n")
+# Search for AI repos pushed in last 7 days, sorted by stars (catches established repos gaining momentum)
+gh2 = get(f"https://api.github.com/search/repositories?q=topic:ai+topic:llm+pushed:>{week_ago}+stars:>500&sort=stars&order=desc&per_page=10")
+if "_error" not in gh2 and "items" in gh2:
+    for repo in gh2.get("items", [])[:10]:
         name = repo.get("full_name", "?")
         desc = (repo.get("description") or "")[:120]
         stars = repo.get("stargazers_count", 0)
         lang = repo.get("language", "?")
         url = repo.get("html_url", "")
-        out.append(f"- [{name}]({url}) -- {stars} stars [{lang}]")
+        updated = repo.get("pushed_at", "")[:10]
+        out.append(f"- [{name}]({url}) -- {stars} stars [{lang}] (updated {updated})")
         if desc: out.append(f"  {desc}")
     out.append("")
 else:
-    # Fallback: search for recent popular AI repos
-    gh2 = get(f"https://api.github.com/search/repositories?q=ai+llm+agent+created:>{week_ago}&sort=stars&order=desc&per_page=10")
-    if "_error" not in gh2 and "items" in gh2:
-        for repo in gh2.get("items", [])[:10]:
+    # Broader fallback
+    gh3 = get(f"https://api.github.com/search/repositories?q=llm+agent+pushed:>{week_ago}+stars:>200&sort=stars&order=desc&per_page=10")
+    if "_error" not in gh3 and "items" in gh3:
+        for repo in gh3.get("items", [])[:10]:
             name = repo.get("full_name", "?")
             desc = (repo.get("description") or "")[:120]
             stars = repo.get("stargazers_count", 0)
