@@ -159,6 +159,8 @@ ct_narrative:
   - BanklessHQ
   - TrustlessState
   - DavidHoffmanB
+  - unusual_whales
+  - DefiIgnas
 
 news_media:
   - cryptodotnews
@@ -188,6 +190,8 @@ regulation:
   - SECGov
   - RepRitchie
   - SenLummis
+  - WuBlockchain
+  - thedefiedge
 
 ai_crypto:
   - NousResearch
@@ -202,6 +206,9 @@ ai_crypto:
   - OceanProtocol
   - rendertoken
   - worldcoin
+  - DarioAmodei
+  - sama
+  - karpathy
 
 ai_tech:
   - OpenAI
@@ -259,6 +266,9 @@ macro_economics:
   - LynAldenContact
   - JeffAmazon
   - jimcramer
+  - tier10k
+  - RaoulGMI
+  - CryptoHayes
 
 geopolitics:
   - BBCWorld
