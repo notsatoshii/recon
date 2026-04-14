@@ -202,50 +202,19 @@ FILTERED="$DATA"
 echo "$FILTERED" > "$RUN_DIR/01_filtered.md"
 log "  Data package: $(echo "$FILTERED" | wc -c) bytes (passthrough, no filter)"
 
-# ─── PHASE 2: RELEVANCE CHECK (parallel) ───────────────────
-log "PHASE 2: Agent activation (parallel)..."
+# ─── PHASE 2: ALL AGENTS ACTIVE ───────────────────────────
+# Every agent participates every day. No sit-outs — every perspective matters.
+log "PHASE 2: All agents active..."
 declare -A active_agents
 declare -A all_takes all_challenges all_responses all_votes
 
-# Write filtered data to temp file so background jobs can read it
 FILTERED_FILE="$RUN_DIR/01_filtered.md"
 
 for agent in "${AGENTS[@]}"; do
-    skip=false
-    for aa in "${ALWAYS_ACTIVE[@]}"; do [[ "$agent" == "$aa" ]] && skip=true; done
-    if $skip; then
-        active_agents[$agent]=1; log "  $agent: ALWAYS ACTIVE"; continue
-    fi
-
-    # Run activation checks in parallel
-    throttle_wait
-    (
-        sleep 3
-        check=$(ask_hermes "$PERSONAS/$agent.md" \
-            "Quick check: review the sentiment summary and key signals below. Anything significant for your domain today? YES or NO, one sentence.
-$(head -c 15000 "$FILTERED_FILE")")
-        if echo "$check" | grep -qi "yes"; then
-            echo "ACTIVE" > "$RUN_DIR/.activation_${agent}"
-        else
-            echo "SITTING_OUT" > "$RUN_DIR/.activation_${agent}"
-        fi
-    ) &
+    active_agents[$agent]=1
 done
-wait  # Wait for all activation checks
-
-# Collect results
-for agent in "${AGENTS[@]}"; do
-    result_file="$RUN_DIR/.activation_${agent}"
-    [ ! -f "$result_file" ] && continue
-    if grep -q "ACTIVE" "$result_file" 2>/dev/null; then
-        active_agents[$agent]=1; log "  $agent: ACTIVE"
-    else
-        log "  $agent: SITTING OUT"
-    fi
-    rm -f "$result_file"
-done
-log "  Active: ${!active_agents[*]}"
-send_telegram "📡 ${#active_agents[@]} agents active: ${!active_agents[*]}"
+log "  Active: ${!active_agents[*]} (all agents, no sit-outs)"
+send_telegram "RECON: all ${#active_agents[@]} agents active"
 
 # ─── PHASE 3: INDEPENDENT TAKES (parallel) ─────────────────
 log "PHASE 3: Independent takes (parallel)..."
@@ -319,6 +288,8 @@ If historical context is provided, reference yesterday's brief — note what cha
 Follow your output format. 200-400 words. Be specific — cite data points, name sources, give numbers.
 
 IMPORTANT: Cover the most significant development in YOUR domain today. Do NOT default to any single sector. The crypto ecosystem includes BTC, ETH, L1/L2s, DeFi lending, DEXs, stablecoins, derivatives, prediction markets, AI crypto, regulation, and macro. Analyze what matters most TODAY.
+
+CITATION RULE: Every number you cite must come from the intelligence package above. If a data point is not in the package, do NOT invent it. Say 'data not available' instead. Do NOT fabricate statistics, wallet counts, or percentages.
 
 INTELLIGENCE PACKAGE:
 $(head -c 50000 "$FILTERED_FILE")")
@@ -733,40 +704,50 @@ echo "$record" > "$RUN_DIR/07_full_record.md"
 # First pass: produce the brief
 sleep 3
 brief_draft=$(ask_hermes "$PERSONAS/synthesizer.md" \
-    "Produce the RECON Daily Brief. Under 800 words. This will be read on a phone screen in Telegram. No markdown tables. No academic language. Short sentences. Every sentence must earn its place.
+    "Produce the RECON Daily Brief. 600-1000 words. This gets read over morning coffee on a phone.
+
+Write like a smart colleague explaining what happened overnight — not like an academic paper. Use plain language. No markdown tables. No corporate jargon. Be conversational but precise.
 
 $env_classification
 
-Use EXACTLY this format — 5 sections only:
-- WHAT HAPPENED (3-4 sentences, facts with numbers, no analysis)
-- WHAT IT MEANS (2-3 high-conviction signals where 4+ agents converged, one-line dissents where agents split, regulator audit result)
-- RISKS (top 2-3, one line each: Risk — Probability — Impact)
-- WHAT TO WATCH (3-5 specific things to monitor next 1-7 days, concrete and testable)
-- SCORECARD (score yesterday's predictions if available, otherwise 'First run — predictions logged for scoring tomorrow.')
+Use EXACTLY this format — 6 sections:
+- WHAT HAPPENED (4-5 sentences. Key developments with numbers. Write like you're catching someone up over coffee.)
+- WHAT IT MEANS (2-3 key takeaways from the debate. For each: what it is, why it matters, where agents agreed/disagreed. Spend 2-3 sentences per insight explaining the 'so what'. This is analysis, not bullet points.)
+- WHERE THEY DISAGREE (The most interesting split. Who said what and why. Uncertainty is information.)
+- RISKS (Top 2-3. Plain language, not formatted tables. How likely, how bad, why it matters.)
+- WHAT TO WATCH (3-5 concrete things to monitor this week, with dates.)
+- SCORECARD (Score yesterday's predictions. Be honest.)
 
-DO NOT add extra sections. DO NOT write markdown tables. DO NOT use academic hedging language.
+HALLUCINATION CHECK: If an agent cites a specific number (wallet count, percentage, dollar figure) that does NOT appear in the raw data sections of the debate record, mark it [unverified] or drop it entirely. Only pass through numbers that trace back to actual data sources.
 
 $record" "claude-opus-4-20250514")
 
 echo "$brief_draft" > "$RUN_DIR/07_brief_draft.md"
 log "  Draft brief: $(echo "$brief_draft" | wc -w) words"
 
-# Second pass: compress and sharpen (not self-critique — that creates confirmation bias)
+# Second pass: hallucination filter + tone check
 sleep 3
 brief=$(ask_hermes "$PERSONAS/synthesizer.md" \
-    "Compress this draft brief ruthlessly. Rules:
+    "Review this draft brief against the raw data. Two jobs:
 
-1. Cut any sentence that restates something already said.
-2. Cut any sentence that contains no specific data point, name, or number.
-3. If the brief is over 800 words, delete the least actionable content.
-4. Replace passive voice with active.
-5. If a section has zero substance, delete the section header too.
-6. Keep the 5-section structure: WHAT HAPPENED, WHAT IT MEANS, RISKS, WHAT TO WATCH, SCORECARD.
+JOB 1 — HALLUCINATION FILTER:
+Cross-reference every specific number, statistic, and claim in the brief against the data sections in the debate record below. If a number appears in the brief but NOT in the source data (on-chain, news, reddit, twitter, worldmonitor sections), either:
+- Mark it [unverified] if it came from an agent's analysis (plausible but not from data)
+- Remove it entirely if it looks fabricated
+Do NOT remove numbers that ARE in the source data.
 
-Return ONLY the final compressed brief. No commentary, no preamble.
+JOB 2 — TONE CHECK:
+- Does it read like a human wrote it? If any section sounds robotic or academic, rewrite it conversationally.
+- Cut filler and redundancy, but don't over-compress. 600-1000 words is the target.
+- Keep the 6-section structure: WHAT HAPPENED, WHAT IT MEANS, WHERE THEY DISAGREE, RISKS, WHAT TO WATCH, SCORECARD.
 
-DRAFT:
-$brief_draft" "claude-opus-4-20250514")
+Return ONLY the final brief. No commentary.
+
+DRAFT BRIEF:
+$brief_draft
+
+RAW DATA (for cross-referencing numbers):
+$(head -c 30000 "$FILTERED_FILE")" "claude-opus-4-20250514")
 
 echo "$brief" > "$RUN_DIR/07_daily_brief.md"
 log "  FINAL BRIEF: $(echo "$brief" | wc -w) words"

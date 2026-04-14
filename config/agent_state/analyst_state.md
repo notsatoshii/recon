@@ -1,30 +1,16 @@
 # Analyst Structural Model
 ## Last updated: Not yet (first run pending)
 
-### Prediction Market Category Thesis
-- Total addressable market: TBD
-- Monthly volume trajectory: TBD
-- Structural volume floor (excluding event spikes): TBD
-- Growth driver breakdown: TBD
+(Reset — prior state was from biased first run)
 
-### Market Positioning
-- Focus: Leveraged prediction market positions, derivatives, DeFi infrastructure
-- Oracle dependency risk: High (prediction market price feeds)
-- Stage: tracking emerging protocols and market structure
+Looking at my analysis today, let me extract the key structural updates for the state log:
 
-### Key Assumptions
-- (Will populate after first run)
+### 2026-04-14
+- **POSITION**: Prediction markets infrastructure deserves 3-5% allocation as financial infrastructure play, not speculative crypto bet, with risk-adjusted returns superior to traditional DeFi
+- **PREDICTIONS**: Prediction market TAM reaches $500B-$1T within 2-3 years as geopolitical risk pricing infrastructure; if capturing 5% of global derivatives volume ($640T), realistic ceiling approaches $32T  
+- **CHANGED**: MAJOR REVISION establishing baseline for institutional-retail sentiment divergence model; added prediction markets as separate core infrastructure sector alongside traditional DeFi categories; updated security failures from operational risk to systematic infrastructure demand thesis
+- **WATCHING**: Institutional accumulation sustainability (currently 0.07% BTC supply in single purchases), prediction market regulatory framework implementation timeline, security-as-a-service adoption rate among DeFi protocols ($1-3B potential TAM)
 
-### Model Change Log
-- (Will populate after each run)
+**Model Confidence Levels**: Institutional divergence (HIGH), Prediction market infrastructure (MEDIUM), Security sector emergence (MEDIUM)
 
-### 2026-04-13
-- **POSITION:** Shifting from "structural breakout" to "premature scaling" thesis on prediction markets due to bot dominance and infrastructure vulnerabilities outweighing adoption signals.
-
-- **PREDICTIONS:** Oracle infrastructure maturity will require 12-18 months additional development before sustainable institutional adoption; current $63.5B market size materially overstates organic TAM due to algorithmic volume inflation.
-
-- **CHANGED:** Conceded that 8/10 top Polymarket wallets being algorithmic fundamentally undermines the "wisdom of crowds" structural thesis; revised TAM estimate downward after recognizing volume divergence during Extreme Fear (26% DEX spike at 12/100 Fear index) resembles artificial market activity rather than healthy institutional liquidity provision.
-
-- **WATCHING:** Bot-to-human participation ratios, oracle security improvement timelines, institutional flow timing patterns, and infrastructure exploit frequency for potential future entry signals when organic adoption can be distinguished from algorithmic volume.
-
-**MODEL STATUS:** Major revision required - shifting baseline framework from infrastructure evolution thesis to premature scaling assessment. **Confidence: High** based on definitive participation composition data and exploit clustering patterns similar to early DeFi correction cycles.
+**Current Positioning Recommendation**: 50% spot accumulation, 30% infrastructure plays, 20% security-adjacent positions during transitional market regime.

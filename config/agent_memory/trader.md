@@ -4,29 +4,28 @@
 
 ### Last updated: 2026-04-14
 
+Looking at today's analysis, here are the key trackable items from the data:
+
 ### Tracked Items
-- **Volume/sentiment divergence escalating:** Now 2.1-sigma deviation, DEX +26.2% during Fear 12/100
-- **Critical stop-loss levels:** Prediction market TVL below $400M triggers infrastructure stress threshold  
-- **Current position:** 25% allocation in prediction market infrastructure, max drawdown 8.2%
-- **Circle regulatory backstop:** "No USDC freeze without court order" statement adds institutional confidence
-- **Strategy accumulation:** $1B BTC purchase (13,927 coins, total 800K+) during geopolitical crisis
-- **Stablecoin flow stability:** $165B flat on Ethereum despite Extreme Fear — no panic outflows
-- **Oracle attack surface:** Polkadot exploit proved $1.1B arbitrary value creation capability
-- **Bridge dependency:** 89% of bridge TVL uses Chainlink oracles (systemic failure vector)
+- Strategy Capital BTC accumulation (13,927 BTC = $1B) - monitor ongoing flows
+- Tom Lee fund ETH position (71,524 ETH = $156M) - track institutional buildup  
+- Iran military action deadline: April 17, 2026 (Polymarket 100% probability)
+- Hyperliquid Perps revenue dominance: $1.7M daily vs GMX V2 $71K daily
+- Polymarket International metrics: $161M daily volume, $1M daily fees
+- DPRK infiltration revenue scale: "multiple seven figures monthly" 
+- Base chain security premium driving TVL migration
+- Fear & Greed index extreme reading: 12/100 with 26.2% DEX volume spike
+- Polkadot bridge exploit: $1.1B minted capacity, only $237K extracted (reconnaissance theory)
 
 ### Prior Predictions
-- 2026-04-13: **Volume/sentiment gap closes within 72 hours** - confidence 74% [UPDATED, expires 2026-04-16]
-- 2026-04-14: **Snap-back rally median +8.4% by 2026-04-16** - based on 23 historical precedents [pending]
-- 2026-04-14: **Oracle cascade failure probability 23% in next 90 days** - estimated $8-15B damage [pending]  
-- 2026-04-14: **ATM straddles expiring 2026-04-18** - 4.2:1 risk/reward on vol regime shift [pending]
-- 2026-04-13: **Prediction market infrastructure 3:1 risk/reward on 30-day hold** [expires 2026-05-13, pending]
+- 2026-04-17: Iran military action timeline expires, creating vol opportunity resolution (status: pending)
+- 2026-04-28: BTC/ETH rally from institutional accumulation, 2-3 week timeframe (status: pending)
+- 2026-04-14: Institutional capital flows into prediction market infrastructure (status: pending)
+- 2026-04-14: Coordinated DPRK extraction could cascade DeFi TVL (status: pending, risk)
 
 ### Recurring Themes
-- **Volume/sentiment divergence as alpha signal:** 2-sigma+ anomalies resolve within 72-hour windows
-- **Institutional vs retail flow divergence:** Same dollar amounts ≠ same market impact  
-- **Oracle dependency concentration risk:** Single point of failure across multiple protocols
-- **Prediction market infrastructure maturing:** Tighter spreads than traditional vol products during stress
-- **Geopolitical stress testing:** Nation-state actors probing market infrastructure limits
-- **BTC dominance flight-to-quality:** 57.1% confirms risk-off while DeFi TVL stable at $95B
-
-**Key escalations from today:** The volume/sentiment divergence hit 2.1-sigma (up from 2.0), and I'm now tracking specific oracle cascade failure risk at 23% probability over 90 days. The Strategy BTC accumulation during crisis confirms institutional paradigm shift — this isn't traditional risk-off behavior.
+- Institutional-retail sentiment arbitrage opportunities during fear extremes
+- Prediction market infrastructure misvalued as gambling vs derivatives infrastructure
+- Volume composition analysis reveals true market direction vs surface sentiment
+- Security risk systematically underpriced in DeFi protocols
+- Smart money accumulation patterns during retail panic phases
