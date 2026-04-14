@@ -118,21 +118,31 @@ Each agent accumulates memory across runs (~150 lines): active tracking items, p
 
 ```bash
 git clone git@github.com:notsatoshii/recon.git && cd recon
+./scripts/setup.sh
+```
 
-# Python environment
-python3 -m venv ~/recon-venv && source ~/recon-venv/bin/activate
-pip install playwright pyyaml feedparser requests
-playwright install chromium
+The setup wizard checks dependencies, installs what's missing, and walks you through Telegram configuration:
 
-# Configure Telegram delivery
-cp .env.example ~/.recon.env
-# Edit ~/.recon.env: set RECON_TELEGRAM_TOKEN and RECON_TELEGRAM_CHAT_ID
+```
+    ██████╗ ███████╗ ██████╗  ██████╗ ███╗   ██╗
+    ██╔══██╗██╔════╝██╔════╝██╔═●══██╗████╗  ██║
+    ██████╔╝█████╗  ██║     ██║   ██║██╔██╗ ██║
+    ██╔══██╗██╔══╝  ██║     ██║   ██║██║╚██╗██║
+    ██║  ██║███████╗╚██████╗ ╚█████╔╝██║ ╚████║
+    ╚═╝  ╚═╝╚══════╝ ╚═════╝  ╚════╝ ╚═╝  ╚═══╝
 
-# Run
-./scripts/run_recon.sh                           # Full run (~20 min, ~$3)
+    SYSTEM CHECK
+    ✓ Python 3.12        ✓ Playwright
+    ✓ Claude CLI          ✓ Chromium
+    ✓ Docker              ○ Telegram (setup below)
+```
+
+After setup:
+```bash
+./scripts/run_recon.sh                           # Full run (~20 min)
 ./scripts/run_recon.sh --skip-collect            # Reuse existing data
-./scripts/run_recon.sh --mode ai-digest          # AI Digest (~1 min, ~$0.50)
-./scripts/run_recon.sh --mode fundraising        # Fundraising Radar (~1 min, ~$0.50)
+./scripts/run_recon.sh --mode ai-digest          # AI Digest (~1 min)
+./scripts/run_recon.sh --mode fundraising        # Fundraising Radar (~1 min)
 ```
 
 ### Optional: World Monitor (adds 435+ geopolitical sources)
