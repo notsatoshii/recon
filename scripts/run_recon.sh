@@ -858,7 +858,7 @@ JOB 2 — TONE CHECK:
 - Cut filler and redundancy, but don't over-compress. 600-1000 words is the target.
 - Keep the 6-section structure: WHAT HAPPENED, WHAT IT MEANS, WHERE THEY DISAGREE, RISKS, WHAT TO WATCH, SCORECARD.
 
-Return ONLY the final brief. No commentary.
+CRITICAL: Your response must start with '# RECON DAILY BRIEF' — no preamble, no reasoning, no commentary before or after. Output ONLY the brief itself.
 
 DRAFT BRIEF:
 $brief_draft
