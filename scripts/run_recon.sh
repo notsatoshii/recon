@@ -560,15 +560,16 @@ DEBATE RECORD:
 $debate_summary" "claude-sonnet-4-20250514")
 
     if echo "$deep_dive_decision" | grep -qi "DEEP_DIVE:"; then
-        dd_agents=$(echo "$deep_dive_decision" | grep -oi "DEEP_DIVE: *[a-z_]* vs [a-z_]*" | sed 's/DEEP_DIVE: *//')
-        dd_agent1=$(echo "$dd_agents" | awk '{print $1}' | tr '[:upper:]' '[:lower:]')
-        dd_agent2=$(echo "$dd_agents" | awk '{print $3}' | tr '[:upper:]' '[:lower:]')
-        dd_point=$(echo "$deep_dive_decision" | sed 's/.*on //')
+        dd_agents=$(echo "$deep_dive_decision" | grep -oi "DEEP_DIVE: *[a-z_]* vs [a-z_]*" | sed 's/DEEP_DIVE: *//' || echo "")
+        dd_agent1=$(echo "$dd_agents" | awk '{print $1}' | tr '[:upper:]' '[:lower:]' || echo "")
+        dd_agent2=$(echo "$dd_agents" | awk '{print $3}' | tr '[:upper:]' '[:lower:]' || echo "")
+        dd_point=$(echo "$deep_dive_decision" | sed 's/.*on //' || echo "unknown")
 
         log "  DEEP DIVE: $dd_agent1 vs $dd_agent2 on: $dd_point"
 
-        # Send both agents back for a second round
+        # Send both agents back for a second round (skip if agent names are empty)
         for dd_agent in "$dd_agent1" "$dd_agent2"; do
+            [ -z "$dd_agent" ] && continue
             if [ -f "$RUN_DIR/03_take_${dd_agent}.md" ]; then
                 throttle_wait
                 (
