@@ -231,13 +231,16 @@ recon/
 
 ## Cost
 
-| Product | Per Run | Frequency | Monthly |
-|---------|---------|-----------|---------|
-| Morning Brief | ~$3 | Daily | ~$90 |
-| AI Digest | ~$0.50 | 3x/week | ~$6 |
-| Fundraising Radar | ~$0.50 | Weekly | ~$2 |
-| Alert Monitor | Free | Every 15 min | $0 |
-| **Total** | | | **~$98/month** |
+RECON uses the Claude CLI (`claude -p`) for all LLM calls. If you're on a Claude Max subscription, runs are included — no additional API costs. If using API keys, estimated costs:
+
+| Product | Est. API Cost | Frequency |
+|---------|--------------|-----------|
+| Morning Brief | ~$3 | Daily |
+| AI Digest | ~$0.50 | 3x/week |
+| Fundraising Radar | ~$0.50 | Weekly |
+| Alert Monitor | Free (no LLM) | Every 15 min |
+
+All data collection is free — no API keys required. World Monitor is self-hosted via Docker.
 
 ---
 
