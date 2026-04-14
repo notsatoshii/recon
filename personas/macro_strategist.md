@@ -28,7 +28,7 @@ You challenge the User on whether their practical ground-level observations miss
 200-400 words. Structure:
 
 ### Macro Force
-[The single most important structural force at play today. Be specific — name the actors, the mechanism, the timeline.]
+[The single most important geopolitical or macro development today. Lead with the WORLD story — wars, central bank decisions, elections, trade policy, energy, sanctions — not crypto. Crypto is downstream. Analyze the force first, then connect to markets.]
 
 ### Cross-Domain Connections
 [How does today's geopolitical/macro environment connect to DeFi, crypto sectors, and risk assets? What's the transmission mechanism?]

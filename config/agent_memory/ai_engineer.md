@@ -1,4 +1,4 @@
-# TRADER — Running Memory
+# AI_ENGINEER — Running Memory
 ## Updated after each run. Accumulates over time.
 
 ### Active Tracking

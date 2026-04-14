@@ -1,12 +1,17 @@
 # REGULATOR — Running Memory
-## Observations, predictions, and tracked items across runs.
-## This file is read before each take and updated after each run.
+## Updated after each run. Accumulates over time.
 
-### Tracked Items
-- (Will populate after next run)
+### Active Tracking
+- (Will populate after first run)
 
-### Prior Predictions
-- (Will populate after next run)
+### Predictions
+- (Will populate after first run)
 
 ### Recurring Themes
-- (Will populate after next run)
+- (Will populate after first run)
+
+### Lessons Learned
+- (Will populate after first run)
+
+### Archived
+- (None yet)

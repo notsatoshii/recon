@@ -418,6 +418,51 @@ if "_error" not in ai_prices:
             out.append(f"- {token_id}: ${price:.4f} ({change:+.1f}%) mcap ${mcap:,.0f}")
     out.append("")
 
+# ── RECENT FUNDRAISING ROUNDS (DeFiLlama) ──────────────────
+out.append("## RECENT FUNDRAISING ROUNDS\n")
+raises = get("https://api.llama.fi/raises")
+if isinstance(raises, dict) and "raises" in raises:
+    all_raises = raises["raises"]
+    # Filter last 14 days
+    import time as _time
+    cutoff = _time.time() - (14 * 86400)
+    recent = [r for r in all_raises if r.get("date", 0) > cutoff]
+    recent.sort(key=lambda x: x.get("amount", 0) or 0, reverse=True)
+    if recent:
+        for r in recent[:15]:
+            name = r.get("name", "?")
+            amount = r.get("amount", 0) or 0
+            round_type = r.get("round", "?")
+            category = r.get("category", "?")
+            lead = ", ".join(r.get("leadInvestors", [])[:3]) or "undisclosed"
+            other = ", ".join(r.get("otherInvestors", [])[:3])
+            chains = ", ".join(r.get("chains", [])) or ""
+            amount_str = f"${amount/1e6:.1f}M" if amount >= 1e6 else f"${amount:,.0f}" if amount else "undisclosed"
+            line = f"- {name}: {amount_str} {round_type} [{category}]"
+            if lead != "undisclosed": line += f" | Lead: {lead}"
+            if other: line += f" | Also: {other}"
+            if chains: line += f" | Chains: {chains}"
+            out.append(line)
+        out.append("")
+    else:
+        out.append("No raises in last 14 days.\n")
+elif isinstance(raises, list):
+    import time as _time
+    cutoff = _time.time() - (14 * 86400)
+    recent = [r for r in raises if r.get("date", 0) > cutoff]
+    recent.sort(key=lambda x: x.get("amount", 0) or 0, reverse=True)
+    for r in recent[:15]:
+        name = r.get("name", "?")
+        amount = r.get("amount", 0) or 0
+        round_type = r.get("round", "?")
+        category = r.get("category", "?")
+        lead = ", ".join(r.get("leadInvestors", [])[:3]) or "undisclosed"
+        amount_str = f"${amount/1e6:.1f}M" if amount >= 1e6 else f"${amount:,.0f}" if amount else "undisclosed"
+        out.append(f"- {name}: {amount_str} {round_type} [{category}] | Lead: {lead}")
+    out.append("")
+else:
+    out.append("DeFiLlama raises API unavailable.\n")
+
 # ── DEFI SECTOR OVERVIEW ───────────────────────────────────
 out.append("## DEFI SECTOR (CoinGecko)\n")
 defi = get("https://api.coingecko.com/api/v3/global/decentralized_finance_defi")

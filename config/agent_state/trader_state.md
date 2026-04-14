@@ -10,3 +10,9 @@
 - **WATCHING:** Strategy Capital wallet flows (reversal signal), Base chain TVL migration patterns (security premium thesis), Hyperliquid prediction market launch impact on Polymarket volume share, DPRK coordination signals across compromised protocols
 
 The numbers are screaming institutional accumulation while retail panics - classic asymmetric setup. Positioning: 70% BTC/ETH spot, 20% prediction infrastructure, 10% Base ecosystem. Max drawdown protection: exit if institutional flows reverse or geopolitical timeline extends past April 17.
+
+### 2026-04-14
+- **POSITION**: Long institutional accumulation divergence - 60% BTC/ETH spot riding Strategy Capital's $1B flows vs Fear/Greed index at 12/100, targeting 4:1 risk/reward as smart money overwhelms retail panic
+- **PREDICTIONS**: Iran vol premium exhausts by April 17 resolution (100% probability already priced); Base ecosystem yields normalize from 16.6% premium within 3 weeks; institutional accumulation drives 8-12% returns over 8-12 week timeframe
+- **CHANGED**: Reduced spot allocation from 70% to 40% after missing Trump family extraction narrative impact (847% higher engagement than DEX fundamentals); extended timeline from 3 weeks to 8-12 weeks; added sentiment metrics to exit triggers alongside price levels
+- **WATCHING**: Strategy Capital flow continuity, Iran timeline extension past April 17, Trump narrative resolution/escalation, volume composition shifts in Hyperliquid vs retail platforms, Base TVL migration sustainability

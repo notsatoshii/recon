@@ -11,9 +11,9 @@ PERSONAS="$RECON_HOME/personas"
 source /home/recon/.recon.env
 source "$RECON_HOME/scripts/ask_hermes.sh"
 
-AGENTS=(trader narrator builder analyst skeptic policy_analyst user_agent macro_strategist)
+AGENTS=(trader narrator builder analyst skeptic policy_analyst user_agent macro_strategist ai_engineer)
 ALWAYS_ACTIVE=(skeptic)
-TENSIONS=("trader:narrator" "narrator:trader" "builder:policy_analyst" "policy_analyst:builder" "analyst:skeptic" "skeptic:analyst" "macro_strategist:user_agent" "user_agent:macro_strategist")
+TENSIONS=("trader:narrator" "narrator:trader" "builder:policy_analyst" "policy_analyst:builder" "analyst:skeptic" "skeptic:analyst" "macro_strategist:user_agent" "user_agent:macro_strategist" "ai_engineer:builder" "builder:ai_engineer")
 
 # Max parallel agent calls (keep under API rate limits / memory)
 MAX_PARALLEL=3
@@ -159,7 +159,7 @@ HIST_CONTEXT=""
 
 # Try knowledge database first (richest context)
 if [ -f "$RECON_HOME/config/knowledge.db" ]; then
-    KB_CONTEXT=$(python3 "$RECON_HOME/scripts/knowledge_db.py" context --days 7 2>/dev/null)
+    KB_CONTEXT=$(python3 "$RECON_HOME/scripts/knowledge_db.py" context --days 30 2>/dev/null)
     if [ -n "$KB_CONTEXT" ]; then
         HIST_CONTEXT="$KB_CONTEXT
 "
@@ -278,18 +278,18 @@ $(head -c 2000 "$RUN_DIR/00_scorecard.md")
         fi
 
         take=$(ask_hermes "$PERSONAS/$agent.md" \
-            "${sector_ctx}${extra}${hist}${scorecard_ctx}Analyze today's intelligence package. The data has been processed through:
-- SECTION 1 (SENTIMENT): BettaFish sentiment analysis across social media and news. Overall mood, per-source breakdown, narrative detection, divergences.
-- SECTION 2 (GEOPOLITICAL): World Monitor intelligence from 79 global sources — GDELT events, conflicts, unrest, economic calendar, prediction markets, cyber threats.
-- SECTIONS 3-5: On-chain/market data, news headlines, and social discourse.
+            "CITATION RULE (READ FIRST): Only cite numbers that appear in the INTELLIGENCE PACKAGE below. For claims from social media posts or Reddit threads, prefix with 'reportedly' or 'per social media'. Never present unverified social commentary as confirmed fact. If a number isn't in the data, say 'reportedly' — do NOT invent statistics.
+
+${sector_ctx}${extra}${hist}${scorecard_ctx}Analyze today's intelligence package. The data has been processed through:
+- SECTION 1 (SENTIMENT): BettaFish sentiment analysis across social media and news.
+- SECTION 2 (GEOPOLITICAL): World Monitor intelligence from 79 global sources.
+- SECTIONS 3-5: On-chain/market data, news headlines, social discourse, AI developments.
 
 If historical context is provided, reference yesterday's brief — note what changed, what predictions held, what was wrong. Continuity matters.
 
-Follow your output format. 200-400 words. Be specific — cite data points, name sources, give numbers.
+Follow your output format. 200-400 words. Be specific — cite data points from the package, name sources, give numbers.
 
-IMPORTANT: Cover the most significant development in YOUR domain today. Do NOT default to any single sector. The crypto ecosystem includes BTC, ETH, L1/L2s, DeFi lending, DEXs, stablecoins, derivatives, prediction markets, AI crypto, regulation, and macro. Analyze what matters most TODAY.
-
-CITATION RULE: Every number you cite must come from the intelligence package above. If a data point is not in the package, do NOT invent it. Say 'data not available' instead. Do NOT fabricate statistics, wallet counts, or percentages.
+Cover the most significant development in YOUR domain today. The ecosystem includes: world events, macro economics, crypto/BTC/ETH, DeFi, stablecoins, AI/ML developments, regulation, prediction markets, fundraising, and infrastructure. Analyze what matters most TODAY — don't default to any single sector.
 
 INTELLIGENCE PACKAGE:
 $(head -c 50000 "$FILTERED_FILE")")
@@ -542,23 +542,31 @@ for agent in "${!all_takes[@]}"; do
         (
             sleep 3
             update=$(ask_hermes "$PERSONAS/$agent.md" \
-                "Review your take, the challenges you faced, and your vote from today. Update your running memory file.
+                "Update your running memory file. This memory accumulates over time — don't rewrite it, ADD to it.
 
-Extract ONLY items worth tracking across future runs:
-- New items to watch (specific events, metrics, deadlines)
-- Predictions you made today (with dates, so we can check later)
-- Recurring themes you keep seeing
-- Items from your prior memory that are now resolved or outdated (mark as RESOLVED)
+Rules:
+- Add new items to Active Tracking (things to watch, metrics, deadlines)
+- Add predictions with dates under Predictions (never delete unscored predictions)
+- Update Recurring Themes (what keeps coming up across runs)
+- Add to Lessons Learned if you conceded something today or got something wrong (what happened, why, what you'd do differently)
+- Score any prior predictions that can now be resolved (mark: confirmed/wrong/expired)
+- Archive items older than 60 days as 1-line summaries
 
-Keep it concise — max 20 bullet points total. Output in this format:
-### Tracked Items
+Use EXACTLY this format:
+### Active Tracking
 - [items]
 
-### Prior Predictions
-- [date] [prediction] [status: pending/confirmed/wrong]
+### Predictions
+- [$TODAY] [prediction] [status: pending]
 
 ### Recurring Themes
-- [themes]
+- [theme] — seen Nx
+
+### Lessons Learned
+- [$TODAY] [what happened] [what I learned]
+
+### Archived
+- [date range] [summary]
 
 YOUR TAKE TODAY:
 ${all_takes[$agent]}
@@ -567,15 +575,24 @@ YOUR VOTE TODAY:
 ${all_votes[$agent]:-none}
 
 YOUR CURRENT MEMORY:
-$(tail -30 "$memory_file")" "claude-sonnet-4-20250514")
+$(cat "$memory_file")" "claude-sonnet-4-20250514")
 
-            # Replace memory content (keep header)
-            head -3 "$memory_file" > "${memory_file}.tmp"
-            echo "" >> "${memory_file}.tmp"
-            echo "### Last updated: $TODAY" >> "${memory_file}.tmp"
-            echo "" >> "${memory_file}.tmp"
-            echo "$update" >> "${memory_file}.tmp"
-            mv "${memory_file}.tmp" "$memory_file"
+            # Append update to memory (don't replace)
+            echo "" >> "$memory_file"
+            echo "### Last updated: $TODAY" >> "$memory_file"
+            echo "" >> "$memory_file"
+            echo "$update" >> "$memory_file"
+
+            # Trim if over 150 lines (keep header + last 140 lines)
+            mem_lines=$(wc -l < "$memory_file")
+            if [ "$mem_lines" -gt 150 ]; then
+                head -2 "$memory_file" > "${memory_file}.tmp"
+                echo "" >> "${memory_file}.tmp"
+                echo "### [older entries archived]" >> "${memory_file}.tmp"
+                echo "" >> "${memory_file}.tmp"
+                tail -140 "$memory_file" >> "${memory_file}.tmp"
+                mv "${memory_file}.tmp" "$memory_file"
+            fi
         ) &
     fi
 
@@ -612,12 +629,12 @@ ${all_votes[$agent]:-none}" "claude-sonnet-4-20250514")
 
             # Trim if too long (keep header + last 80 lines)
             state_lines=$(wc -l < "$state_file")
-            if [ "$state_lines" -gt 100 ]; then
+            if [ "$state_lines" -gt 200 ]; then
                 head -5 "$state_file" > "${state_file}.tmp"
                 echo "" >> "${state_file}.tmp"
                 echo "### [older entries trimmed]" >> "${state_file}.tmp"
                 echo "" >> "${state_file}.tmp"
-                tail -60 "$state_file" >> "${state_file}.tmp"
+                tail -150 "$state_file" >> "${state_file}.tmp"
                 mv "${state_file}.tmp" "$state_file"
             fi
         ) &
@@ -718,7 +735,11 @@ Use EXACTLY this format — 6 sections:
 - WHAT TO WATCH (3-5 concrete things to monitor this week, with dates.)
 - SCORECARD (Score yesterday's predictions. Be honest.)
 
-HALLUCINATION CHECK: If an agent cites a specific number (wallet count, percentage, dollar figure) that does NOT appear in the raw data sections of the debate record, mark it [unverified] or drop it entirely. Only pass through numbers that trace back to actual data sources.
+HALLUCINATION CHECK:
+- If an agent cites a number that appears in the on-chain/market data sections, use it as fact.
+- If a claim comes from Reddit posts or Twitter, attribute it: 'per social media', 'reportedly', 'Reddit users claim'.
+- If a number doesn't trace to any data source, mark it [unverified] or drop it.
+- NEVER present social media commentary as verified intelligence.
 
 $record" "claude-opus-4-20250514")
 
