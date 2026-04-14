@@ -122,11 +122,33 @@ async def main():
                     if href and not href.startswith("http"):
                         href = f"https://www.rootdata.com{href}" if href.startswith("/") else ""
 
+                    # Clean up the pipe-delimited RootData format into readable text
+                    clean = text
+                    # Parse: "ProjectName | Round $XM -- | Date | | Investor1 | * | Investor2 | +N"
+                    parts = [p.strip() for p in text.split("|")]
+                    if len(parts) >= 3:
+                        project = parts[0].strip()
+                        round_info = parts[1].strip().replace("\t", " ").strip()
+                        date_info = ""
+                        investors = []
+                        for p in parts[2:]:
+                            p = p.strip()
+                            if not p or p == "*" or p == "--":
+                                continue
+                            if "Apr" in p or "Mar" in p or "Feb" in p or "Jan" in p:
+                                date_info = p
+                            elif p.startswith("+"):
+                                investors.append(p)
+                            elif len(p) > 1:
+                                investors.append(p)
+                        inv_str = ", ".join(investors) if investors else "undisclosed"
+                        clean = f"{project} — {round_info} ({date_info}) | Investors: {inv_str}"
+
                     if href:
-                        lines.append(f"- {text}")
+                        lines.append(f"- {clean}")
                         lines.append(f"  Source: {href}")
                     else:
-                        lines.append(f"- {text}")
+                        lines.append(f"- {clean}")
                 lines.append("")
                 print(f"  Extracted {len(seen)} fundraising entries")
             else:

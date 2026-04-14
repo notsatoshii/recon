@@ -369,7 +369,11 @@ $(head -c 2000 "$RUN_DIR/00_scorecard.md")
         fi
 
         take=$(ask_hermes "$PERSONAS/$agent.md" \
-            "CITATION RULE (READ FIRST): Only cite numbers that appear in the INTELLIGENCE PACKAGE below. For claims from social media posts or Reddit threads, prefix with 'reportedly' or 'per social media'. Never present unverified social commentary as confirmed fact. If a number isn't in the data, say 'reportedly' — do NOT invent statistics.
+            "CITATION RULE (READ FIRST):
+1. Only cite numbers that appear in TODAY'S INTELLIGENCE PACKAGE below.
+2. Do NOT cite numbers from your memory or prior runs as current fact. Your memory is context, not today's data.
+3. For claims from social media posts or Reddit threads, prefix with 'reportedly' or 'per social media'.
+4. If a specific number isn't in the data package, say 'reportedly' or omit it. Never invent statistics.
 
 ${sector_ctx}${extra}${hist}${scorecard_ctx}Analyze today's intelligence package. The data has been processed through:
 - SECTION 1 (SENTIMENT): BettaFish sentiment analysis across social media and news.
@@ -818,19 +822,19 @@ Write like a smart colleague explaining what happened overnight — not like an 
 
 $env_classification
 
-Use EXACTLY this format — 6 sections:
-- WHAT HAPPENED (4-5 sentences. Key developments with numbers. Write like you're catching someone up over coffee.)
-- WHAT IT MEANS (2-3 key takeaways from the debate. For each: what it is, why it matters, where agents agreed/disagreed. Spend 2-3 sentences per insight explaining the 'so what'. This is analysis, not bullet points.)
-- WHERE THEY DISAGREE (The most interesting split. Who said what and why. Uncertainty is information.)
-- RISKS (Top 2-3. Plain language, not formatted tables. How likely, how bad, why it matters.)
-- WHAT TO WATCH (3-5 concrete things to monitor this week, with dates.)
-- SCORECARD (Score yesterday's predictions. Be honest.)
+Use EXACTLY this format — 7 sections:
+- WHAT HAPPENED (4-5 SHORT sentences, one per line. World events first, then markets, then crypto, then AI/tech. NOT a wall of text.)
+- WHAT IT MEANS (2-3 key takeaways. Must include at least one AI/tech insight from the AI Engineer if they flagged something. Spend 2-3 sentences per insight on the 'so what'.)
+- MARKET MOOD (2-3 actual quotes from Twitter/Reddit via the BettaFish sentiment section. Real voices showing what the market is saying. Include @handle or r/subreddit.)
+- WHERE THEY DISAGREE (The most interesting split — must be a DIFFERENT topic from WHAT IT MEANS. Don't repeat the same debate.)
+- RISKS (Top 2-3. Plain language. How likely, how bad.)
+- WHAT TO WATCH (3-5 concrete things with specific dates.)
+- SCORECARD (Score predictions with hard verdicts: RIGHT, WRONG, or PENDING with expiry date. No hedging.)
 
 HALLUCINATION CHECK:
-- If an agent cites a number that appears in the on-chain/market data sections, use it as fact.
-- If a claim comes from Reddit posts or Twitter, attribute it: 'per social media', 'reportedly', 'Reddit users claim'.
-- If a number doesn't trace to any data source, mark it [unverified] or drop it.
-- NEVER present social media commentary as verified intelligence.
+- Only use numbers from TODAY's raw data sections. Agents sometimes repeat claims from prior runs — verify against the intelligence package.
+- If a claim comes from Reddit/Twitter, attribute it with the source.
+- If a number doesn't trace to any data source, mark [unverified] or drop it.
 
 $record" "claude-opus-4-20250514")
 
