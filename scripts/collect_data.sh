@@ -584,6 +584,87 @@ PYNEWS
 
 log "  News: $(wc -l < "$DATA_DIR/news/latest.md" 2>/dev/null || echo FAILED) lines"
 
+# ─── AI/TOOLS (GitHub Trending + Hacker News) ──────────────
+
+log "Collecting AI/tools data..."
+mkdir -p "$DATA_DIR/ai_tools"
+
+python3 << 'PYAITOOLS'
+import json, urllib.request
+from datetime import datetime, timedelta
+
+out = [f"# AI & Tools Intelligence\n## {datetime.now().strftime('%Y-%m-%d %H:%M UTC')}\n"]
+
+def get(url, timeout=15):
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": "RECON/1.0", "Accept": "application/vnd.github.v3+json"})
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            return json.loads(r.read().decode())
+    except Exception as e:
+        return {"_error": str(e)}
+
+# ── GITHUB TRENDING (AI/ML repos, last 7 days) ────────────
+out.append("## GITHUB TRENDING (AI/ML, last 7 days)\n")
+week_ago = (datetime.now() - timedelta(days=7)).strftime("%Y-%m-%d")
+gh = get(f"https://api.github.com/search/repositories?q=created:>{week_ago}+topic:ai+topic:machine-learning+stars:>50&sort=stars&order=desc&per_page=10")
+if "_error" not in gh and "items" in gh:
+    for repo in gh.get("items", [])[:10]:
+        name = repo.get("full_name", "?")
+        desc = (repo.get("description") or "")[:120]
+        stars = repo.get("stargazers_count", 0)
+        lang = repo.get("language", "?")
+        url = repo.get("html_url", "")
+        out.append(f"- [{name}]({url}) -- {stars} stars [{lang}]")
+        if desc: out.append(f"  {desc}")
+    out.append("")
+else:
+    # Fallback: search for recent popular AI repos
+    gh2 = get(f"https://api.github.com/search/repositories?q=ai+llm+agent+created:>{week_ago}&sort=stars&order=desc&per_page=10")
+    if "_error" not in gh2 and "items" in gh2:
+        for repo in gh2.get("items", [])[:10]:
+            name = repo.get("full_name", "?")
+            desc = (repo.get("description") or "")[:120]
+            stars = repo.get("stargazers_count", 0)
+            url = repo.get("html_url", "")
+            out.append(f"- [{name}]({url}) -- {stars} stars")
+            if desc: out.append(f"  {desc}")
+        out.append("")
+    else:
+        out.append("GitHub API unavailable.\n")
+
+# ── HACKER NEWS TOP (AI/tech relevant) ────────────────────
+out.append("## HACKER NEWS TOP STORIES\n")
+hn_top = get("https://hacker-news.firebaseio.com/v0/topstories.json")
+if isinstance(hn_top, list):
+    ai_keywords = ["ai", "llm", "gpt", "claude", "openai", "anthropic", "model", "agent", "transformer",
+                   "machine learning", "neural", "gpu", "inference", "fine-tune", "rag", "vector",
+                   "crypto", "blockchain", "defi", "bitcoin", "ethereum"]
+    count = 0
+    for story_id in hn_top[:50]:
+        if count >= 10: break
+        story = get(f"https://hacker-news.firebaseio.com/v0/item/{story_id}.json")
+        if isinstance(story, dict) and story.get("title"):
+            title = story["title"]
+            title_lower = title.lower()
+            # Include if AI/tech/crypto related
+            if any(kw in title_lower for kw in ai_keywords) or count < 5:
+                url = story.get("url", f"https://news.ycombinator.com/item?id={story_id}")
+                score = story.get("score", 0)
+                comments = story.get("descendants", 0)
+                out.append(f"- [{title}]({url})")
+                out.append(f"  {score} points, {comments} comments")
+                count += 1
+    out.append("")
+else:
+    out.append("HN API unavailable.\n")
+
+with open("/home/recon/recon/data-sources/ai_tools/latest.md", "w") as f:
+    f.write("\n".join(out))
+print(f"AI/Tools: {len(out)} lines")
+PYAITOOLS
+
+log "  AI/Tools: $(wc -l < "$DATA_DIR/ai_tools/latest.md" 2>/dev/null || echo FAILED) lines"
+
 # ═══════════════════════════════════════════════════════════
 # LAYER 1 COMPLETE: Raw data collected
 # Now run processing layers before assembling final package
@@ -600,7 +681,7 @@ echo "# RAW DATA -- $TODAY" > "$RAW_PKG"
 echo "## Collected: $(date +'%H:%M:%S %Z')" >> "$RAW_PKG"
 echo "" >> "$RAW_PKG"
 
-for src in reddit twitter onchain news; do
+for src in reddit twitter onchain news ai_tools; do
     [ -f "$DATA_DIR/$src/latest.md" ] && {
         echo "---" >> "$RAW_PKG"
         echo "" >> "$RAW_PKG"

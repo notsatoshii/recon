@@ -20,10 +20,21 @@ MAX_PARALLEL=3
 
 # Parse flags
 SKIP_COLLECT=false
+MODE="brief"  # brief (default), ai-digest, fundraising
 for arg in "$@"; do
     case "$arg" in
         --skip-collect) SKIP_COLLECT=true ;;
+        --mode) :;; # value handled below
+        ai-digest|--mode=ai-digest) MODE="ai-digest" ;;
+        fundraising|--mode=fundraising) MODE="fundraising" ;;
     esac
+done
+# Handle --mode value as next arg
+for i in $(seq 1 $#); do
+    if [ "${!i}" = "--mode" ]; then
+        next=$((i+1))
+        [ -n "${!next:-}" ] && MODE="${!next}"
+    fi
 done
 
 mkdir -p "$RUN_DIR" "$(dirname "$LOG_FILE")"
@@ -201,6 +212,65 @@ log "PHASE 0.5: Preparing data for agents..."
 FILTERED="$DATA"
 echo "$FILTERED" > "$RUN_DIR/01_filtered.md"
 log "  Data package: $(echo "$FILTERED" | wc -c) bytes (passthrough, no filter)"
+
+# ─── LIGHTWEIGHT MODE BRANCH ──────────────────────────────
+# For ai-digest and fundraising modes, skip the full debate pipeline.
+# Instead: filter relevant data -> single synthesis call -> deliver.
+if [ "$MODE" != "brief" ]; then
+    log "MODE: $MODE (lightweight pipeline)"
+    FILTERED_FILE="$RUN_DIR/01_filtered.md"
+
+    if [ "$MODE" = "ai-digest" ]; then
+        SYNTH_PERSONA="$PERSONAS/synthesizer_ai.md"
+        MODE_LABEL="AI DIGEST"
+        # Focus on AI/tools data
+        MODE_DATA="$(cat "$DATA_DIR/ai_tools/latest.md" 2>/dev/null)
+
+$(grep -A 5000 "AI & TECH NEWS" "$DATA_DIR/news/latest.md" 2>/dev/null || echo "")
+
+$(grep -A 5000 "AI x CRYPTO TOKENS" "$DATA_DIR/onchain/latest.md" 2>/dev/null || echo "")
+
+$(grep -A 5000 "ai_crypto\|ai_tech" "$DATA_DIR/twitter/latest.md" 2>/dev/null || echo "")"
+    elif [ "$MODE" = "fundraising" ]; then
+        SYNTH_PERSONA="$PERSONAS/synthesizer_fundraising.md"
+        MODE_LABEL="FUNDRAISING RADAR"
+        # Focus on fundraising + VC data
+        MODE_DATA="$(grep -A 5000 "RECENT FUNDRAISING ROUNDS" "$DATA_DIR/onchain/latest.md" 2>/dev/null || echo "")
+
+$(grep -A 5000 "vc_institutional" "$DATA_DIR/twitter/latest.md" 2>/dev/null || echo "")
+
+$(grep -A 5000 "PREDICTION MARKET PROTOCOLS" "$DATA_DIR/onchain/latest.md" 2>/dev/null || echo "")"
+    fi
+
+    log "  $MODE_LABEL data: $(echo "$MODE_DATA" | wc -c) bytes"
+
+    # Single analysis pass: extract + filter relevant items
+    sleep 3
+    analysis=$(ask_hermes "$SYNTH_PERSONA" \
+        "Produce the RECON $MODE_LABEL. Include source links for EVERY item.
+
+TODAY: $TODAY
+
+DATA:
+$(echo "$MODE_DATA" | head -c 40000)" "claude-opus-4-20250514")
+
+    echo "$analysis" > "$RUN_DIR/07_${MODE}_output.md"
+    log "  $MODE_LABEL: $(echo "$analysis" | wc -w) words"
+
+    # Deliver
+    send_telegram "$analysis"
+    log "$MODE_LABEL delivered to Telegram"
+
+    # Archive
+    ARCHIVE_DIR="$RECON_HOME/archive/$TODAY"
+    mkdir -p "$ARCHIVE_DIR"
+    cp "$RUN_DIR/07_${MODE}_output.md" "$ARCHIVE_DIR/${MODE}.md" 2>/dev/null
+
+    log "=============================================="
+    log "RECON $MODE_LABEL COMPLETE in $((SECONDS/60))m $((SECONDS%60))s"
+    log "=============================================="
+    exit 0
+fi
 
 # ─── PHASE 2: ALL AGENTS ACTIVE ───────────────────────────
 # Every agent participates every day. No sit-outs — every perspective matters.
