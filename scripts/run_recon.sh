@@ -221,26 +221,44 @@ if [ "$MODE" != "brief" ]; then
     log "MODE: $MODE (lightweight pipeline)"
     FILTERED_FILE="$RUN_DIR/01_filtered.md"
 
+    # Always include BettaFish sentiment — it analyzes Twitter/Reddit/news
+    BETTAFISH_DATA="$(cat "$DATA_DIR/bettafish/latest.md" 2>/dev/null || echo "")"
+
     if [ "$MODE" = "ai-digest" ]; then
         SYNTH_PERSONA="$PERSONAS/synthesizer_ai.md"
         MODE_LABEL="AI DIGEST"
-        # Focus on AI/tools data
+        # AI tools + AI news + AI Twitter + AI tokens + sentiment
         MODE_DATA="$(cat "$DATA_DIR/ai_tools/latest.md" 2>/dev/null)
 
 $(grep -A 5000 "AI & TECH NEWS" "$DATA_DIR/news/latest.md" 2>/dev/null || echo "")
 
 $(grep -A 5000 "AI x CRYPTO TOKENS" "$DATA_DIR/onchain/latest.md" 2>/dev/null || echo "")
 
-$(grep -A 5000 "ai_crypto\|ai_tech" "$DATA_DIR/twitter/latest.md" 2>/dev/null || echo "")"
+## TWITTER — AI ACCOUNTS
+$(grep -A 5000 "ai_crypto\|ai_tech\|AI" "$DATA_DIR/twitter/latest.md" 2>/dev/null | head -c 15000)
+
+## SENTIMENT ANALYSIS
+$BETTAFISH_DATA"
+
     elif [ "$MODE" = "fundraising" ]; then
         SYNTH_PERSONA="$PERSONAS/synthesizer_fundraising.md"
         MODE_LABEL="FUNDRAISING RADAR"
-        # Focus on fundraising + VC data
-        MODE_DATA="$(grep -A 5000 "RECENT FUNDRAISING ROUNDS" "$DATA_DIR/onchain/latest.md" 2>/dev/null || echo "")
+        # Fundraising rounds + VC Twitter + market data + sentiment + news
+        # Note: DeFiLlama raises is paywalled. Primary sources are Twitter + news + BettaFish.
+        MODE_DATA="## ON-CHAIN MARKET DATA
+$(cat "$DATA_DIR/onchain/latest.md" 2>/dev/null | head -c 10000)
 
-$(grep -A 5000 "vc_institutional" "$DATA_DIR/twitter/latest.md" 2>/dev/null || echo "")
+## TWITTER — VC & INSTITUTIONAL ACCOUNTS
+$(grep -A 5000 "vc_institutional\|VC_INSTITUTIONAL" "$DATA_DIR/twitter/latest.md" 2>/dev/null | head -c 15000)
 
-$(grep -A 5000 "PREDICTION MARKET PROTOCOLS" "$DATA_DIR/onchain/latest.md" 2>/dev/null || echo "")"
+## TWITTER — CRYPTO TRADING & NARRATIVE
+$(grep -A 5000 "ct_narrative\|crypto_trading" "$DATA_DIR/twitter/latest.md" 2>/dev/null | head -c 10000)
+
+## NEWS
+$(cat "$DATA_DIR/news/latest.md" 2>/dev/null | head -c 8000)
+
+## SENTIMENT ANALYSIS (BettaFish — Twitter/Reddit/News analyzed)
+$BETTAFISH_DATA"
     fi
 
     log "  $MODE_LABEL data: $(echo "$MODE_DATA" | wc -c) bytes"

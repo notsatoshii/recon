@@ -418,8 +418,9 @@ if "_error" not in ai_prices:
             out.append(f"- {token_id}: ${price:.4f} ({change:+.1f}%) mcap ${mcap:,.0f}")
     out.append("")
 
-# ── RECENT FUNDRAISING ROUNDS (DeFiLlama) ──────────────────
+# ── RECENT FUNDRAISING ROUNDS ───────────────────────────────
 out.append("## RECENT FUNDRAISING ROUNDS\n")
+# DeFiLlama raises endpoint (may be paywalled)
 raises = get("https://api.llama.fi/raises")
 if isinstance(raises, dict) and "raises" in raises:
     all_raises = raises["raises"]
