@@ -14,30 +14,67 @@ NC='\033[0m'
 
 clear
 
-# Animated intro
-sleep 0.3
+# Animated eye function
+draw_banner() {
+    local eye="$1"
+    echo -e "${CYAN}"
+    echo "    ██████╗ ███████╗ ██████╗  ██████╗ ███╗   ██╗"
+    echo "    ██╔══██╗██╔════╝██╔════╝██╔════██╗████╗  ██║"
+    echo "    ██████╔╝█████╗  ██║     ██║ ${eye} ██║██╔██╗ ██║"
+    echo "    ██╔══██╗██╔══╝  ██║     ██║    ██║██║╚██╗██║"
+    echo "    ██║  ██║███████╗╚██████╗╚██████╔╝██║ ╚████║"
+    echo "    ╚═╝  ╚═╝╚══════╝ ╚═════╝ ╚═════╝ ╚═╝  ╚═══╝"
+    echo -e "${NC}"
+}
+
+# Boot sequence with animated eye
+clear
 echo -e "${DIM}"
 echo "    Initializing secure channels..."
-sleep 0.5
-echo "    Establishing data links..."
 sleep 0.4
+echo "    Establishing data links..."
+sleep 0.3
 echo "    Activating agent protocols..."
-sleep 0.5
+sleep 0.4
 echo -e "${NC}"
+
+# Eye animation: closed → opening → looking around → locked on
 clear
-
-# Main banner
-echo -e "${CYAN}"
-cat << 'BANNER'
-
-    ██████╗ ███████╗ ██████╗  ██████╗ ███╗   ██╗
-    ██╔══██╗██╔════╝██╔════╝██╔═●══██╗████╗  ██║
-    ██████╔╝█████╗  ██║     ██║   ██║██╔██╗ ██║
-    ██╔══██╗██╔══╝  ██║     ██║   ██║██║╚██╗██║
-    ██║  ██║███████╗╚██████╗ ╚█████╔╝██║ ╚████║
-    ╚═╝  ╚═╝╚══════╝ ╚═════╝  ╚════╝ ╚═╝  ╚═══╝
-
-BANNER
+draw_banner "──"     # closed
+sleep 0.3
+clear
+draw_banner "━━"     # squinting
+sleep 0.2
+clear
+draw_banner "◠◠"     # half open
+sleep 0.2
+clear
+draw_banner "◉ "     # open, looking left
+sleep 0.3
+clear
+draw_banner " ◉"     # looking right
+sleep 0.3
+clear
+draw_banner "◉ "     # looking left
+sleep 0.2
+clear
+draw_banner " ◉"     # looking right
+sleep 0.2
+clear
+draw_banner "◎ "     # scanning
+sleep 0.15
+clear
+draw_banner " ◎"     # scanning
+sleep 0.15
+clear
+draw_banner "◉ "     # back left
+sleep 0.15
+clear
+draw_banner "◉◉"     # LOCK ON — both pupils center
+sleep 0.1
+clear
+draw_banner "⦿⦿"     # LOCKED — target acquired
+sleep 0.5
 echo -e "${NC}"
 echo -e "${DIM}    Multi-Agent Intelligence System${NC}"
 echo -e "${DIM}    500+ sources. 9 analysts. 3 products.${NC}"
