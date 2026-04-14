@@ -49,6 +49,24 @@ async def main():
             await page.goto(URL, wait_until="domcontentloaded", timeout=30000)
             await page.wait_for_timeout(CF_WAIT * 1000)
 
+            # Check for captcha/verification
+            content = await page.content()
+            if "Slide to complete" in content or "Verification" in content:
+                print("  Captcha detected, waiting 8s and retrying...")
+                await page.wait_for_timeout(8000)
+                await page.reload(wait_until="domcontentloaded", timeout=30000)
+                await page.wait_for_timeout(5000)
+                content = await page.content()
+                if "Slide to complete" in content:
+                    print("  Captcha still present. Using cached data if available.")
+                    # Fall back to cached file
+                    if OUTPUT_FILE.exists() and OUTPUT_FILE.stat().st_size > 200:
+                        print(f"  Using cached fundraising data ({OUTPUT_FILE.stat().st_size} bytes)")
+                        await browser.close()
+                        return
+                    else:
+                        raise Exception("Captcha blocked and no cached data")
+
             # Wait for the fundraising table to load
             try:
                 await page.wait_for_selector("table, .fundraising-list, .list-item, [class*='fund'], [class*='raise']", timeout=15000)

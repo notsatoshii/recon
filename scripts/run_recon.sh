@@ -823,14 +823,16 @@ Write like a smart colleague explaining what happened overnight — not like an 
 
 $env_classification
 
+CRITICAL: Do NOT mention agent names (Trader, Skeptic, Builder, etc.) in the output. Do NOT reference debates, concessions, challenges, or convergence. The reader should have no idea this was produced by agents. Present conclusions as direct analysis.
+
 Use EXACTLY this format — 7 sections:
-- WHAT HAPPENED (4-5 SHORT sentences, one per line. World events first, then markets, then crypto, then AI/tech. NOT a wall of text.)
-- WHAT IT MEANS (2-3 key takeaways. Must include at least one AI/tech insight from the AI Engineer if they flagged something. Spend 2-3 sentences per insight on the 'so what'.)
-- MARKET MOOD (2-3 actual quotes from Twitter/Reddit via the BettaFish sentiment section. Real voices showing what the market is saying. Include @handle or r/subreddit.)
-- WHERE THEY DISAGREE (The most interesting split — must be a DIFFERENT topic from WHAT IT MEANS. Don't repeat the same debate.)
+- WHAT HAPPENED (4-5 SHORT sentences, one per line. World events first, then markets, then crypto, then AI/tech.)
+- WHAT IT MEANS (2-3 key insights presented as direct analysis. Include AI/tech if noteworthy. Say 'the data suggests...' not 'agents agreed...')
+- MARKET MOOD (2-3 actual quotes from Twitter/Reddit via BettaFish. Include @handle or r/subreddit.)
+- THE CONTRARIAN CASE (The strongest argument against the consensus. What could go wrong? Frame as analysis, not 'Agent X disagreed.')
 - RISKS (Top 2-3. Plain language. How likely, how bad.)
 - WHAT TO WATCH (3-5 concrete things with specific dates.)
-- SCORECARD (Score predictions with hard verdicts: RIGHT, WRONG, or PENDING with expiry date. No hedging.)
+- SCORECARD (Score predictions: RIGHT, WRONG, or PENDING with expiry date. No hedging.)
 
 HALLUCINATION CHECK:
 - Only use numbers from TODAY's raw data sections. Agents sometimes repeat claims from prior runs — verify against the intelligence package.
