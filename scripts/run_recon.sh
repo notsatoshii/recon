@@ -249,7 +249,7 @@ $(grep -A 5000 "AI & TECH NEWS" "$DATA_DIR/news/latest.md" 2>/dev/null || echo "
 $(grep -A 5000 "AI x CRYPTO TOKENS" "$DATA_DIR/onchain/latest.md" 2>/dev/null || echo "")
 
 ## TWITTER — AI ACCOUNTS
-$(grep -A 5000 "ai_crypto\|ai_tech\|AI" "$DATA_DIR/twitter/latest.md" 2>/dev/null | head -c 15000)
+$(grep -A 5000 "^## AI CRYPTO\|^## AI TECH" "$DATA_DIR/twitter/latest.md" 2>/dev/null | head -c 15000 || true)
 
 ## SENTIMENT ANALYSIS
 $BETTAFISH_DATA"
@@ -262,16 +262,16 @@ $BETTAFISH_DATA"
 $(cat "$DATA_DIR/fundraising/latest.md" 2>/dev/null || echo "No RootData scrape available")
 
 ## ON-CHAIN MARKET DATA
-$(cat "$DATA_DIR/onchain/latest.md" 2>/dev/null | head -c 10000)
+$(cat "$DATA_DIR/onchain/latest.md" 2>/dev/null | head -c 10000 || true)
 
 ## TWITTER — VC & INSTITUTIONAL ACCOUNTS
-$(grep -A 5000 "vc_institutional\|VC_INSTITUTIONAL" "$DATA_DIR/twitter/latest.md" 2>/dev/null | head -c 15000)
+$(grep -A 5000 "^## VC INSTITUTIONAL" "$DATA_DIR/twitter/latest.md" 2>/dev/null | head -c 15000 || true)
 
 ## TWITTER — CRYPTO TRADING & NARRATIVE
-$(grep -A 5000 "ct_narrative\|crypto_trading" "$DATA_DIR/twitter/latest.md" 2>/dev/null | head -c 10000)
+$(grep -A 5000 "^## CT NARRATIVE\|^## CRYPTO TRADING" "$DATA_DIR/twitter/latest.md" 2>/dev/null | head -c 10000 || true)
 
 ## NEWS
-$(cat "$DATA_DIR/news/latest.md" 2>/dev/null | head -c 8000)
+$(cat "$DATA_DIR/news/latest.md" 2>/dev/null | head -c 8000 || true)
 
 ## SENTIMENT ANALYSIS (BettaFish — Twitter/Reddit/News analyzed)
 $BETTAFISH_DATA"
@@ -287,7 +287,7 @@ $BETTAFISH_DATA"
 TODAY: $TODAY
 
 DATA:
-$(echo "$MODE_DATA" | head -c 40000)" "claude-opus-4-20250514")
+$(echo "$MODE_DATA" | head -c 40000 || true)" "claude-opus-4-20250514")
 
     echo "$analysis" > "$RUN_DIR/07_${MODE}_output.md"
     log "  $MODE_LABEL: $(echo "$analysis" | wc -w) words"
