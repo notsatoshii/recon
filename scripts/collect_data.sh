@@ -61,6 +61,9 @@ for cat, subs in SUBS.items():
                 for e in entries:
                     title_el = e.find("atom:title", NS)
                     title = title_el.text[:180] if title_el is not None and title_el.text else "?"
+                    # Extract Reddit URL
+                    link_el = e.find("atom:link", NS)
+                    post_url = link_el.get("href", "") if link_el is not None else ""
                     # Extract text content from HTML summary if available
                     content_el = e.find("atom:content", NS)
                     summary = ""
@@ -70,7 +73,10 @@ for cat, subs in SUBS.items():
                         text = re.sub(r'\s+', ' ', text).strip()[:150]
                         if text and text != title:
                             summary = text
-                    lines.append(f"- {title}")
+                    line = f"- {title}"
+                    if post_url:
+                        line += f" {post_url}"
+                    lines.append(line)
                     if summary:
                         lines.append(f"  {summary}")
                 lines.append("")

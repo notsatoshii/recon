@@ -93,12 +93,20 @@ async def scrape_profile(context, handle: str) -> list:
                         except (ValueError, AttributeError):
                             stats[stat_type] = 0
 
-                # Timestamp
+                # Timestamp + tweet URL
                 time_el = await item.query_selector(".tweet-date a")
                 timestamp = ""
+                tweet_url = ""
                 if time_el:
                     title = await time_el.get_attribute("title") or ""
                     timestamp = title[:16]
+                    href = await time_el.get_attribute("href") or ""
+                    # Convert nitter path /handle/status/123 to x.com URL
+                    if "/status/" in href:
+                        # Strip nitter prefix and #m suffix, keep /handle/status/id
+                        path = href.split("#")[0]
+                        if path.startswith("/"):
+                            tweet_url = f"https://x.com{path}"
 
                 # Check if retweet
                 is_rt = False
@@ -114,6 +122,7 @@ async def scrape_profile(context, handle: str) -> list:
                         "replies": stats.get("replies", 0),
                         "time": timestamp,
                         "is_rt": is_rt,
+                        "url": tweet_url,
                     })
 
             except Exception:
@@ -194,7 +203,9 @@ def format_tweet(t: dict, include_user: bool = False) -> str:
     text = t.get("text", "").replace("\n", " ").strip()[:300]
     time_str = f"[{t['time']}] " if t.get("time") else ""
     rt_tag = "[RT] " if t.get("is_rt") else ""
-    return f"- {time_str}({engagement}) {rt_tag}{prefix}{text}"
+    url = t.get("url", "")
+    url_str = f" {url}" if url else ""
+    return f"- {time_str}({engagement}) {rt_tag}{prefix}{text}{url_str}"
 
 
 async def main():
