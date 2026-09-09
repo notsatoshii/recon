@@ -22,18 +22,14 @@ Read in order:
 - Python orchestrator.
 - World Monitor stays optional.
 
-## Decisions still needed from Eric
+## Decisions taken by Claude on Eric's delegation (2026-09-10, "can you do it yourself")
 
-1. **Desk split** (plan §3): eleven personas across a shared layer, a Lever desk, and an
-   InnovLabs desk, with triage choosing the day's active set. Yes, or a different cut?
-2. **Products** (plan §2): Daily Brief + weekly Lever Radar + Mon/Wed/Fri InnovLabs Digest.
-   Keep the fundraising radar as part of Lever Radar, or as its own product?
-3. **Lever context**: may the `risk_engineer` persona and `context/lever_context.md` quote
-   from Lever's private docs on the droplet (`RISK_MODEL.md`, `ORACLE.md`, `FEE_MODEL.md`)? They
-   would live in the recon repo, which is public on GitHub. If not, the context stays in
-   `state/` (gitignored) and only a redacted summary is committed.
-4. **Widget placement**: a panel on `brain.html` (as planned) or a separate `recon.html` page
-   in RUBRIC with its own board? A panel is faster; a page gives the debate graph room.
-5. **Lever inbox**: drop the Lever Radar into `/home/lever/command/inbox` for Timmy?
-6. **Phase 0**: run `codex login --device-auth` on the droplet when ready. Everything after
-   that is Claude's work until the Phase 1 stop.
+1. **Desk split**: as in plan §3 (shared layer + Lever desk + InnovLabs desk, triage picks the day's set).
+2. **Products**: Daily Brief, weekly Lever Radar (fundraising folded in as a section), Mon/Wed/Fri InnovLabs Digest.
+3. **Lever private docs**: NOT quoted in the public repo. `context/lever_context.md` lives under `state/` (gitignored); only a redacted one-paragraph summary is committed. Eric can relax this later.
+4. **Widget**: a panel on `brain.html` first (what Eric asked for); promoted to its own `recon.html` board only if the debate graph needs the room.
+5. **Lever inbox**: off by default (`RECON_LEVER_INBOX=0`); nothing is dropped into Timmy's inbox until Eric turns it on.
+
+## Still needed from Eric
+
+- Approve the Codex device-auth code on the droplet (Phase 0). Everything after that is Claude's work until the Phase 1 stop.
