@@ -6,13 +6,14 @@ Scrapes RootData.com/Fundraising for recent crypto/web3 funding rounds.
 Output: /home/recon/recon/data-sources/fundraising/latest.md
 """
 
+import os
 import asyncio
 import json
 import re
 from datetime import datetime
 from pathlib import Path
 
-RECON_HOME = Path("/home/recon/recon")
+RECON_HOME = Path(os.environ.get("RECON_HOME") or Path(__file__).resolve().parent.parent)
 OUTPUT_FILE = RECON_HOME / "data-sources" / "fundraising" / "latest.md"
 URL = "https://www.rootdata.com/Fundraising"
 CF_WAIT = 5

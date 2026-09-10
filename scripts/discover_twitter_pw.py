@@ -15,6 +15,7 @@ Usage:
     python3 scripts/discover_twitter_pw.py --limit 20   # First 20 seeds only
 """
 
+import os
 import asyncio
 import argparse
 import re
@@ -23,7 +24,7 @@ from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
 
-RECON_HOME = Path("/home/recon/recon")
+RECON_HOME = Path(os.environ.get("RECON_HOME") or Path(__file__).resolve().parent.parent)
 SEEDS_FILE = RECON_HOME / "config" / "twitter_seeds.yaml"
 OUTPUT_YAML = RECON_HOME / "config" / "discovered_accounts.yaml"
 OUTPUT_CSV = RECON_HOME / "config" / "discovered_accounts.csv"

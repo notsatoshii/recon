@@ -2,13 +2,16 @@
 set -euo pipefail
 SECONDS=0
 
-RECON_HOME="/home/recon/recon"
+RECON_HOME="${RECON_HOME:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"; export RECON_HOME
+# Env file discovery: RECON_ENV, then repo, parent, $HOME, legacy v1 location
+for _f in "${RECON_ENV:-}" "$RECON_HOME/.recon.env" "$RECON_HOME/../.recon.env" "$HOME/.recon.env" /home/recon/.recon.env; do
+    [ -n "$_f" ] && [ -f "$_f" ] && { set -a; source "$_f"; set +a; break; }
+done
 TODAY=$(date +%Y-%m-%d)
 RUN_DIR="$RECON_HOME/briefs/$TODAY"
 LOG_FILE="$RECON_HOME/logs/${TODAY}.log"
 PERSONAS="$RECON_HOME/personas"
 
-source /home/recon/.recon.env
 source "$RECON_HOME/scripts/ask_hermes.sh"
 
 DATA_DIR="$RECON_HOME/data-sources"
@@ -25,6 +28,7 @@ MODE="brief"  # brief (default), ai-digest, fundraising
 for arg in "$@"; do
     case "$arg" in
         --skip-collect) SKIP_COLLECT=true ;;
+        --no-telegram) export RECON_NO_TELEGRAM=1 ;;
         --mode) :;; # value handled below
         ai-digest|--mode=ai-digest) MODE="ai-digest" ;;
         fundraising|--mode=fundraising) MODE="fundraising" ;;
@@ -46,6 +50,7 @@ log() { echo "[$(date +%H:%M:%S)] $1" | tee -a "$LOG_FILE"; }
 
 send_telegram() {
     [ -z "${RECON_TELEGRAM_TOKEN:-}" ] && { log "Telegram not configured"; return; }
+    [ "${RECON_NO_TELEGRAM:-0}" = "1" ] && { log "Telegram suppressed: $(printf %s "${1:-}" | head -c 60 | tr "\n" " ")..."; return; }
     local text="${1:-}"
     [ -z "$text" ] && return
 
@@ -144,7 +149,7 @@ send_telegram "RECON starting — $TODAY"
 
 # ─── PHASE -1: SCORE YESTERDAY'S PREDICTIONS ──────────────
 log "PHASE -1: Scoring yesterday's predictions..."
-source /home/recon/recon-venv/bin/activate 2>/dev/null || true
+_venv="${RECON_VENV:-$RECON_HOME/../recon-venv}"; [ -f "$_venv/bin/activate" ] && source "$_venv/bin/activate" || true
 python3 "$RECON_HOME/scripts/score_yesterday.py" 2>&1 | while read line; do log "  $line"; done
 sleep 3
 
@@ -287,7 +292,7 @@ $BETTAFISH_DATA"
 TODAY: $TODAY
 
 DATA:
-$(echo "$MODE_DATA" | head -c 40000 || true)" "claude-opus-4-20250514")
+$(echo "$MODE_DATA" | head -c 40000 || true)" "synth")
 
     echo "$analysis" > "$RUN_DIR/07_${MODE}_output.md"
     log "  $MODE_LABEL: $(echo "$analysis" | wc -w) words"
@@ -497,7 +502,7 @@ if [ ${#all_takes[@]} -ge 4 ]; then
 Agents:
 $takes_summary
 
-Reply EXACTLY: CHALLENGER: [name] TARGET: [name]" "claude-sonnet-4-20250514")
+Reply EXACTLY: CHALLENGER: [name] TARGET: [name]" "fast")
 
     wc_c=$(echo "$wc_assign" | grep -oi "challenger: *[a-z_]*" | sed 's/.*: *//' | tr '[:upper:]' '[:lower:]')
     wc_t=$(echo "$wc_assign" | grep -oi "target: *[a-z_]*" | sed 's/.*: *//' | tr '[:upper:]' '[:lower:]')
@@ -571,9 +576,9 @@ DEEP_DIVE: [agent1] vs [agent2] on [specific point]
 NO_DEEP_DIVE: [reason]
 
 DEBATE RECORD:
-$debate_summary" "claude-sonnet-4-20250514")
+$debate_summary" "fast")
 
-    if echo "$deep_dive_decision" | grep -qi "DEEP_DIVE:"; then
+    if echo "$deep_dive_decision" | grep -q "^DEEP_DIVE:"; then
         dd_agents=$(echo "$deep_dive_decision" | grep -oi "DEEP_DIVE: *[a-z_]* vs [a-z_]*" | sed 's/DEEP_DIVE: *//' || echo "")
         dd_agent1=$(echo "$dd_agents" | awk '{print $1}' | tr '[:upper:]' '[:lower:]' || echo "")
         dd_agent2=$(echo "$dd_agents" | awk '{print $3}' | tr '[:upper:]' '[:lower:]' || echo "")
@@ -685,7 +690,7 @@ YOUR VOTE TODAY:
 ${all_votes[$agent]:-none}
 
 YOUR CURRENT MEMORY:
-$(cat "$memory_file")" "claude-sonnet-4-20250514")
+$(cat "$memory_file")" "fast")
 
             # Append update to memory (don't replace)
             echo "" >> "$memory_file"
@@ -731,7 +736,7 @@ YOUR RESPONSE TO CHALLENGES:
 ${all_responses[$agent]:-none}
 
 YOUR VOTE:
-${all_votes[$agent]:-none}" "claude-sonnet-4-20250514")
+${all_votes[$agent]:-none}" "fast")
 
             # Append to state file
             echo "" >> "$state_file"
@@ -756,7 +761,7 @@ log "  Agent memories and state updated"
 send_telegram "Debate complete. Synthesizing brief..."
 
 # ─── PHASE 7: SYNTHESIS (OPUS) ─────────────────────────────
-log "PHASE 7: Synthesis (Opus 4.6)..."
+log "PHASE 7: Synthesis (synth tier)..."
 
 # Dynamic agent weighting
 sleep 3
@@ -774,7 +779,7 @@ $(head -c 5000 "$FILTERED_FILE")
 Agent takes summary:
 $(for a in "${!all_takes[@]}"; do echo "- $a: $(echo "${all_takes[$a]}" | head -c 200)"; done)
 
-Reply EXACTLY: ENVIRONMENT: [type] WEIGHT: [comma-separated agent names to weight higher]" "claude-sonnet-4-20250514")
+Reply EXACTLY: ENVIRONMENT: [type] WEIGHT: [comma-separated agent names to weight higher]" "fast")
 
 log "  Environment: $(echo "$env_classification" | head -1)"
 
@@ -853,7 +858,7 @@ HALLUCINATION CHECK:
 - If a claim comes from Reddit/Twitter, attribute it with the source.
 - If a number doesn't trace to any data source, mark [unverified] or drop it.
 
-$record" "claude-opus-4-20250514")
+$record" "synth")
 
 echo "$brief_draft" > "$RUN_DIR/07_brief_draft.md"
 log "  Draft brief: $(echo "$brief_draft" | wc -w) words"
@@ -880,7 +885,7 @@ DRAFT BRIEF:
 $brief_draft
 
 RAW DATA (for cross-referencing numbers):
-$(head -c 30000 "$FILTERED_FILE")" "claude-opus-4-20250514")
+$(head -c 30000 "$FILTERED_FILE")" "synth")
 
 echo "$brief" > "$RUN_DIR/07_daily_brief.md"
 log "  FINAL BRIEF: $(echo "$brief" | wc -w) words"

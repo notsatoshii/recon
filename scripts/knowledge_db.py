@@ -33,7 +33,7 @@ import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-RECON_HOME = Path("/home/recon/recon")
+RECON_HOME = Path(os.environ.get("RECON_HOME") or Path(__file__).resolve().parent.parent)
 DB_PATH = RECON_HOME / "config" / "knowledge.db"
 
 

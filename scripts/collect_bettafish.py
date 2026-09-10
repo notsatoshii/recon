@@ -7,7 +7,7 @@ Architecture:
   1. Ingests raw social + news data (Reddit, Twitter, News) collected by collect_data.sh
   2. QueryEngine: Topic extraction + frequency analysis
   3. InsightEngine: Quantitative anomaly detection (Fear&Greed, volume spikes, price moves)
-  4. MediaEngine: Claude-powered deep sentiment analysis on the social/news text
+  4. MediaEngine: LLM-powered deep sentiment analysis on the social/news text
   5. ReportEngine: Structured sentiment intelligence report
 
 Output: /home/recon/recon/data-sources/bettafish/latest.md
@@ -23,7 +23,7 @@ from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
 
-RECON_HOME = Path("/home/recon/recon")
+RECON_HOME = Path(os.environ.get("RECON_HOME") or Path(__file__).resolve().parent.parent)
 OUTPUT_FILE = RECON_HOME / "data-sources" / "bettafish" / "latest.md"
 
 
@@ -117,7 +117,7 @@ def insight_engine() -> list:
 
 def media_engine_llm(sources: dict) -> str:
     """
-    Deep sentiment analysis using Claude.
+    Deep sentiment analysis via recon.llm (fast tier).
     Reads Reddit + Twitter + News text and produces structured sentiment assessment.
     """
     # Combine social/news text (truncate to fit in context)
@@ -151,18 +151,13 @@ Be specific. Cite actual headlines/posts. Don't hedge — give clear directional
 --- END DATA ---"""
 
     try:
-        result = subprocess.run(
-            ["claude", "-p", prompt, "--model", "claude-sonnet-4-20250514"],
-            capture_output=True, text=True, timeout=120
-        )
-        if result.returncode == 0 and result.stdout.strip():
-            return result.stdout.strip()
-        else:
-            return f"LLM ANALYSIS FAILED: {result.stderr[:200]}"
-    except subprocess.TimeoutExpired:
-        return "LLM ANALYSIS TIMEOUT: Claude call exceeded 120s"
-    except Exception as e:
-        return f"LLM ANALYSIS ERROR: {str(e)[:200]}"
+        sys.path.insert(0, str(RECON_HOME))
+        from recon.llm import ask, LLMError
+        return ask(prompt, tier="fast", agent="bettafish")
+    except ImportError as e:
+        return f"LLM ANALYSIS ERROR: recon.llm not importable ({e})"
+    except Exception as e:  # LLMError after retries, or anything unexpected
+        return f"LLM ANALYSIS FAILED: {str(e)[:200]}"
 
 
 def generate_report(query_data: dict, insights: list, llm_analysis: str) -> str:
@@ -186,7 +181,7 @@ def generate_report(query_data: dict, insights: list, llm_analysis: str) -> str:
     lines.append("")
 
     # LLM-powered deep analysis
-    lines.append("## SENTIMENT ANALYSIS (Claude-powered)\n")
+    lines.append("## SENTIMENT ANALYSIS (LLM-powered)\n")
     lines.append(llm_analysis)
     lines.append("")
 
@@ -228,7 +223,7 @@ def main():
     insights = insight_engine()
     print(f"  InsightEngine: {len(insights)} signals")
 
-    # Phase 3: MediaEngine — Claude-powered deep sentiment analysis
+    # Phase 3: MediaEngine — LLM-powered deep sentiment analysis
     print("  MediaEngine: running LLM sentiment analysis (this takes ~30s)...")
     llm_analysis = media_engine_llm(sources)
     print(f"  MediaEngine: {len(llm_analysis)} chars of analysis")

@@ -112,11 +112,22 @@ else
     echo -e "  ${YELLOW}○${NC} Chromium not found"
 fi
 
-# Claude CLI
-if command -v claude &>/dev/null; then
-    echo -e "  ${GREEN}✓${NC} Claude CLI"
+# Codex CLI (primary LLM backend, ChatGPT subscription)
+if command -v codex &>/dev/null; then
+    if codex login status 2>/dev/null | grep -qi "logged in"; then
+        echo -e "  ${GREEN}✓${NC} Codex CLI ($(codex --version 2>/dev/null | head -1)) — logged in"
+    else
+        echo -e "  ${YELLOW}○${NC} Codex CLI installed but not logged in — run: codex login --device-auth"
+    fi
 else
-    echo -e "  ${RED}✗${NC} Claude CLI not found (required)"
+    echo -e "  ${RED}✗${NC} Codex CLI not found (required) — npm i -g @openai/codex"
+fi
+
+# Claude CLI (optional fallback provider: RECON_LLM_PROVIDER=claude)
+if command -v claude &>/dev/null; then
+    echo -e "  ${GREEN}✓${NC} Claude CLI (optional provider)"
+else
+    echo -e "  ${YELLOW}○${NC} Claude CLI not found (optional)"
 fi
 
 # feedparser

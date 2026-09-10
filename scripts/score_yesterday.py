@@ -17,7 +17,7 @@ import urllib.request
 from datetime import datetime, timedelta
 from pathlib import Path
 
-RECON_HOME = Path("/home/recon/recon")
+RECON_HOME = Path(os.environ.get("RECON_HOME") or Path(__file__).resolve().parent.parent)
 STATE_DIR = RECON_HOME / "config" / "agent_state"
 MEMORY_DIR = RECON_HOME / "config" / "agent_memory"
 ARCHIVE_DIR = RECON_HOME / "archive"

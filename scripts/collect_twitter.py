@@ -9,6 +9,7 @@ No API key needed, no Twitter account needed.
 Output: /home/recon/recon/data-sources/twitter/latest.md
 """
 
+import os
 import asyncio
 import re
 import sys
@@ -16,7 +17,7 @@ import yaml
 from datetime import datetime, timezone
 from pathlib import Path
 
-RECON_HOME = Path("/home/recon/recon")
+RECON_HOME = Path(os.environ.get("RECON_HOME") or Path(__file__).resolve().parent.parent)
 SEEDS_FILE = RECON_HOME / "config" / "twitter_seeds.yaml"
 OUTPUT_FILE = RECON_HOME / "data-sources" / "twitter" / "latest.md"
 

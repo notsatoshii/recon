@@ -24,6 +24,7 @@ Requires: twscrape with at least one logged-in account.
     python3 scripts/collect_twitter.py --add-account USERNAME PASSWORD
 """
 
+import os
 import asyncio
 import argparse
 import json
@@ -33,11 +34,11 @@ from collections import Counter, defaultdict
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
-RECON_HOME = Path("/home/recon/recon")
+RECON_HOME = Path(os.environ.get("RECON_HOME") or Path(__file__).resolve().parent.parent)
 SEEDS_FILE = RECON_HOME / "config" / "twitter_seeds.yaml"
 OUTPUT_YAML = RECON_HOME / "config" / "discovered_accounts.yaml"
 OUTPUT_CSV = RECON_HOME / "config" / "discovered_accounts.csv"
-DB_PATH = Path("/home/recon/.recon_twscrape.db")
+DB_PATH = Path(os.environ.get("RECON_TWSCRAPE_DB") or Path.home() / ".recon_twscrape.db")
 
 # Accounts to never recommend (bots, aggregators with no signal)
 BLOCKLIST = {"elikibazo", "crypto_banter", "whale_alert"}

@@ -12,11 +12,14 @@ set -euo pipefail
 #   ./alert_monitor.sh --loop 15    # Check every 15 minutes
 #
 
-RECON_HOME="/home/recon/recon"
+RECON_HOME="${RECON_HOME:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"; export RECON_HOME
+# Env file discovery: RECON_ENV, then repo, parent, $HOME, legacy v1 location
+for _f in "${RECON_ENV:-}" "$RECON_HOME/.recon.env" "$RECON_HOME/../.recon.env" "$HOME/.recon.env" /home/recon/.recon.env; do
+    [ -n "$_f" ] && [ -f "$_f" ] && { set -a; source "$_f"; set +a; break; }
+done
 STATE_FILE="$RECON_HOME/config/alert_state.json"
 LOG_FILE="$RECON_HOME/logs/alerts.log"
 
-source /home/recon/.recon.env 2>/dev/null || true
 
 log() { echo "[$(date +"%Y-%m-%d %H:%M:%S")] [ALERT] $1" | tee -a "$LOG_FILE"; }
 
@@ -45,7 +48,7 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-STATE_FILE = Path("/home/recon/recon/config/alert_state.json")
+STATE_FILE = Path(os.environ.get("RECON_HOME", "/home/recon/recon")) / "config" / "alert_state.json"
 COOLDOWN_MINUTES = 60  # Don't re-fire same alert within this window
 
 def load_state():

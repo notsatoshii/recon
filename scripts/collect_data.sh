@@ -1,7 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-RECON_HOME="/home/recon/recon"
+RECON_HOME="${RECON_HOME:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"; export RECON_HOME
+# Env file discovery: RECON_ENV, then repo, parent, $HOME, legacy v1 location
+for _f in "${RECON_ENV:-}" "$RECON_HOME/.recon.env" "$RECON_HOME/../.recon.env" "$HOME/.recon.env" /home/recon/.recon.env; do
+    [ -n "$_f" ] && [ -f "$_f" ] && { set -a; source "$_f"; set +a; break; }
+done
+RECON_TWSCRAPE_DB="${RECON_TWSCRAPE_DB:-/home/recon/.recon_twscrape.db}"
 TODAY=$(date +%Y-%m-%d)
 DATA_DIR="$RECON_HOME/data-sources"
 LOG_FILE="$RECON_HOME/logs/${TODAY}.log"
@@ -97,7 +102,7 @@ for cat, subs in SUBS.items():
             else:
                 time.sleep(1.5)
 
-with open("/home/recon/recon/data-sources/reddit/latest.md", "w") as f:
+with open("$RECON_HOME/data-sources/reddit/latest.md", "w") as f:
     f.write("\n".join(lines))
 print(f"Reddit: {len(lines)} lines from {fetched}/{total_subs} subreddits ({failed} failed)")
 PYREDDIT
@@ -499,7 +504,7 @@ if "_error" not in defi:
         pass
     out.append("")
 
-with open("/home/recon/recon/data-sources/onchain/latest.md", "w") as f:
+with open("$RECON_HOME/data-sources/onchain/latest.md", "w") as f:
     f.write("\n".join(out))
 print(f"On-chain: {len(out)} lines")
 PYCHAIN
@@ -516,7 +521,7 @@ try:
     import feedparser
 except ImportError:
     print("feedparser not installed. Run: pip install feedparser")
-    with open("/home/recon/recon/data-sources/news/latest.md", "w") as f:
+    with open("$RECON_HOME/data-sources/news/latest.md", "w") as f:
         f.write("# News\n## NOT CONFIGURED\nInstall: pip install feedparser\n")
     sys.exit(0)
 
@@ -598,7 +603,7 @@ if cp_key:
     except Exception as e:
         out.append(f"### CryptoPanic -- ERROR: {str(e)[:60]}\n")
 
-with open("/home/recon/recon/data-sources/news/latest.md", "w") as f:
+with open("$RECON_HOME/data-sources/news/latest.md", "w") as f:
     f.write("\n".join(out))
 source_count = len(FEEDS) + (1 if cp_key else 0)
 print(f"News: {len(out)} lines from {source_count} sources")
@@ -710,7 +715,7 @@ if isinstance(hn_top, list):
 else:
     out.append("HN API unavailable.\n")
 
-with open("/home/recon/recon/data-sources/ai_tools/latest.md", "w") as f:
+with open("$RECON_HOME/data-sources/ai_tools/latest.md", "w") as f:
     f.write("\n".join(out))
 print(f"AI/Tools: {len(out)} lines")
 PYAITOOLS
@@ -786,7 +791,7 @@ cat > "$PKG" << PKGHEADER
 
 This package has been processed through three layers:
 1. Deduplication: cross-source signals identified and duplicate stories merged
-2. BettaFish: Claude-powered sentiment analysis on social and news data
+2. BettaFish: LLM-powered sentiment analysis on social and news data
 3. World Monitor: geopolitical intelligence from 79 global sources
 
 PKGHEADER
@@ -866,7 +871,7 @@ if python3 -c "import twscrape" 2>/dev/null; then
 import asyncio
 from twscrape import AccountsPool
 async def check():
-    pool = AccountsPool('/home/recon/.recon_twscrape.db')
+    pool = AccountsPool('')
     accs = await pool.accounts_info()
     print('yes' if any(a['active'] for a in accs) else 'no')
 asyncio.run(check())

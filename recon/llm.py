@@ -136,7 +136,7 @@ def _looks_rate_limited(text: str) -> bool:
 
 def _extract_usage(ndjson: str) -> dict:
     """Sum token usage from `codex exec --json` events. Tolerant of shape changes."""
-    usage = {"input_tokens": 0, "output_tokens": 0}
+    usage = {"input_tokens": 0, "cached_input_tokens": 0, "output_tokens": 0, "reasoning_output_tokens": 0}
     for line in ndjson.splitlines():
         line = line.strip()
         if not line.startswith("{"):
@@ -238,7 +238,8 @@ def _log(agent: str, tier: str, model: str, provider: str, in_bytes: int, out_by
         LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
         tok = ""
         if usage.get("input_tokens") or usage.get("output_tokens"):
-            tok = f" in_tok={usage.get('input_tokens', 0)} out_tok={usage.get('output_tokens', 0)}"
+            tok = (f" in_tok={usage.get('input_tokens', 0)} cached_tok={usage.get('cached_input_tokens', 0)}"
+                   f" out_tok={usage.get('output_tokens', 0)} reason_tok={usage.get('reasoning_output_tokens', 0)}")
         with LOG_FILE.open("a", encoding="utf-8") as f:
             f.write(
                 f"[{time.strftime('%H:%M:%S')}] agent={agent or '-'} tier={tier} model={model} "

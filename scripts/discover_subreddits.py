@@ -26,7 +26,7 @@ from collections import Counter, defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
 
-RECON_HOME = Path("/home/recon/recon")
+RECON_HOME = Path(os.environ.get("RECON_HOME") or Path(__file__).resolve().parent.parent)
 OUTPUT = RECON_HOME / "config" / "discovered_subreddits.yaml"
 
 # Current seed subs (what we already monitor)
