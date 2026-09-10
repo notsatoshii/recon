@@ -6,7 +6,8 @@ RECON_HOME="${RECON_HOME:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"; ex
 for _f in "${RECON_ENV:-}" "$RECON_HOME/.recon.env" "$RECON_HOME/../.recon.env" "$HOME/.recon.env" /home/recon/.recon.env; do
     [ -n "$_f" ] && [ -f "$_f" ] && { set -a; source "$_f"; set +a; break; }
 done
-RECON_TWSCRAPE_DB="${RECON_TWSCRAPE_DB:-/home/recon/.recon_twscrape.db}"
+RECON_TWSCRAPE_DB="${RECON_TWSCRAPE_DB:-$HOME/.recon_twscrape.db}"; export RECON_TWSCRAPE_DB
+_venv="${RECON_VENV:-$RECON_HOME/../recon-venv}"; RECON_PY="$_venv/bin/python"; [ -x "$RECON_PY" ] || RECON_PY=python3
 TODAY=$(date +%Y-%m-%d)
 DATA_DIR="$RECON_HOME/data-sources"
 LOG_FILE="$RECON_HOME/logs/${TODAY}.log"
@@ -110,19 +111,12 @@ PYREDDIT
 
 log "  Reddit: $(wc -l < "$DATA_DIR/reddit/latest.md" 2>/dev/null || echo FAILED) lines"
 
-# ─── TWITTER/X (Playwright headless browser) ───────────────
+# ─── TWITTER/X (twscrape, account-backed X internal API) ─────
 
 log "Collecting Twitter/X data..."
 mkdir -p "$DATA_DIR/twitter"
-
-if python3 -c "import playwright" 2>/dev/null; then
-    python3 "$RECON_HOME/scripts/collect_twitter.py" 2>&1 | while read line; do log "  $line"; done
-else
-    log "  Playwright not installed -- skipping Twitter collection"
-    echo "# Twitter/X Intelligence" > "$DATA_DIR/twitter/latest.md"
-    echo "## NOT CONFIGURED" >> "$DATA_DIR/twitter/latest.md"
-    echo "Install: pip install playwright && playwright install chromium" >> "$DATA_DIR/twitter/latest.md"
-fi
+# The collector writes a SOURCE UNAVAILABLE stub itself when twscrape or accounts are missing.
+"$RECON_PY" "$RECON_HOME/scripts/collect_twitter.py" 2>&1 | while read line; do log "  $line"; done
 
 log "  Twitter: $(wc -l < "$DATA_DIR/twitter/latest.md" 2>/dev/null || echo SKIPPED) lines"
 
