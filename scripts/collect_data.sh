@@ -875,7 +875,7 @@ if python3 -c "import twscrape" 2>/dev/null; then
 import asyncio
 from twscrape import AccountsPool
 async def check():
-    pool = AccountsPool('')
+    pool = AccountsPool('$RECON_TWSCRAPE_DB')
     accs = await pool.accounts_info()
     print('yes' if any(a['active'] for a in accs) else 'no')
 asyncio.run(check())
