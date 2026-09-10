@@ -73,6 +73,8 @@ RATE_LIMIT_MARKERS = (
 )
 
 PERSONA_WRAPPER = """You are playing a specific role. Stay in character completely.
+Answer from the material in this prompt only. Do not run commands, read files, browse, or
+explore the working directory; there is nothing there. Reply with your analysis directly.
 
 --- YOUR PERSONA ---
 {persona}

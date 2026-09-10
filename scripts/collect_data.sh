@@ -25,6 +25,7 @@ log "========== DATA COLLECTION -- $TODAY =========="
 log "Collecting Reddit data..."
 
 python3 << 'PYREDDIT'
+import os
 import sys, time, urllib.request, xml.etree.ElementTree as ET
 from datetime import datetime
 
@@ -102,7 +103,7 @@ for cat, subs in SUBS.items():
             else:
                 time.sleep(1.5)
 
-with open("$RECON_HOME/data-sources/reddit/latest.md", "w") as f:
+with open(os.environ["RECON_HOME"] + "/data-sources/reddit/latest.md", "w") as f:
     f.write("\n".join(lines))
 print(f"Reddit: {len(lines)} lines from {fetched}/{total_subs} subreddits ({failed} failed)")
 PYREDDIT
@@ -145,6 +146,7 @@ log "  Fundraising: $(wc -l < "$DATA_DIR/fundraising/latest.md" 2>/dev/null || e
 log "Collecting on-chain data..."
 
 python3 << 'PYCHAIN'
+import os
 import json, urllib.request
 from datetime import datetime
 
@@ -504,7 +506,7 @@ if "_error" not in defi:
         pass
     out.append("")
 
-with open("$RECON_HOME/data-sources/onchain/latest.md", "w") as f:
+with open(os.environ["RECON_HOME"] + "/data-sources/onchain/latest.md", "w") as f:
     f.write("\n".join(out))
 print(f"On-chain: {len(out)} lines")
 PYCHAIN
@@ -516,12 +518,13 @@ log "  On-chain: $(wc -l < "$DATA_DIR/onchain/latest.md" 2>/dev/null || echo FAI
 log "Collecting news data..."
 
 python3 << 'PYNEWS'
+import os
 import sys
 try:
     import feedparser
 except ImportError:
     print("feedparser not installed. Run: pip install feedparser")
-    with open("$RECON_HOME/data-sources/news/latest.md", "w") as f:
+    with open(os.environ["RECON_HOME"] + "/data-sources/news/latest.md", "w") as f:
         f.write("# News\n## NOT CONFIGURED\nInstall: pip install feedparser\n")
     sys.exit(0)
 
@@ -603,7 +606,7 @@ if cp_key:
     except Exception as e:
         out.append(f"### CryptoPanic -- ERROR: {str(e)[:60]}\n")
 
-with open("$RECON_HOME/data-sources/news/latest.md", "w") as f:
+with open(os.environ["RECON_HOME"] + "/data-sources/news/latest.md", "w") as f:
     f.write("\n".join(out))
 source_count = len(FEEDS) + (1 if cp_key else 0)
 print(f"News: {len(out)} lines from {source_count} sources")
@@ -617,6 +620,7 @@ log "Collecting AI/tools data..."
 mkdir -p "$DATA_DIR/ai_tools"
 
 python3 << 'PYAITOOLS'
+import os
 import json, urllib.request
 from datetime import datetime, timedelta
 
@@ -715,7 +719,7 @@ if isinstance(hn_top, list):
 else:
     out.append("HN API unavailable.\n")
 
-with open("$RECON_HOME/data-sources/ai_tools/latest.md", "w") as f:
+with open(os.environ["RECON_HOME"] + "/data-sources/ai_tools/latest.md", "w") as f:
     f.write("\n".join(out))
 print(f"AI/Tools: {len(out)} lines")
 PYAITOOLS
