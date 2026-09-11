@@ -969,7 +969,8 @@ if python3 -c "import yaml" 2>/dev/null; then
 fi
 
 # Discover new Twitter accounts (requires twscrape account)
-if python3 -c "import twscrape" 2>/dev/null; then
+# Twitter discovery shares the burner account with collection and burns its rate limit; opt-in only.
+if [ "${RECON_TWITTER_DISCOVERY:-0}" = "1" ] && python3 -c "import twscrape" 2>/dev/null; then
     # Only run discovery if twscrape has active accounts
     has_accounts=$(python3 -c "
 import asyncio

@@ -244,6 +244,15 @@ async def run() -> int:
     lines.append(f"<!-- twitter: {fetched} accounts fetched, {failed} failed, {skipped} skipped"
                  f"{', stopped early (time/limit)' if stopped_early else ''} -->")
     OUTPUT_FILE.parent.mkdir(parents=True, exist_ok=True)
+    if fetched == 0 and OUTPUT_FILE.exists() and OUTPUT_FILE.stat().st_size > 2000 and "SOURCE UNAVAILABLE" not in OUTPUT_FILE.read_text(encoding="utf-8", errors="ignore")[:400]:
+        # Nothing fetched (rate limit) but a real pull exists on disk: keep it, mark it stale.
+        prev = OUTPUT_FILE.read_text(encoding="utf-8", errors="ignore")
+        note = f"## NOTE: refresh at {now.strftime('%Y-%m-%d %H:%M UTC')} fetched nothing (rate limit); showing the previous pull\n"
+        if "## NOTE: refresh" not in prev[:600]:
+            prev = prev.replace("\n", "\n" + note, 1)
+        OUTPUT_FILE.write_text(prev, encoding="utf-8")
+        log("Twitter: 0 fetched; kept the previous pull on disk")
+        return 0
     OUTPUT_FILE.write_text("\n".join(lines) + "\n", encoding="utf-8")
     log(f"Twitter: {fetched}/{total} accounts fetched ({failed} failed, {skipped} skipped"
         f"{', stopped early' if stopped_early else ''})")
