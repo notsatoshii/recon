@@ -837,12 +837,19 @@ echo "$record" > "$RUN_DIR/07_full_record.md"
 # Raw sections for the newsletter-style parts (bounded). The debate record covers markets;
 # these give the synthesizer the AI, education, Korea, and fundraising items directly.
 NEWS_FILE="$DATA_DIR/news/latest.md"
-AI_RAW="$(cat "$DATA_DIR/ai_tools/latest.md" 2>/dev/null | head -c 9000)
-$(grep -A 100000 '^## AI & TECH NEWS' "$NEWS_FILE" 2>/dev/null | awk 'NR>1 && /^## AI EDUCATION/ {exit} {print}' | head -c 9000)"
-EDU_RAW="$(grep -A 100000 '^## AI EDUCATION & WORKFORCE' "$NEWS_FILE" 2>/dev/null | awk 'NR>1 && /^## / {exit} {print}' | head -c 6000)"
-KR_RAW="$(grep -A 100000 '^## KOREA — AI' "$NEWS_FILE" 2>/dev/null | head -c 10000)"
-FUND_RAW="$(head -c 7000 "$DATA_DIR/fundraising/latest.md" 2>/dev/null)
-$(grep -A 40 '^## RECENT FUNDRAISING ROUNDS' "$DATA_DIR/onchain/latest.md" 2>/dev/null | head -c 2500)"
+# section FILE HEADING MAXBYTES: print from HEADING to the next '## ' heading, capped.
+# Never fails (set -e / pipefail safe): awk stops itself, no early-closed pipes.
+section() {
+    awk -v h="$2" -v max="$3" 'index($0,h)==1 {on=1} on && NR>1 && /^## / && index($0,h)!=1 {exit} on {n+=length($0)+1; if (n>max) exit; print}' "$1" 2>/dev/null || true
+}
+AI_RAW="$(head -c 9000 "$DATA_DIR/ai_tools/latest.md" 2>/dev/null || true)
+$(section "$NEWS_FILE" '## AI & TECH NEWS' 5000)
+$(section "$NEWS_FILE" '## AI NEWSLETTER SOURCES' 6000)"
+EDU_RAW="$(section "$NEWS_FILE" '## AI EDUCATION & WORKFORCE' 6000)"
+KR_RAW="$(section "$NEWS_FILE" '## KOREA — AI' 6000)
+$(section "$NEWS_FILE" '## KOREA — CRYPTO & MARKETS' 5000)"
+FUND_RAW="$(head -c 7000 "$DATA_DIR/fundraising/latest.md" 2>/dev/null || true)
+$(section "$DATA_DIR/onchain/latest.md" '## RECENT FUNDRAISING ROUNDS' 2500)"
 
 sleep 3
 brief_draft=$(ask_hermes "$PERSONAS/synthesizer.md" \

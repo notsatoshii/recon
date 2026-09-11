@@ -87,6 +87,29 @@ def save_id_cache(cache: dict[str, int]) -> None:
         pass
 
 
+def seconds_until_unlock() -> float | None:
+    """Earliest rate-limit reset across all accounts, read from twscrape's sqlite locks."""
+    import sqlite3
+    try:
+        con = sqlite3.connect(DB_PATH)
+        rows = con.execute("select locks from accounts where active = 1").fetchall()
+        con.close()
+    except Exception:
+        return None
+    soonest = None
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    for (locks,) in rows:
+        try:
+            for _, until in (json.loads(locks or "{}") or {}).items():
+                dt = datetime.strptime(str(until)[:19], "%Y-%m-%d %H:%M:%S")
+                secs = (dt - now).total_seconds()
+                if soonest is None or secs < soonest:
+                    soonest = secs
+        except Exception:
+            continue
+    return max(0.0, soonest) if soonest is not None else None
+
+
 def fmt_tweet(t, include_user: bool = False) -> str:
     when = t.date.astimezone(timezone.utc).strftime("%b %d, %Y %H:%M") if t.date else ""
     eng = []
@@ -155,11 +178,14 @@ async def run() -> int:
     def out_of_time() -> bool:
         return time.monotonic() > deadline
 
+    retried: set[str] = set()
     for cat, handles in seeds.items():
         if not handles:
             continue
         lines.append(f"\n---\n## {cat.upper().replace('_', ' ')}\n")
-        for handle in handles:
+        queue = list(handles)
+        while queue:
+            handle = queue.pop(0)
             if out_of_time():
                 stopped_early = True
                 skipped += 1
@@ -183,12 +209,21 @@ async def run() -> int:
                 fetched += 1
             except Exception as e:  # NoAccountError, network, parsing changes
                 name = type(e).__name__
-                failed += 1
-                lines.append(f"### @{handle} (error: {name})")
                 if name == "NoAccountError":
-                    log("all accounts rate-limited; stopping early")
+                    # Every account is locked on this endpoint. Sleep until the earliest
+                    # reset if that still fits the budget, then retry this handle once.
+                    wait = seconds_until_unlock()
+                    if wait is not None and handle not in retried and time.monotonic() + wait + 10 < deadline:
+                        retried.add(handle)
+                        log(f"rate-limited; waiting {int(wait) + 10}s for X's reset before @{handle}")
+                        await asyncio.sleep(wait + 10)
+                        queue.insert(0, handle)
+                        continue
+                    log("all accounts rate-limited beyond the time budget; stopping early")
                     stopped_early = True
                     deadline = 0  # force skip of the rest
+                failed += 1
+                lines.append(f"### @{handle} (error: {name})")
         save_id_cache(ids)
 
     if DO_SEARCHES and not out_of_time():
