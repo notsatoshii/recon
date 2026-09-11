@@ -18,7 +18,7 @@ Environment:
     RECON_TWSCRAPE_DB         accounts db (default ~/.recon_twscrape.db)
     RECON_TWITTER_PER_CAT     handles per category (default 8)
     RECON_TWITTER_PER_USER    tweets per handle (default 8)
-    RECON_TWITTER_MAX_MINUTES time budget; stops and writes what it has (default 12)
+    RECON_TWITTER_MAX_MINUTES time budget; waits out X resets inside it (default 40)
     RECON_TWITTER_SEARCHES    "0" to skip topic searches (default 1)
 """
 from __future__ import annotations
@@ -39,7 +39,7 @@ DB_PATH = os.environ.get("RECON_TWSCRAPE_DB") or str(Path.home() / ".recon_twscr
 
 PER_CATEGORY = int(os.environ.get("RECON_TWITTER_PER_CAT", "8"))
 PER_USER = int(os.environ.get("RECON_TWITTER_PER_USER", "8"))
-MAX_MINUTES = float(os.environ.get("RECON_TWITTER_MAX_MINUTES", "12"))
+MAX_MINUTES = float(os.environ.get("RECON_TWITTER_MAX_MINUTES", "40"))  # one account ~50 timelines per 15-min window
 DO_SEARCHES = os.environ.get("RECON_TWITTER_SEARCHES", "1") != "0"
 
 # Kept from v1: a few topic searches on top of the account list.
