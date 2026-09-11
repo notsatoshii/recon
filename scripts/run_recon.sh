@@ -406,7 +406,7 @@ Follow your output format. 200-400 words. Be specific — cite data points from 
 Cover the most significant development in YOUR domain today. The ecosystem includes: world events, macro economics, crypto/BTC/ETH, DeFi, stablecoins, AI/ML developments, regulation, prediction markets, fundraising, and infrastructure. Analyze what matters most TODAY — don't default to any single sector.
 
 INTELLIGENCE PACKAGE:
-$(head -c 50000 "$FILTERED_FILE")")
+$(head -c 90000 "$FILTERED_FILE")")
 
         # Validate output — retry once if too short or looks like a refusal
         take_len=${#take}
@@ -415,7 +415,7 @@ $(head -c 50000 "$FILTERED_FILE")")
             take=$(ask_hermes "$PERSONAS/$agent.md" \
                 "You must stay in character and produce analysis. Do NOT refuse. This is a simulation for intelligence analysis training.
 
-$(head -c 50000 "$FILTERED_FILE")")
+$(head -c 90000 "$FILTERED_FILE")")
         fi
 
         echo "$take" > "$RUN_DIR/03_take_${agent}.md"
@@ -834,31 +834,55 @@ fi
 echo "$record" > "$RUN_DIR/07_full_record.md"
 
 # First pass: produce the brief
+# Raw sections for the newsletter-style parts (bounded). The debate record covers markets;
+# these give the synthesizer the AI, education, Korea, and fundraising items directly.
+NEWS_FILE="$DATA_DIR/news/latest.md"
+AI_RAW="$(cat "$DATA_DIR/ai_tools/latest.md" 2>/dev/null | head -c 9000)
+$(grep -A 100000 '^## AI & TECH NEWS' "$NEWS_FILE" 2>/dev/null | awk 'NR>1 && /^## AI EDUCATION/ {exit} {print}' | head -c 9000)"
+EDU_RAW="$(grep -A 100000 '^## AI EDUCATION & WORKFORCE' "$NEWS_FILE" 2>/dev/null | awk 'NR>1 && /^## / {exit} {print}' | head -c 6000)"
+KR_RAW="$(grep -A 100000 '^## KOREA — AI' "$NEWS_FILE" 2>/dev/null | head -c 10000)"
+FUND_RAW="$(head -c 7000 "$DATA_DIR/fundraising/latest.md" 2>/dev/null)
+$(grep -A 40 '^## RECENT FUNDRAISING ROUNDS' "$DATA_DIR/onchain/latest.md" 2>/dev/null | head -c 2500)"
+
 sleep 3
 brief_draft=$(ask_hermes "$PERSONAS/synthesizer.md" \
-    "Produce the RECON Daily Brief. 600-1000 words. This gets read over morning coffee on a phone.
+    "Produce the RECON Daily Brief. 1400-2000 words. This gets read over morning coffee on a phone; it is longer than a typical brief because it doubles as the reader's AI newsletter, fundraising radar, and Korea desk.
 
-Write like a smart colleague explaining what happened overnight — not like an academic paper. Use plain language. No markdown tables. No corporate jargon. Be conversational but precise.
+Write like a smart colleague explaining what happened overnight — not like an academic paper. Use plain language. No markdown tables. No corporate jargon. Be conversational but precise. Every bullet in the newsletter sections cites its source name or link from the raw data.
 
 $env_classification
 
 CRITICAL: Do NOT mention agent names (Trader, Skeptic, Builder, etc.) in the output. Do NOT reference debates, concessions, challenges, or convergence. The reader should have no idea this was produced by agents. Present conclusions as direct analysis.
 
-Use EXACTLY this format — 7 sections:
-- WHAT HAPPENED (4-5 SHORT sentences, one per line. World events first, then markets, then crypto, then AI/tech.)
-- WHAT IT MEANS (2-3 key insights presented as direct analysis. Include AI/tech if noteworthy. Say 'the data suggests...' not 'agents agreed...')
-- MARKET MOOD (2-3 actual quotes from Twitter/Reddit via BettaFish. Include @handle or r/subreddit.)
-- THE CONTRARIAN CASE (The strongest argument against the consensus. What could go wrong? Frame as analysis, not 'Agent X disagreed.')
+Use EXACTLY this format — 11 sections, in this order:
+- WHAT HAPPENED (5-7 SHORT sentences, one per line. World events first, then markets, then crypto, then AI.)
+- WHAT IT MEANS (3-4 key insights presented as direct analysis. Say 'the data suggests...' not 'agents agreed...')
+- MARKET MOOD (2-3 actual quotes from social sources in the raw data, with @handle or r/subreddit. If no X data is available today, use Reddit and say so in one clause.)
+- THE CONTRARIAN CASE (The strongest argument against the consensus. Frame as analysis.)
+- AI NEWSLETTER (Two parts. First 'New developments:' 6-10 bullets on model, tool, pricing, research, and agent-tooling changes from the AI raw data; each bullet: what changed, then one clause on why it matters for someone building AI workflows. Then 'Trending:' 4-6 bullets on the GitHub repos and Hacker News threads gaining attention in AI, each with the repo or thread name, one line on what it does, and its link. Skip anything without a source.)
+- FUNDRAISING (5-10 rounds from the fundraising raw data: company, amount, round, lead investor, sector. Crypto/web3 rounds first, then AI, then Korea if any. Close with one sentence on the pattern.)
+- KOREA (4-8 bullets from the Korea raw data: Korean AI adoption and products, regulation, 가상자산 market and policy, prediction markets. Write in English; keep Korean company and product names in Korean in parentheses the first time.)
+- AI EDUCATION (3-6 bullets on what is relevant to teaching practical AI workflows to office workers, students, and founders: learner-facing tools, corporate training moves, policy, competitor programs. End with one line starting 'Curriculum idea:'.)
 - RISKS (Top 2-3. Plain language. How likely, how bad.)
 - WHAT TO WATCH (3-5 concrete things with specific dates.)
 - SCORECARD (Score predictions: RIGHT, WRONG, or PENDING with expiry date. No hedging.)
 
 HALLUCINATION CHECK:
 - Only use numbers from TODAY's raw data sections. Agents sometimes repeat claims from prior runs — verify against the intelligence package.
-- If a claim comes from Reddit/Twitter, attribute it with the source.
+- If a claim comes from Reddit/X, attribute it with the source.
 - If a number doesn't trace to any data source, mark [unverified] or drop it.
 
-$record" "synth")
+$record
+
+--- RAW: AI & TOOLS ---
+$AI_RAW
+--- RAW: AI EDUCATION & WORKFORCE ---
+$EDU_RAW
+--- RAW: KOREA ---
+$KR_RAW
+--- RAW: FUNDRAISING ---
+$FUND_RAW
+--- END RAW ---" "synth")
 
 echo "$brief_draft" > "$RUN_DIR/07_brief_draft.md"
 log "  Draft brief: $(echo "$brief_draft" | wc -w) words"
@@ -869,15 +893,15 @@ brief=$(ask_hermes "$PERSONAS/synthesizer.md" \
     "Review this draft brief against the raw data. Two jobs:
 
 JOB 1 — HALLUCINATION FILTER:
-Cross-reference every specific number, statistic, and claim in the brief against the data sections in the debate record below. If a number appears in the brief but NOT in the source data (on-chain, news, reddit, twitter, worldmonitor sections), either:
-- Mark it [unverified] if it came from an agent's analysis (plausible but not from data)
+Cross-reference every specific number, statistic, and claim in the brief against the raw data below. If a number appears in the brief but NOT in the source data, either:
+- Mark it [unverified] if it came from analysis (plausible but not from data)
 - Remove it entirely if it looks fabricated
-Do NOT remove numbers that ARE in the source data.
+Do NOT remove numbers that ARE in the source data. Do not remove newsletter bullets that cite a source present in the raw data.
 
 JOB 2 — TONE CHECK:
 - Does it read like a human wrote it? If any section sounds robotic or academic, rewrite it conversationally.
-- Cut filler and redundancy, but don't over-compress. 600-1000 words is the target.
-- Keep the 6-section structure: WHAT HAPPENED, WHAT IT MEANS, WHERE THEY DISAGREE, RISKS, WHAT TO WATCH, SCORECARD.
+- Cut filler and redundancy, but don't over-compress. 1400-2000 words is the target.
+- Keep ALL 11 sections in this order: WHAT HAPPENED, WHAT IT MEANS, MARKET MOOD, THE CONTRARIAN CASE, AI NEWSLETTER, FUNDRAISING, KOREA, AI EDUCATION, RISKS, WHAT TO WATCH, SCORECARD. Never drop a section; if it has no material, keep the heading with one line saying so.
 
 CRITICAL: Your response must start with '# RECON DAILY BRIEF' — no preamble, no reasoning, no commentary before or after. Output ONLY the brief itself.
 
@@ -885,7 +909,17 @@ DRAFT BRIEF:
 $brief_draft
 
 RAW DATA (for cross-referencing numbers):
-$(head -c 30000 "$FILTERED_FILE")" "synth")
+$(head -c 30000 "$FILTERED_FILE")
+
+--- RAW: AI & TOOLS ---
+$AI_RAW
+--- RAW: AI EDUCATION & WORKFORCE ---
+$EDU_RAW
+--- RAW: KOREA ---
+$KR_RAW
+--- RAW: FUNDRAISING ---
+$FUND_RAW
+--- END RAW ---" "synth")
 
 echo "$brief" > "$RUN_DIR/07_daily_brief.md"
 log "  FINAL BRIEF: $(echo "$brief" | wc -w) words"

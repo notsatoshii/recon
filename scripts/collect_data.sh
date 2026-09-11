@@ -125,13 +125,51 @@ log "  Twitter: $(wc -l < "$DATA_DIR/twitter/latest.md" 2>/dev/null || echo SKIP
 log "Collecting fundraising data..."
 mkdir -p "$DATA_DIR/fundraising"
 
-if python3 -c "import playwright" 2>/dev/null; then
-    python3 "$RECON_HOME/scripts/collect_fundraising.py" 2>&1 | while read line; do log "  $line"; done
-else
-    log "  Playwright not installed -- skipping fundraising collection"
-    echo "# Fundraising Intelligence" > "$DATA_DIR/fundraising/latest.md"
-    echo "## NOT CONFIGURED" >> "$DATA_DIR/fundraising/latest.md"
-fi
+# RootData scraping is captcha-walled (audit 2026-09-10). Fundraising now comes from
+# Google News RSS queries (free, keyless); DeFiLlama's raises API is tried in the on-chain step.
+python3 << 'PYFUND'
+import os, sys
+import urllib.parse as _p
+from datetime import datetime
+try:
+    import feedparser
+except ImportError:
+    feedparser = None
+
+out = [f"# Fundraising Intelligence\n## {datetime.now().strftime('%Y-%m-%d %H:%M UTC')}",
+       "## Source: Google News RSS (crypto/web3 and AI rounds, last 7 days); RootData link only: https://www.rootdata.com/Fundraising\n"]
+
+def gn(q):
+    return "https://news.google.com/rss/search?q=" + _p.quote(q) + "&hl=en-US&gl=US&ceid=US:en"
+
+QUERIES = {
+    "CRYPTO / WEB3 ROUNDS": gn('(crypto OR web3 OR blockchain OR DeFi OR "prediction market") (raises OR raised OR "funding round" OR "Series A" OR "seed round") when:7d'),
+    "AI ROUNDS": gn('("AI startup" OR "AI company" OR "AI lab") (raises OR raised OR "Series A" OR "Series B" OR "seed round" OR valuation) when:7d'),
+    "KOREA ROUNDS": "https://news.google.com/rss/search?q=" + _p.quote("스타트업 투자 유치 (AI OR 인공지능 OR 블록체인 OR 가상자산) when:7d") + "&hl=ko&gl=KR&ceid=KR:ko",
+}
+
+if feedparser is None:
+    out.append("feedparser not installed")
+else:
+    for label, url in QUERIES.items():
+        out.append(f"## {label}\n")
+        try:
+            feed = feedparser.parse(url)
+            entries = feed.entries[:15] if feed.entries else []
+            if not entries:
+                out.append("- (no items)\n"); continue
+            for e in entries:
+                out.append(f"- [{e.get('published','')[:16]}] {e.get('title','')[:200]} {e.get('link','')}")
+            out.append("")
+        except Exception as ex:
+            out.append(f"- FEED ERROR: {str(ex)[:80]}\n")
+
+path = os.path.join(os.environ["RECON_HOME"], "data-sources", "fundraising", "latest.md")
+os.makedirs(os.path.dirname(path), exist_ok=True)
+with open(path, "w") as f:
+    f.write("\n".join(out) + "\n")
+print(f"Fundraising: {len(out)} lines from {len(QUERIES)} news queries")
+PYFUND
 
 log "  Fundraising: $(wc -l < "$DATA_DIR/fundraising/latest.md" 2>/dev/null || echo SKIPPED) lines"
 
@@ -576,6 +614,58 @@ for name, url in AI_FEEDS.items():
     except:
         out.append(f"### {name} -- FEED ERROR\n")
 
+# ─── AI NEWSLETTER / AI EDUCATION / KOREA (added 2026-09-11) ──
+import urllib.parse as _p
+
+def _gn(q, lang="en-US", gl="US", ceid="US:en"):
+    return "https://news.google.com/rss/search?q=" + _p.quote(q) + f"&hl={lang}&gl={gl}&ceid={ceid}"
+
+def _gn_ko(q):
+    return _gn(q, "ko", "KR", "KR:ko")
+
+def emit_feed(name, url, n):
+    try:
+        feed = feedparser.parse(url)
+        entries = feed.entries[:n] if feed.entries else []
+        if not entries:
+            out.append(f"### {name} -- empty\n"); return
+        out.append(f"### {name}")
+        for e in entries:
+            t = e.get("title", "")[:180]
+            pub = e.get("published", "")[:16]
+            link = e.get("link", "")
+            s = e.get("summary", "")
+            s = s.replace("<p>", "").replace("</p>", "").replace("\n", " ")
+            if "news.google.com" in url:
+                s = ""  # Google News summaries are HTML link lists, not text
+            out.append(f"- [{pub}] {t} {link}".rstrip())
+            if s and s[:100].strip() and not s.startswith("<"):
+                out.append(f"  {s[:120]}")
+        out.append("")
+    except Exception as ex:
+        out.append(f"### {name} -- FEED ERROR: {str(ex)[:60]}\n")
+
+out.append("\n## AI NEWSLETTER SOURCES\n")
+emit_feed("OpenAI News", "https://openai.com/news/rss.xml", 6)
+emit_feed("Google News: model & tool releases", _gn('(OpenAI OR Anthropic OR "Google DeepMind" OR Meta AI OR Mistral OR xAI) (model OR release OR launch OR pricing) when:2d'), 10)
+emit_feed("Google News: AI agents & coding tools", _gn('("AI agent" OR "coding agent" OR Codex OR "Claude Code" OR Cursor OR Copilot) when:2d'), 8)
+
+out.append("\n## AI EDUCATION & WORKFORCE\n")
+emit_feed("Google News: AI education & literacy", _gn('("AI education" OR "AI literacy" OR "AI training" OR "AI upskilling" OR "AI curriculum") when:3d'), 10)
+emit_feed("Google News: AI at work", _gn('("AI in the workplace" OR "workers use AI" OR "employees AI tools" OR "AI productivity") when:3d'), 8)
+
+out.append("\n## KOREA — AI\n")
+emit_feed("AI타임스", "https://www.aitimes.com/rss/allArticle.xml", 10)
+emit_feed("전자신문", "https://rss.etnews.com/Section901.xml", 6)
+emit_feed("Google 뉴스: 인공지능", _gn_ko("인공지능 OR AI 도입 OR AI 에이전트 when:2d"), 10)
+emit_feed("Google 뉴스: AI 교육·직무", _gn_ko("AI 교육 OR 인공지능 교육 OR AI 직무교육 OR AI 활용 교육 when:3d"), 8)
+
+out.append("\n## KOREA — CRYPTO & MARKETS\n")
+emit_feed("블록미디어", "https://www.blockmedia.co.kr/feed", 6)
+emit_feed("토큰포스트", "https://www.tokenpost.kr/rss", 6)
+emit_feed("Google 뉴스: 가상자산", _gn_ko("가상자산 OR 암호화폐 OR 비트코인 규제 when:2d"), 8)
+emit_feed("Google 뉴스: 예측시장", _gn_ko("폴리마켓 OR 예측시장 OR 프리딕션마켓 when:7d"), 5)
+
 # ─── CRYPTOPANIC (aggregated news with sentiment) ──────────
 import os, urllib.request, json
 cp_key = os.environ.get("CRYPTOPANIC_API_KEY", "")
@@ -844,6 +934,22 @@ echo "" >> "$PKG"
 [ -f "$DATA_DIR/reddit/latest.md" ] && cat "$DATA_DIR/reddit/latest.md" >> "$PKG"
 echo "" >> "$PKG"
 [ -f "$DATA_DIR/twitter/latest.md" ] && cat "$DATA_DIR/twitter/latest.md" >> "$PKG"
+echo "" >> "$PKG"
+
+# 6. AI & tools (was only in ai-digest mode before 2026-09-11)
+echo "---" >> "$PKG"
+echo "" >> "$PKG"
+echo "# SECTION 6: AI & TOOLS" >> "$PKG"
+echo "" >> "$PKG"
+[ -f "$DATA_DIR/ai_tools/latest.md" ] && cat "$DATA_DIR/ai_tools/latest.md" >> "$PKG"
+echo "" >> "$PKG"
+
+# 7. Fundraising (was only in fundraising mode before 2026-09-11)
+echo "---" >> "$PKG"
+echo "" >> "$PKG"
+echo "# SECTION 7: FUNDRAISING" >> "$PKG"
+echo "" >> "$PKG"
+[ -f "$DATA_DIR/fundraising/latest.md" ] && cat "$DATA_DIR/fundraising/latest.md" >> "$PKG"
 echo "" >> "$PKG"
 
 log "  Intelligence package: $(wc -c < "$PKG") bytes ($(wc -l < "$PKG") lines)"
