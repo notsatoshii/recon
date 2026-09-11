@@ -18,3 +18,5 @@ recon-venv/
 .hermes/
 .DS_Store
 *.tmp
+exports/
+config/twitter_user_ids.json
