@@ -1,0 +1,142 @@
+{
+ "type": "object",
+ "properties": {
+  "positions": {
+   "type": "array",
+   "items": {
+    "type": "object",
+    "properties": {
+     "question_id": {
+      "type": "string"
+     },
+     "probability": {
+      "type": "number",
+      "description": "0-100: your probability that the answer is yes"
+     },
+     "reason": {
+      "type": "string",
+      "description": "at most 25 words, from your lens"
+     },
+     "evidence": {
+      "type": "array",
+      "items": {
+       "type": "object",
+       "properties": {
+        "section": {
+         "type": "string",
+         "description": "package section name, e.g. ON-CHAIN & MARKET DATA"
+        },
+        "quote": {
+         "type": "string",
+         "description": "text copied verbatim from the package, at most 200 characters"
+        }
+       },
+       "required": [
+        "section",
+        "quote"
+       ],
+       "additionalProperties": false
+      }
+     }
+    },
+    "required": [
+     "question_id",
+     "probability",
+     "reason",
+     "evidence"
+    ],
+    "additionalProperties": false
+   }
+  },
+  "claims": {
+   "type": "array",
+   "items": {
+    "type": "object",
+    "properties": {
+     "claim": {
+      "type": "string"
+     },
+     "section": {
+      "type": "string"
+     },
+     "quote": {
+      "type": "string",
+      "description": "verbatim from the package"
+     },
+     "confidence": {
+      "type": "string",
+      "enum": [
+       "low",
+       "medium",
+       "high"
+      ]
+     }
+    },
+    "required": [
+     "claim",
+     "section",
+     "quote",
+     "confidence"
+    ],
+    "additionalProperties": false
+   }
+  },
+  "summary": {
+   "type": "string",
+   "description": "your main call in one or two sentences, at most 50 words"
+  },
+  "prediction": {
+   "type": "object",
+   "properties": {
+    "text": {
+     "type": "string",
+     "description": "one testable prediction"
+    },
+    "probability": {
+     "type": "number",
+     "description": "0-100"
+    },
+    "resolves_on": {
+     "type": "string",
+     "description": "YYYY-MM-DD"
+    },
+    "metric": {
+     "type": "string",
+     "description": "the number or event that decides it"
+    }
+   },
+   "required": [
+    "text",
+    "probability",
+    "resolves_on",
+    "metric"
+   ],
+   "additionalProperties": false
+  },
+  "novel": {
+   "type": "string",
+   "description": "one thing you expect the other analysts to miss"
+  },
+  "watching": {
+   "type": "array",
+   "items": {
+    "type": "string",
+    "description": "an item to track next session"
+   }
+  },
+  "take": {
+   "type": "string",
+   "description": "your analysis in your persona's own voice, at most 150 words, written last"
+  }
+ },
+ "required": [
+  "positions",
+  "claims",
+  "summary",
+  "prediction",
+  "novel",
+  "watching",
+  "take"
+ ],
+ "additionalProperties": false
+}

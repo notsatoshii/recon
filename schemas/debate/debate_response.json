@@ -1,0 +1,105 @@
+{
+ "type": "object",
+ "properties": {
+  "question_id": {
+   "type": "string",
+   "enum": [
+    "q1",
+    "q2",
+    "q3",
+    "q4",
+    "q5"
+   ]
+  },
+  "steelman_fair": {
+   "type": "object",
+   "properties": {
+    "verdict": {
+     "type": "string",
+     "enum": [
+      "yes",
+      "partly",
+      "no"
+     ]
+    },
+    "correction": {
+     "type": "string",
+     "description": "empty when yes"
+    }
+   },
+   "required": [
+    "verdict",
+    "correction"
+   ],
+   "additionalProperties": false
+  },
+  "crux_agreed": {
+   "type": "object",
+   "properties": {
+    "verdict": {
+     "type": "string",
+     "enum": [
+      "yes",
+      "no"
+     ]
+    },
+    "own_crux": {
+     "type": "string",
+     "description": "empty when yes"
+    }
+   },
+   "required": [
+    "verdict",
+    "own_crux"
+   ],
+   "additionalProperties": false
+  },
+  "verdict": {
+   "type": "string",
+   "enum": [
+    "hold",
+    "narrow",
+    "concede"
+   ]
+  },
+  "new_probability": {
+   "type": "integer",
+   "description": "integer 0-100: your probability now"
+  },
+  "reason": {
+   "type": "string",
+   "description": "at most 60 words; what changed and why, or why nothing did"
+  },
+  "new_evidence": {
+   "type": "array",
+   "items": {
+    "type": "object",
+    "properties": {
+     "section": {
+      "type": "string",
+      "description": "package section name, e.g. ON-CHAIN & MARKET DATA"
+     },
+     "quote": {
+      "type": "string",
+      "description": "text copied verbatim from the package, at most 200 characters"
+     }
+    },
+    "required": [
+     "section",
+     "quote"
+    ],
+    "additionalProperties": false
+   }
+  }
+ },
+ "required": [
+  "question_id",
+  "steelman_fair",
+  "crux_agreed",
+  "verdict",
+  "new_probability",
+  "reason",
+  "new_evidence"
+ ],
+ "additionalProperties": false
+}

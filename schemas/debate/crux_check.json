@@ -1,0 +1,63 @@
+{
+ "type": "object",
+ "properties": {
+  "resolved": {
+   "type": "string",
+   "enum": [
+    "yes",
+    "no",
+    "partly"
+   ]
+  },
+  "what_the_data_says": {
+   "type": "string",
+   "description": "at most 60 words"
+  },
+  "quote": {
+   "type": "string",
+   "description": "verbatim from the data block, at most 200 characters; empty if none"
+  },
+  "section": {
+   "type": "string"
+  },
+  "remaining_uncertainty": {
+   "type": "string",
+   "description": "at most 40 words"
+  },
+  "settles_on": {
+   "type": "object",
+   "properties": {
+    "observable": {
+     "type": "string"
+    },
+    "by_date": {
+     "type": "string",
+     "description": "YYYY-MM-DD or empty"
+    }
+   },
+   "required": [
+    "observable",
+    "by_date"
+   ],
+   "additionalProperties": false
+  },
+  "leans": {
+   "type": "string",
+   "enum": [
+    "higher",
+    "lower",
+    "neither"
+   ]
+  }
+ },
+ "required": [
+  "resolved",
+  "what_the_data_says",
+  "quote",
+  "section",
+  "remaining_uncertainty",
+  "settles_on",
+  "leans"
+ ],
+ "additionalProperties": false
+}

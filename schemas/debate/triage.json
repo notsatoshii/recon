@@ -1,0 +1,159 @@
+{
+ "type": "object",
+ "properties": {
+  "environment": {
+   "type": "string",
+   "enum": [
+    "MARKET-DRIVEN",
+    "NARRATIVE-DRIVEN",
+    "PRODUCT-DRIVEN",
+    "RISK-DRIVEN",
+    "QUIET"
+   ],
+   "description": "what dominates today's data"
+  },
+  "depth": {
+   "type": "string",
+   "enum": [
+    "quiet",
+    "normal",
+    "risk"
+   ]
+  },
+  "reason": {
+   "type": "string",
+   "description": "one sentence: why this environment and depth"
+  },
+  "weight_agents": {
+   "type": "array",
+   "items": {
+    "type": "string",
+    "enum": [
+     "trader",
+     "narrator",
+     "builder",
+     "analyst",
+     "skeptic",
+     "policy_analyst",
+     "user_agent",
+     "macro_strategist",
+     "ai_engineer"
+    ]
+   }
+  },
+  "questions": {
+   "type": "array",
+   "items": {
+    "type": "object",
+    "properties": {
+     "id": {
+      "type": "string",
+      "description": "q1, q2, ... in order"
+     },
+     "text": {
+      "type": "string",
+      "description": "a yes/no question about today's package, at most 200 characters, ending with ?"
+     },
+     "kind": {
+      "type": "string",
+      "enum": [
+       "threshold",
+       "event",
+       "direction",
+       "judgment"
+      ]
+     },
+     "domain": {
+      "type": "string",
+      "enum": [
+       "markets_crypto",
+       "macro_policy",
+       "ai_product",
+       "korea",
+       "prediction_markets"
+      ]
+     },
+     "metric": {
+      "type": "string",
+      "description": "the series that settles it, with its source; empty for event and judgment"
+     },
+     "comparator": {
+      "type": "string",
+      "enum": [
+       ">",
+       ">=",
+       "<",
+       "<=",
+       ""
+      ]
+     },
+     "threshold": {
+      "type": "string",
+      "description": "the level as written, e.g. 86.61B; empty when not a threshold"
+     },
+     "baseline_quote": {
+      "type": "string",
+      "description": "the package line giving today's value, copied verbatim; empty for judgment"
+     },
+     "resolves_on": {
+      "type": "string",
+      "description": "YYYY-MM-DD or empty"
+     },
+     "settles_with": {
+      "type": "string",
+      "description": "the observable or event and where it is published"
+     },
+     "lenses": {
+      "type": "array",
+      "items": {
+       "type": "string",
+       "enum": [
+        "trader",
+        "narrator",
+        "builder",
+        "analyst",
+        "skeptic",
+        "policy_analyst",
+        "user_agent",
+        "macro_strategist",
+        "ai_engineer"
+       ]
+      }
+     },
+     "weight": {
+      "type": "integer",
+      "description": "1, 2 or 3"
+     },
+     "carried_from": {
+      "type": "string",
+      "description": "ledger id such as 2026-09-11-q2 if this re-asks an open question, else empty"
+     }
+    },
+    "required": [
+     "id",
+     "text",
+     "kind",
+     "domain",
+     "metric",
+     "comparator",
+     "threshold",
+     "baseline_quote",
+     "resolves_on",
+     "settles_with",
+     "lenses",
+     "weight",
+     "carried_from"
+    ],
+    "additionalProperties": false
+   }
+  }
+ },
+ "required": [
+  "environment",
+  "depth",
+  "reason",
+  "weight_agents",
+  "questions"
+ ],
+ "additionalProperties": false
+}
