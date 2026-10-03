@@ -271,6 +271,9 @@ def build_run(date: str) -> dict | None:
         edges.append({"from": dd_agents[0], "to": dd_agents[1], "type": "deepdive"})
 
     pkg = read(rd / "00_data_package.md")
+    # what the takes read: the per-section agent view since 2026-10-04, the first 90 KB before
+    view = read(rd / "01_filtered.md")
+    fed_bytes = len(view.encode("utf-8")) if (rd / "01_package_report.json").exists() else min(len(pkg.encode("utf-8")), 90000)
     sections = package_sections(pkg)
     persona_dir = RECON_HOME / "personas"
     agents = []
@@ -282,7 +285,7 @@ def build_run(date: str) -> dict | None:
         agents.append({
             "name": a, "desk": "shared", "persona_hash": ph,
             "fed": {"package_sections": [s["name"] for s in sections], "raw_sections": [],
-                    "memory_lines": mem_lines, "state_lines": st_lines, "bytes": min(len(pkg.encode("utf-8")), 90000)},
+                    "memory_lines": mem_lines, "state_lines": st_lines, "bytes": fed_bytes},
             "cites": [],
             "take": take, "response": resp or None, "deep_dive": dd.get(a),
             "vote": parse_vote(vote_txt) if vote_txt else None,
