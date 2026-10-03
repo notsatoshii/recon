@@ -423,6 +423,20 @@ def run_main(name: str, label: str, collect) -> int:
     res.seconds = time.monotonic() - t0
     if res.text:
         res.items = count_items(res.text)
+    try:
+        _write_outputs(name, label, res, stamp)
+    except OSError as e:  # unwritable data-sources/: say so on the status line, do not crash
+        res.ok = False
+        res.error = f"cannot write output: {e}"
+    state = "ok" if res.ok else f"FAILED ({res.error})"
+    print(f"  {label}: {state}, {res.items} items, {res.requests} requests, "
+          f"{res.seconds:.1f} s, {res.bytes_in / 1e6:.1f} MB", flush=True)
+    for n in res.notes[:12]:
+        print(f"    note: {n}", flush=True)
+    return 0 if res.ok else 1
+
+
+def _write_outputs(name: str, label: str, res: SourceResult, stamp: datetime) -> None:
     if res.ok and res.items > 0:
         write_latest(name, res.text)
     else:
@@ -439,12 +453,6 @@ def run_main(name: str, label: str, collect) -> int:
                 f"- {label}: SOURCE UNAVAILABLE — {res.error} [{fmt_utc(stamp)}]", ""])
             write_latest(name, stub)
     write_status(res)
-    state = "ok" if res.ok else f"FAILED ({res.error})"
-    print(f"  {label}: {state}, {res.items} items, {res.requests} requests, "
-          f"{res.seconds:.1f} s, {res.bytes_in / 1e6:.1f} MB", flush=True)
-    for n in res.notes[:12]:
-        print(f"    note: {n}", flush=True)
-    return 0 if res.ok else 1
 
 
 if __name__ == "__main__":
