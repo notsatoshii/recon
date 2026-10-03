@@ -12,6 +12,9 @@ Environment:
     RECON_HOME                 repo root (default: the parent of this file's folder)
     RECON_FRESH_HOURS          freshness window in hours (default 72)
     RECON_COLLECTOR_FIXTURES   folder of recorded responses; when set, no network is used
+    RECON_COLLECTOR_RECORD     folder to save every live response into, under the same names
+                               (tests/record_collector_fixtures.py uses it on the droplet)
+    RECON_COLLECTOR_NOW        frozen "now" (ISO UTC) for tests and recordings
 """
 from __future__ import annotations
 
@@ -117,15 +120,47 @@ def build_url(base: str, params: dict | None = None) -> str:
     return base + ("&" if "?" in base else "?") + urllib.parse.urlencode(params)
 
 
+def fixture_name(url: str) -> str:
+    """File stem of a recorded response: the first 16 hex digits of the URL's sha1."""
+    return hashlib.sha1(url.encode()).hexdigest()[:16]
+
+
 def _fixture_path(url: str) -> Path | None:
     root = os.environ.get("RECON_COLLECTOR_FIXTURES")
     if not root:
         return None
-    return Path(root) / (hashlib.sha1(url.encode()).hexdigest()[:16] + ".body")
+    return Path(root) / (fixture_name(url) + ".body")
 
 
-def http_get(url: str, budget: Budget, accept: str = "*/*", retries: int = 2) -> tuple[bytes, dict]:
-    """GET with retries on timeouts, 5xx and 429. Returns (body, headers). Raises HTTPFailure."""
+def _record(url: str, status: int, body: bytes) -> None:
+    """Save a live response for replay (RECON_COLLECTOR_RECORD). Never fails the fetch."""
+    root = os.environ.get("RECON_COLLECTOR_RECORD")
+    if not root:
+        return
+    try:
+        d = Path(root)
+        d.mkdir(parents=True, exist_ok=True)
+        stem = fixture_name(url)
+        (d / f"{stem}.body").write_bytes(body)
+        st = d / f"{stem}.status"
+        if status != 200:
+            st.write_text(str(status))
+        elif st.exists():  # a retry that succeeded replaces the failed attempt
+            st.unlink()
+        with _RECORD_LOCK, open(d / "urls.tsv", "a", encoding="utf-8") as fh:
+            fh.write("\t".join([stem, str(status), url]) + "\n")
+    except OSError:
+        pass
+
+
+_RECORD_LOCK = Lock()
+
+
+def http_get(url: str, budget: Budget, accept: str = "*/*", retries: int = 2,
+             timeout: float | None = None) -> tuple[bytes, dict]:
+    """GET with retries on timeouts, 5xx and 429. Returns (body, headers). Raises HTTPFailure.
+
+    timeout caps each attempt (default TIMEOUT, 20 s); it is also cut to the budget's time left."""
     fx = _fixture_path(url)
     if fx is not None:
         budget.take()
@@ -146,19 +181,20 @@ def http_get(url: str, budget: Budget, accept: str = "*/*", retries: int = 2) ->
         req = urllib.request.Request(url, headers={"User-Agent": UA, "Accept": accept,
                                                    "Accept-Encoding": "gzip"})
         try:
-            timeout = max(3.0, min(TIMEOUT, budget.remaining_seconds()))
-            with urllib.request.urlopen(req, timeout=timeout) as resp:
+            t = max(3.0, min(timeout or TIMEOUT, budget.remaining_seconds()))
+            with urllib.request.urlopen(req, timeout=t) as resp:
                 body = resp.read()
-                if resp.headers.get("Content-Encoding", "").lower() == "gzip":
-                    budget.add_bytes(len(body))
+                budget.add_bytes(len(body))
+                if (resp.headers.get("Content-Encoding") or "").lower() == "gzip":
                     body = gzip.decompress(body)
-                else:
-                    budget.add_bytes(len(body))
+                _record(url, 200, body)
                 return body, {k.lower(): v for k, v in resp.headers.items()}
         except urllib.error.HTTPError as e:
             headers = {k.lower(): v for k, v in (e.headers.items() if e.headers else [])}
             try:
-                budget.add_bytes(len(e.read() or b""))
+                err_body = e.read() or b""
+                budget.add_bytes(len(err_body))
+                _record(url, e.code, err_body)
             except Exception:
                 pass
             if e.code == 451:
@@ -180,13 +216,14 @@ def http_get(url: str, budget: Budget, accept: str = "*/*", retries: int = 2) ->
         time.sleep(wait)
 
 
-def http_json(url: str, budget: Budget):
-    body, _ = http_get(url, budget, accept="application/json")
+def http_json(url: str, budget: Budget, timeout: float | None = None):
+    body, _ = http_get(url, budget, accept="application/json", timeout=timeout)
     return json.loads(body.decode("utf-8"))
 
 
-def http_text(url: str, budget: Budget, accept: str = "application/rss+xml, application/xml, text/xml, */*") -> str:
-    body, _ = http_get(url, budget, accept=accept)
+def http_text(url: str, budget: Budget, accept: str = "application/rss+xml, application/xml, text/xml, */*",
+              timeout: float | None = None) -> str:
+    body, _ = http_get(url, budget, accept=accept, timeout=timeout)
     return body.decode("utf-8", errors="replace")
 
 

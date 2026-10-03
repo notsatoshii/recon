@@ -29,6 +29,7 @@ SPORTS_SLUGS = {"sports", "esports", "games", "soccer", "football", "basketball"
 NOT_NEW_SLUGS = {"recurring", "up-or-down", "hide-from-new"}
 TOPICS = ["crypto", "fed-rates", "economy", "politics", "geopolitics", "ai", "tech"]
 BOOKS_WANTED, BOOK_TRIES = 8, 12
+PER_TOPIC = 2  # 4 made BY TOPIC 7 KB of a 19 KB file (spec §3.1, sizes measured 2026-10-04)
 
 
 def f(x, default=0.0) -> float:
@@ -195,7 +196,7 @@ def collect(res: cc.SourceResult, stamp: datetime) -> None:
             ev["_topic"] = t
             if ev.get("id") not in {e.get("id") for e in all_events}:
                 all_events.append(ev)
-        by_topic[t] = [e for e in evs if e.get("id") not in listed and live_markets(e)][:4]
+        by_topic[t] = [e for e in evs if e.get("id") not in listed and live_markets(e)][:PER_TOPIC]
         listed |= {e.get("id") for e in by_topic[t]}
 
     new_evs: list[dict] = []

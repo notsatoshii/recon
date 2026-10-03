@@ -5,7 +5,9 @@ RECON Korean AI and 가상자산 feed (Phase E, docs/v2/phase-e-collectors-spec.
 Two RSS requests: ZDNet Korea (feedburner, RFC 822 dates with +0900) for AI and 가상자산, and
 디지털애셋 (naive pubDate, read as KST) for 가상자산 only. ZDNet's feed holds only its 30 newest
 items, so a once-a-day pull would otherwise miss half the day's crypto coverage.
-Window: RECON_FRESH_HOURS (72). Either feed failing alone still writes the other.
+Window: RECON_FRESH_HOURS (72). Either feed failing alone still writes the other: each feed has
+its own budget (3 requests = 1 + 2 retries, 20 s, 15 s per attempt), so retries or a slow
+answer on ZDNet cannot use up 디지털애셋's share.
 
 Writes data-sources/zdnet_kr/latest.md and status.json.
 
@@ -33,6 +35,9 @@ KEYWORDS = {
              "업비트", "빗썸", "토큰증권", "STO", "디지털자산"],
 }
 MAX_ITEMS = {"AI": 12, "가상자산": 8}
+DESC_CHARS = 60  # Korean is 3 bytes a character; 120 made the file 9 KB (spec §3.4)
+FEED_BUDGET = {"seconds": 20, "requests": 3, "mbytes": 5}  # per feed: 1 try + 2 retries
+REQUEST_TIMEOUT = 15
 HEADINGS = {"AI": "AI", "가상자산": "가상자산·블록체인"}
 
 
@@ -66,23 +71,26 @@ def clean_desc(desc: str, title: str) -> str:
     t = cc.one_line(title)
     if not d or d[:30] == t[:30] or d in t:
         return ""
-    return cc.one_line(d, 120)
+    return cc.one_line(d, DESC_CHARS)
 
 
 def collect(res: cc.SourceResult, stamp: datetime) -> None:
-    budget = cc.Budget(seconds=20, requests=2, mbytes=10)
     cutoff = stamp - timedelta(hours=cc.FRESH_HOURS)
     found: dict[str, list[tuple[datetime, str]]] = {"AI": [], "가상자산": []}
     seen_links, ok_feeds, errors = set(), 0, []
     for feed, url, allowed in FEEDS:
+        budget = cc.Budget(**FEED_BUDGET)  # one per feed: ZDNet's retries never starve 디지털애셋
         try:
-            items = cc.parse_rss(cc.http_text(url, budget))
+            items = cc.parse_rss(cc.http_text(url, budget, timeout=REQUEST_TIMEOUT))
         except (cc.HTTPFailure, cc.BudgetExceeded) as e:
             errors.append(f"{feed}: {getattr(e, 'msg', e)}")
             continue
         except Exception as e:  # malformed XML
             errors.append(f"{feed}: {type(e).__name__}: {e}")
             continue
+        finally:
+            res.requests += budget.requests
+            res.bytes_in += budget.bytes_in
         ok_feeds += 1
         for it in items:
             title = cc.one_line(cc.strip_html(it.get("title", "")))
@@ -102,7 +110,6 @@ def collect(res: cc.SourceResult, stamp: datetime) -> None:
             src = f" [{feed}]" if tag == "가상자산" else ""
             line = f"- [{cc.fmt_utc(when)}] [{tag}]{src} {title}" + (f" — {extra}" if extra else "") + f" | {link}"
             found[tag].append((when, line))
-    res.requests, res.bytes_in = budget.requests, budget.bytes_in
     res.notes += errors
     if ok_feeds == 0:
         res.error = "; ".join(errors) or "no feed"
