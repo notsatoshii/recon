@@ -1,0 +1,3 @@
+# Shell and Python run on the droplet (Linux): keep them LF whatever the checkout platform.
+*.sh text eol=lf
+*.py text eol=lf
