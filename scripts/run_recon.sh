@@ -795,8 +795,6 @@ done
 wait
 log "  Agent memories and state updated"
 
-send_telegram "Debate complete. Synthesizing brief..."
-
 # ─── PHASE 7: SYNTHESIS (OPUS) ─────────────────────────────
 log "PHASE 7: Synthesis (synth tier)..."
 
@@ -863,7 +861,7 @@ for a in "${!all_votes[@]}"; do record+="### ${a^^}: ${all_votes[$a]}
 # Include scorecard
 if [ -n "$SCORECARD" ]; then
     record+="
-## YESTERDAY'S PREDICTION SCORECARD
+## PREDICTION SCORECARD (recent predictions; the legacy April-June list is left out)
 $SCORECARD
 "
 fi
@@ -901,7 +899,7 @@ CRITICAL: Do NOT mention agent names (Trader, Skeptic, Builder, etc.) in the out
 Use EXACTLY this format — 11 sections, in this order:
 - WHAT HAPPENED (5-7 SHORT sentences, one per line. World events first, then markets, then crypto, then AI.)
 - WHAT IT MEANS (3-4 key insights presented as direct analysis. Say 'the data suggests...' not 'agents agreed...')
-- MARKET MOOD (2-3 actual quotes from social sources in the raw data, with @handle or r/subreddit. If no X data is available today, use Reddit and say so in one clause.)
+- MARKET MOOD (2-3 actual quotes from the SOCIAL raw section below, each with its @handle or r/subreddit and its URL. Quote real posts, not thread titles. If social data is thin today, say so in one clause.)
 - THE CONTRARIAN CASE (The strongest argument against the consensus. Frame as analysis.)
 - AI NEWSLETTER (Two parts. First 'New developments:' 6-10 bullets on model, tool, pricing, research, and agent-tooling changes from the AI raw data; each bullet: what changed, then one clause on why it matters for someone building AI workflows. Then 'Trending:' 4-6 bullets on the GitHub repos and Hacker News threads gaining attention in AI, each with the repo or thread name, one line on what it does, and its link. Skip anything without a source.)
 - FUNDRAISING (5-10 rounds from the fundraising raw data: company, amount, round, lead investor, sector. Crypto/web3 rounds first, then AI, then Korea if any. Close with one sentence on the pattern.)
@@ -909,7 +907,9 @@ Use EXACTLY this format — 11 sections, in this order:
 - AI EDUCATION (3-6 bullets on what is relevant to teaching practical AI workflows to office workers, students, and founders: learner-facing tools, corporate training moves, policy, competitor programs. End with one line starting 'Curriculum idea:'.)
 - RISKS (Top 2-3. Plain language. How likely, how bad.)
 - WHAT TO WATCH (3-5 concrete things with specific dates.)
-- SCORECARD (Score predictions: RIGHT, WRONG, or PENDING with expiry date. No hedging.)
+- SCORECARD (Score the predictions in the SCORECARD raw section below: RIGHT, WRONG, or PENDING with expiry date, using today's data. No hedging. Only predictions listed there.)
+
+Each fact appears once: do not repeat the same number or development in several sections.
 
 HALLUCINATION CHECK:
 - Only use numbers from TODAY's raw data sections. Agents sometimes repeat claims from prior runs — verify against the intelligence package.
@@ -926,6 +926,10 @@ $EDU_RAW
 $KR_RAW
 --- RAW: FUNDRAISING ---
 $FUND_RAW
+--- RAW: SOCIAL (for MARKET MOOD) ---
+$(cat "$SOCIAL_FILE")
+--- RAW: SCORECARD (for SCORECARD) ---
+${SCORECARD:-No scorecard today.}
 --- END RAW ---" "synth")
 
 echo "$brief_draft" > "$RUN_DIR/07_brief_draft.md"
@@ -934,16 +938,20 @@ log "  Draft brief: $(echo "$brief_draft" | wc -w) words"
 # Second pass: hallucination filter + tone check
 sleep 3
 brief=$(ask_hermes "$PERSONAS/synthesizer.md" \
-    "Review this draft brief against the raw data. Two jobs:
+    "Review this draft brief against the raw data. You are a checker, not a second author: you remove or mark, you do not add. Two jobs:
 
 JOB 1 — HALLUCINATION FILTER:
 Cross-reference every specific number, statistic, and claim in the brief against the raw data below. If a number appears in the brief but NOT in the source data, either:
 - Mark it [unverified] if it came from analysis (plausible but not from data)
 - Remove it entirely if it looks fabricated
 Do NOT remove numbers that ARE in the source data. Do not remove newsletter bullets that cite a source present in the raw data.
+SCORECARD lines are checked against the SCORECARD raw section: a prediction listed there is not unverified.
+MARKET MOOD quotes are checked against the SOCIAL raw section.
+Do NOT add facts, quotes, dates or items that are not already in the draft.
 
 JOB 2 — TONE CHECK:
-- Does it read like a human wrote it? If any section sounds robotic or academic, rewrite it conversationally.
+- Does it read like a human wrote it? If a prose section sounds robotic or academic, tighten it conversationally.
+- Keep the format: sections that are bullet lists in the draft (AI NEWSLETTER, FUNDRAISING, KOREA, AI EDUCATION, WHAT TO WATCH, SCORECARD and any other) stay bullet lists, bullet for bullet. Never turn bullets into prose.
 - Cut filler and redundancy, but don't over-compress. 1400-2000 words is the target.
 - Keep ALL 11 sections in this order: WHAT HAPPENED, WHAT IT MEANS, MARKET MOOD, THE CONTRARIAN CASE, AI NEWSLETTER, FUNDRAISING, KOREA, AI EDUCATION, RISKS, WHAT TO WATCH, SCORECARD. Never drop a section; if it has no material, keep the heading with one line saying so.
 
@@ -952,8 +960,8 @@ CRITICAL: Your response must start with '# RECON DAILY BRIEF' — no preamble, n
 DRAFT BRIEF:
 $brief_draft
 
-RAW DATA (for cross-referencing numbers):
-$(head -c 30000 "$FILTERED_FILE")
+RAW DATA (for cross-referencing numbers; every package section, each trimmed):
+$(head -c 80000 "$FILTERED_FILE")
 
 --- RAW: AI & TOOLS ---
 $AI_RAW
@@ -963,10 +971,42 @@ $EDU_RAW
 $KR_RAW
 --- RAW: FUNDRAISING ---
 $FUND_RAW
+--- RAW: SOCIAL ---
+$(cat "$SOCIAL_FILE")
+--- RAW: SCORECARD ---
+${SCORECARD:-No scorecard today.}
 --- END RAW ---" "synth")
 
+# A brief must start with its title. If the filter failed, deliver the draft; if both failed, stop
+# (exit 1 lets the cron launcher send its one failure alert).
+is_brief() { grep -q '^# RECON DAILY BRIEF' <<< "${1:0:400}"; }
+if ! is_brief "$brief"; then
+    log "WARNING: filter pass returned no brief ($(tr '\n' ' ' <<< "${brief:0:120}")); using the draft"
+    if is_brief "$brief_draft"; then
+        brief="$brief_draft"
+    else
+        log "FATAL: neither the draft nor the filter produced a brief"
+        exit 1
+    fi
+fi
 echo "$brief" > "$RUN_DIR/07_daily_brief.md"
 log "  FINAL BRIEF: $(echo "$brief" | wc -w) words"
+
+# Section check (no LLM): all 11 headings, in order
+expected=("WHAT HAPPENED" "WHAT IT MEANS" "MARKET MOOD" "THE CONTRARIAN CASE" "AI NEWSLETTER" "FUNDRAISING" "KOREA" "AI EDUCATION" "RISKS" "WHAT TO WATCH" "SCORECARD")
+found=$(grep -E '^#{1,4} ' "$RUN_DIR/07_daily_brief.md" | sed -E 's/^#+ *//; s/\*//g' | tr '[:lower:]' '[:upper:]' || true)
+missing=(); last=0
+for sec in "${expected[@]}"; do
+    n=$(grep -n -m1 -F "$sec" <<< "$found" | cut -d: -f1 || true)
+    if [ -z "$n" ]; then missing+=("$sec")
+    elif [ "$n" -lt "$last" ]; then missing+=("$sec (out of order)")
+    else last=$n; fi
+done
+if [ ${#missing[@]} -eq 0 ]; then
+    log "  Sections: all 11 present, in order"
+else
+    log "  WARNING: sections missing or out of order: ${missing[*]}"
+fi
 
 # ─── DELIVER ────────────────────────────────────────────────
 log "DELIVERING..."

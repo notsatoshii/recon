@@ -22,10 +22,10 @@ two desks read from, not as a product of its own.
 
 | Product | Cadence | Audience | Form |
 |---|---|---|---|
-| **Daily Brief** | daily 06:00 KST | Eric | Telegram, 600–900 words: world/macro context, Lever desk, InnovLabs desk, contrarian case, risks, watch list, scorecard |
+| **Daily Brief** | daily 06:00 KST, weekends included | Eric | Telegram, 1,400–2,000 words in 11 sections (since 2026-09-11; kept by decision 2026-10-04, `06-improvement-plan.md` §8): what happened, what it means, market mood, contrarian case, AI newsletter, fundraising, Korea, AI education, risks, watch list, scorecard. Lever and InnovLabs desk lines come with the desks |
 | **Lever Radar** | weekly Mon | Eric, Lever | Prediction-market structure: volume/liquidity shifts, new markets suited to leverage, oracle anomalies, competitor perps, regulation (CFTC, Kalshi, Polymarket), fundraising in the space, calibration report of RECON's own probability calls |
 | **InnovLabs Digest** | Mon/Wed/Fri | Eric, curriculum | Model and tool changes with "what it means for the curriculum/toolkit", Korean market signals, competitor moves, content ideas. Ships structured resource-library entries (JSON) alongside the prose |
-| **Alerts** | 15-min cron | Eric | Threshold alerts (kept from v1, moved to the Python package) |
+| **Alerts** | 15-min cron | Eric | Threshold checks (kept from v1, moved to the Python package). Since 2026-10-04 they log to `logs/alerts.log` only; Telegram carries the brief and one failure alert (`RECON_ALERTS_TELEGRAM=1` turns alert messages back on) |
 | **Run record** | every run | brain.html widget | `run.json`: every agent's inputs, outputs, and the argument graph |
 
 ## 3. Agents, reorganised into desks
