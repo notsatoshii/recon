@@ -211,7 +211,8 @@ def main():
     # Build and write scorecard
     scorecard = build_scorecard(all_predictions, market, fng)
 
-    brief_dir = RECON_HOME / "briefs" / TODAY
+    # RECON_RUN_DIR: the orchestrator writes into its own run folder
+    brief_dir = Path(os.environ["RECON_RUN_DIR"]) if os.environ.get("RECON_RUN_DIR") else RECON_HOME / "briefs" / TODAY
     brief_dir.mkdir(parents=True, exist_ok=True)
     scorecard_path = brief_dir / "00_scorecard.md"
     scorecard_path.write_text(scorecard)

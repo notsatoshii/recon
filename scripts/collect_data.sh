@@ -10,7 +10,7 @@ RECON_TWSCRAPE_DB="${RECON_TWSCRAPE_DB:-$HOME/.recon_twscrape.db}"; export RECON
 _venv="${RECON_VENV:-$RECON_HOME/../recon-venv}"; RECON_PY="$_venv/bin/python"; [ -x "$RECON_PY" ] || RECON_PY=python3
 TODAY=$(date +%Y-%m-%d)
 DATA_DIR="$RECON_HOME/data-sources"
-LOG_FILE="$RECON_HOME/logs/${TODAY}.log"
+LOG_FILE="${RECON_LOG_FILE:-$RECON_HOME/logs/${TODAY}.log}"
 
 log() {
     local ts=$(date +"%H:%M:%S")
@@ -868,7 +868,8 @@ log "  AI/Tools: $(wc -l < "$DATA_DIR/ai_tools/latest.md" 2>/dev/null || echo FA
 # Now run processing layers before assembling final package
 # ═══════════════════════════════════════════════════════════
 
-BRIEF_DIR="$RECON_HOME/briefs/$TODAY"
+# RECON_RUN_DIR: the orchestrator collects into its own run folder (validation runs use briefs/<date>-<tag>)
+BRIEF_DIR="${RECON_RUN_DIR:-$RECON_HOME/briefs/$TODAY}"; mkdir -p "$BRIEF_DIR"
 
 # ─── ASSEMBLE RAW DATA (intermediate, for processing layers) ─
 
