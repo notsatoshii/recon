@@ -1,6 +1,7 @@
 # RECON v2 — Improvement plan (including the debate)
 
-Date: 2026-10-04. Planning only. Nothing here has been built, committed, or run.
+Date: 2026-10-04. Written as a plan; Phase A (§7) was built and deployed the same day (see
+`model-log.md` and §8 for the decisions it used). Sections 1–6 describe the state before it.
 
 Evidence comes from the only two real v2 runs (2026-09-10 and 2026-09-11): the run folders and
 logs on the droplet (`/home/recon/recon-v2`, read-only), the run exports in
@@ -506,4 +507,19 @@ Order notes:
 6. **Droplet writes and schedule.** An allow rule so the cron and deploy changes can be made
    from a session, and confirm 06:00 KST every day including weekends.
 
-Path: `docs/v2/06-improvement-plan.md` (local clone only, not committed).
+### Decided 2026-10-04 (Claude, at Eric's instruction not to ask)
+
+1. **The brief may show the split** with counts ("most of our lenses (7 of 9) …, a minority
+   argues …"), never agent names. Used from Phase C/D (WHERE THE VIEWS SPLIT); the Phase A
+   persona still presents conclusions without debate mechanics.
+2. **One daily ~2,000-word brief** stays (11 sections, 1,400–2,000 words). No Mon/Wed/Fri digest
+   for now; the v1 ai-digest and fundraising cron lines are retired with the v1 crontab.
+3. **X stays** on the burner account with a 10-minute budget (category order rotates daily).
+4. **Reddit stays on RSS** with a trimmed list (21 subreddits, ~6.5 s spacing, Retry-After). A
+   Reddit API app needs Eric's own login and is not pursued.
+5. **All 9 agents stay through Phase A** (and B). The roster is decided in Phase C from
+   contribution data.
+6. **Daily at 06:00 KST including weekends.** Cron starts at 05:00 KST so the brief lands by
+   06:00; droplet writes are made from the session.
+
+Path: `docs/v2/06-improvement-plan.md`.

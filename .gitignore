@@ -20,3 +20,4 @@ recon-venv/
 *.tmp
 exports/
 config/twitter_user_ids.json
+data-sources/reddit/cache.json
