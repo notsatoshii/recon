@@ -190,22 +190,22 @@ if [ "$LOOP_INTERVAL" -gt 0 ] 2>/dev/null; then
     while true; do
         output=$(run_checks 2>&1)
         # Send any alerts via Telegram
-        echo "$output" | grep "^ALERT:" | while read -r line; do
+        echo "$output" | { grep "^ALERT:" || true; } | while read -r line; do
             msg="${line#ALERT:}"
             send_alert "$msg"
         done
-        echo "$output" | grep -v "^ALERT:" | while read -r line; do
+        echo "$output" | { grep -v "^ALERT:" || true; } | while read -r line; do
             log "$line"
         done
         sleep "$((LOOP_INTERVAL * 60))"
     done
 else
     output=$(run_checks 2>&1)
-    echo "$output" | grep "^ALERT:" | while read -r line; do
+    echo "$output" | { grep "^ALERT:" || true; } | while read -r line; do
         msg="${line#ALERT:}"
         send_alert "$msg"
     done
-    echo "$output" | grep -v "^ALERT:" | while read -r line; do
+    echo "$output" | { grep -v "^ALERT:" || true; } | while read -r line; do
         log "$line"
     done
 fi
