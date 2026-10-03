@@ -11,6 +11,9 @@ in the schema recon.html consumes (see rubric/recon-sample). v1 has no desks, tr
 threads, or claims check yet; those fields are filled with what v1 knows and left empty
 otherwise, so the page renders real runs today and richer ones after Phase 2.
 
+Runs written by recon/orchestrator.py (briefs/<run>/run.json) are exported as they are: typed
+questions, positions, verified cites and the claims check included.
+
 Usage: python3 recon/export.py [--out DIR] [--days N]
 """
 from __future__ import annotations
@@ -165,6 +168,13 @@ def run_sections(rd: Path) -> dict:
     return found
 
 
+def source_records_dir(rd: Path, finished: str | None = None) -> tuple[list[dict], str]:
+    """Source records read from one run folder's own raw data / package (the orchestrator's run.json)."""
+    fin = datetime.fromisoformat(finished) if finished else None
+    found = run_sections(rd)
+    return [source_record(n, l, found.get(l, ""), fin) for n, l in LAYER.items()], "run" if found else "none"
+
+
 def source_records(date: str, finished: str | None = None) -> tuple[list[dict], str]:
     """One record per source layer, plus the scope: "run" when read from this run's own raw data / package (what the
     run actually read; later exports cannot change it), else "export" (data-sources/<name>/latest.md as of the
@@ -244,6 +254,13 @@ def build_run(date: str) -> dict | None:
     rd = RECON_HOME / "briefs" / date
     if not rd.is_dir():
         return None
+    # Runs made by recon/orchestrator.py carry their own typed record; nothing to scrape.
+    rj = rd / "run.json"
+    if rj.exists():
+        try:
+            return json.loads(rj.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            pass
     takes = {a: read(rd / f"03_take_{a}.md") for a in AGENTS if (rd / f"03_take_{a}.md").exists()}
     if not takes:
         return None
@@ -338,7 +355,10 @@ def main() -> int:
     out = Path(args.out)
     (out / "runs").mkdir(parents=True, exist_ok=True)
     index = []
-    dates = sorted([p.name for p in (RECON_HOME / "briefs").iterdir() if re.match(r"\d{4}-\d\d-\d\d$", p.name)], reverse=True)[:args.days]
+    # daily runs are briefs/<date>; orchestrator validation runs are briefs/<date>-<tag>; dry runs stay out
+    dates = sorted([p.name for p in (RECON_HOME / "briefs").iterdir()
+                    if re.match(r"\d{4}-\d\d-\d\d(-[A-Za-z0-9]+)?$", p.name) and not p.name.endswith("-dry")],
+                   reverse=True)[:args.days]
     for d in dates:
         run = build_run(d)
         if not run:
@@ -348,7 +368,8 @@ def main() -> int:
         index.append({"date": d, "mode": run["mode"], "status": run["status"], "started": run["started"],
                       "finished": run["finished"], "wall_seconds": run["wall_seconds"], "calls": run["usage"]["calls"],
                       "agents_active": len(run["agents"]), "sources_ok": sum(1 for s in srcs if s["ok"]),
-                      "sources_total": len(srcs), "brief_words": run["delivery"]["brief_words"], "path": f"runs/{d}.json"})
+                      "sources_total": len(srcs), "brief_words": run["delivery"]["brief_words"], "path": f"runs/{d}.json",
+                      "pipeline": run.get("pipeline", "bash")})
         print(f"  {d}: {run['status']} agents={len(run['agents'])} calls={run['usage']['calls']} words={run['delivery']['brief_words']}")
     (out / "index.json").write_text(json.dumps({"generated_at": datetime.now(KST).isoformat(timespec="seconds"), "runs": index}, ensure_ascii=False, indent=1), encoding="utf-8")
     print(f"exported {len(index)} runs → {out}")
