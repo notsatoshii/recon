@@ -352,8 +352,12 @@ KOREA section is written in English from them, as today).
    for policy_analyst and user_agent.
 6. **Run record.** `export.LAYER` gains `polymarket`, `kalshi`, `changelogs`, `zdnet_kr`;
    `SECTION_LAYER` gains `("polymarket", "polymarket"), ("kalshi", "kalshi"), ("changelogs",
-   "changelogs"), ("zdnet korea", "zdnet_kr")`. The RUBRIC recon page lists sources from `run.json`
-   and should pick them up; checked when Phase F starts.
+   "changelogs"), ("zdnet korea", "zdnet_kr")` (none of the existing substring keys matches these
+   headers, so order does not matter); `TITLE_SOURCES` (added in `f11607c`) gains
+   `("prediction markets", ["polymarket", "kalshi"])`. `section_sources()` then attributes SECTION 8
+   to Polymarket and Kalshi and the new blocks inside SECTIONS 4 and 6 to `zdnet_kr` and
+   `changelogs` by their `# <Name> Intelligence` headers, which is how the RUBRIC recon page links
+   sources to sections; checked on the page when Phase F starts.
 7. **Archive.** `ph_deliver` copies the four new `latest.md` files into `archive/<date>/`.
 8. **`.gitignore`**: `data-sources/*/status.json`, `data-sources/*/seen.json`,
    `data-sources/*/prev.json`.
