@@ -1,0 +1,20 @@
+{
+  "_note": "Sources for scripts/collect_changelogs.py (docs/v2/phase-e-collectors-spec.md §3.3). type github = GitHub REST releases API (prerelease flag decides; fallback regex for unflagged pre-releases); type rss = feed, never pre-release filtered. include/exclude are Python regexes on the title or tag.",
+  "sources": [
+    {"product": "Codex CLI", "short": "Codex", "section": "CODING AGENTS & CLIS", "type": "github", "repo": "openai/codex"},
+    {"product": "Claude Code", "short": "Claude Code", "section": "CODING AGENTS & CLIS", "type": "github", "repo": "anthropics/claude-code"},
+    {"product": "Gemini CLI", "short": "Gemini CLI", "section": "CODING AGENTS & CLIS", "type": "github", "repo": "google-gemini/gemini-cli"},
+    {"product": "GitHub Copilot CLI", "short": "Copilot CLI", "section": "CODING AGENTS & CLIS", "type": "github", "repo": "github/copilot-cli"},
+    {"product": "Cursor", "short": "Cursor", "section": "CODING AGENTS & CLIS", "type": "rss", "url": "https://cursor.com/changelog/rss.xml"},
+    {"product": "Cline", "short": "Cline", "section": "CODING AGENTS & CLIS", "type": "github", "repo": "cline/cline", "exclude": "^(sdk/|SDK |Desktop )"},
+    {"product": "GitHub Changelog (Copilot)", "short": "GitHub Changelog", "section": "CODING AGENTS & CLIS", "type": "rss", "url": "https://github.blog/changelog/feed/", "include": "Copilot"},
+    {"product": "OpenAI Agents SDK (Python)", "short": "Agents SDK", "section": "SDKS & PROTOCOLS", "type": "github", "repo": "openai/openai-agents-python"},
+    {"product": "Claude Agent SDK (Python)", "short": "Claude Agent SDK", "section": "SDKS & PROTOCOLS", "type": "github", "repo": "anthropics/claude-agent-sdk-python"},
+    {"product": "Anthropic SDK (Python)", "short": "Anthropic SDK", "section": "SDKS & PROTOCOLS", "type": "github", "repo": "anthropics/anthropic-sdk-python"},
+    {"product": "OpenAI SDK (Python)", "short": "OpenAI SDK", "section": "SDKS & PROTOCOLS", "type": "github", "repo": "openai/openai-python"},
+    {"product": "Model Context Protocol spec", "short": "MCP spec", "section": "SDKS & PROTOCOLS", "type": "github", "repo": "modelcontextprotocol/modelcontextprotocol"},
+    {"product": "Ollama", "short": "Ollama", "section": "MODEL SERVING", "type": "github", "repo": "ollama/ollama"},
+    {"product": "vLLM", "short": "vLLM", "section": "MODEL SERVING", "type": "github", "repo": "vllm-project/vllm"},
+    {"product": "Google AI blog", "short": "Google AI blog", "section": "VENDOR BLOGS", "type": "rss", "url": "https://blog.google/innovation-and-ai/technology/ai/rss/"}
+  ]
+}

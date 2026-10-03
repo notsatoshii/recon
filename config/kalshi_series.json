@@ -1,0 +1,4 @@
+{
+  "_note": "Desk watchlist for scripts/collect_kalshi.py. Always fetched first, whatever the frequency. Unknown tickers or series without open events are logged and skipped. KXBTCD/KXETHD feed CRYPTO PRICE LADDERS; KXFEDDECISION/KXFED feed MACRO.",
+  "watchlist": ["KXFEDDECISION", "KXFED", "KXRATECUTCOUNT", "KXCPI", "KXPAYROLLS", "KXBTCD", "KXETHD", "KXBTCMAXY", "KXLLM1", "KXTOPMODEL"]
+}

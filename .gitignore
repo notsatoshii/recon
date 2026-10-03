@@ -21,3 +21,6 @@ recon-venv/
 exports/
 config/twitter_user_ids.json
 data-sources/reddit/cache.json
+data-sources/*/status.json
+data-sources/*/seen.json
+data-sources/*/prev.json
