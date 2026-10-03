@@ -26,6 +26,9 @@ log() { echo "[$(date +"%Y-%m-%d %H:%M:%S")] [ALERT] $1" | tee -a "$LOG_FILE"; }
 send_alert() {
     local msg="$1"
     log "FIRING: $msg"
+    # Since 2026-10-04 Telegram carries only the daily brief and one failure alert.
+    # Threshold alerts are logged here; RECON_ALERTS_TELEGRAM=1 sends them again.
+    [ "${RECON_ALERTS_TELEGRAM:-0}" = "1" ] || return 0
     [ -z "${RECON_TELEGRAM_TOKEN:-}" ] && { log "Telegram not configured"; return; }
     curl -s -X POST "https://api.telegram.org/bot${RECON_TELEGRAM_TOKEN}/sendMessage" \
         -H "Content-Type: application/json" \
