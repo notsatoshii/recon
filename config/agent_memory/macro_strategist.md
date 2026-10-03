@@ -1,4 +1,4 @@
-# REGULATOR — Running Memory
+# MACRO STRATEGIST — Running Memory
 ## Updated after each run. Accumulates over time.
 
 ### Active Tracking

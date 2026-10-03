@@ -350,7 +350,7 @@ for agent in "${!active_agents[@]}"; do
         memory_file="$RECON_HOME/config/agent_memory/${agent}.md"
         if [ -f "$memory_file" ]; then
             extra="YOUR RUNNING MEMORY (items you're tracking, prior predictions, recurring themes):
-$(sed -n '3,$p' "$memory_file" | head -c 6000)
+$(sed -n '3,$p' "$memory_file" | awk '{n+=length($0)+1; if (n<=6000) print}')
 
 "
         fi
@@ -696,7 +696,8 @@ for agent in "${!all_takes[@]}"; do
         (
             sleep 3
             update=$(ask_hermes "$PERSONAS/$agent.md" \
-                "Update your running memory file. This memory accumulates over time — don't rewrite it, ADD to it.
+                "Update your running memory file. Output the COMPLETE updated memory: it replaces the current file,
+so carry forward every item that still matters (never drop unscored predictions) and add today's. Keep it under 80 lines.
 
 Rules:
 - Add new items to Active Tracking (things to watch, metrics, deadlines)
@@ -731,21 +732,18 @@ ${all_votes[$agent]:-none}
 YOUR CURRENT MEMORY:
 $(cat "$memory_file")" "fast")
 
-            # Append update to memory (don't replace)
-            echo "" >> "$memory_file"
-            echo "### Last updated: $TODAY" >> "$memory_file"
-            echo "" >> "$memory_file"
-            echo "$update" >> "$memory_file"
-
-            # Trim if over 150 lines (keep header + last 140 lines)
-            mem_lines=$(wc -l < "$memory_file")
-            if [ "$mem_lines" -gt 150 ]; then
-                head -2 "$memory_file" > "${memory_file}.tmp"
-                echo "" >> "${memory_file}.tmp"
-                echo "### [older entries archived]" >> "${memory_file}.tmp"
-                echo "" >> "${memory_file}.tmp"
-                tail -140 "$memory_file" >> "${memory_file}.tmp"
-                mv "${memory_file}.tmp" "$memory_file"
+            # Replace the memory with the updated copy (appending kept 4 full copies, F5).
+            # Only accept an update in the expected format; otherwise keep yesterday's memory.
+            if grep -q '^### Active Tracking' <<< "$update" && grep -q '^### Predictions' <<< "$update"; then
+                {
+                    head -2 "$memory_file"
+                    echo ""
+                    echo "### Last updated: $TODAY"
+                    echo ""
+                    printf '%s\n' "$update" | sed -n '/^### Active Tracking/,$p' | grep -v '^### Last updated:' | awk 'NR<=150'
+                } > "${memory_file}.tmp" && mv "${memory_file}.tmp" "$memory_file"
+            else
+                log "  $agent: memory update not in the expected format; kept the previous memory"
             fi
         ) &
     fi
