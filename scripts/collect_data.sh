@@ -29,15 +29,21 @@ python3 << 'PYREDDIT'
 import os
 import sys, time, urllib.request, xml.etree.ElementTree as ET
 from datetime import datetime, timezone
+# Trimmed 2026-10-04 from 40 to 21 subreddits that serve the desks (40 on RSS drew ~30 HTTP 429s a
+# run and only 8-9 subs came back). Requests are spaced ~6.5 s, a 429 honours Retry-After once,
+# and the whole block stops after RECON_REDDIT_MAX_SECONDS (default 300).
 SUBS = {
-    "crypto_core": ["cryptocurrency","Bitcoin","ethereum","CryptoMarkets","defi","ethfinance","CryptoTechnology","ethtrader","altcoin","web3","NFT"],
+    "crypto_core": ["CryptoCurrency","Bitcoin","ethereum","CryptoMarkets","defi","ethfinance"],
     "prediction_markets": ["Polymarket","PredictionMarkets"],
-    "trading": ["algotrading","wallstreetbets","options"],
-    "chains": ["solana","bnbchainofficial","basechain"],
-    "ai": ["MachineLearning","artificial","LocalLLaMA","ChatGPT","ClaudeAI","singularity","StableDiffusion","ArtificialIntelligence"],
-    "politics": ["politics","PoliticalDiscussion","geopolitics","NeutralPolitics","worldnews","economics","moderatepolitics","neoliberal","conservative"],
-    "economics": ["economics","finance","stocks","FluentInFinance"],
+    "trading": ["wallstreetbets"],
+    "chains": ["solana","BASEchain"],
+    "ai": ["MachineLearning","LocalLLaMA","ChatGPT","ClaudeAI"],
+    "politics": ["geopolitics","worldnews","NeutralPolitics"],
+    "economics": ["Economics","finance","stocks"],
 }
+SPACING = float(os.environ.get("RECON_REDDIT_SPACING", "6.5"))
+BUDGET = float(os.environ.get("RECON_REDDIT_MAX_SECONDS", "300"))
+_start = time.monotonic()
 
 NS = {"atom": "http://www.w3.org/2005/Atom"}
 headers = {
@@ -50,14 +56,34 @@ total_subs = sum(len(v) for v in SUBS.values())
 fetched = 0
 failed = 0
 
+def fetch(url):
+    """GET with one retry on 429, waiting Retry-After (capped at 60 s, default 20 s)."""
+    import urllib.error
+    for attempt in (1, 2):
+        try:
+            req = urllib.request.Request(url, headers=headers)
+            with urllib.request.urlopen(req, timeout=15) as r:
+                return r.read().decode()
+        except urllib.error.HTTPError as e:
+            if e.code != 429 or attempt == 2 or time.monotonic() - _start > BUDGET:
+                raise
+            try:
+                wait = min(60.0, float(e.headers.get("Retry-After") or 20))
+            except ValueError:
+                wait = 20.0
+            print(f"Rate limited at {url.split('/r/')[1].split('/')[0]}, waiting {wait:.0f}s (Retry-After)")
+            time.sleep(wait)
+
 for cat, subs in SUBS.items():
     lines.append(f"\n---\n## {cat.upper()}\n")
     for sub_name in subs:
+        if time.monotonic() - _start > BUDGET:
+            lines.append(f"### r/{sub_name} -- skipped (time budget)\n")
+            failed += 1
+            continue
         try:
             url = f"https://www.reddit.com/r/{sub_name}/hot.rss"
-            req = urllib.request.Request(url, headers=headers)
-            with urllib.request.urlopen(req, timeout=15) as r:
-                body = r.read().decode()
+            body = fetch(url)
 
             root = ET.fromstring(body)
             entries = root.findall("atom:entry", NS)[:5]
@@ -91,17 +117,13 @@ for cat, subs in SUBS.items():
                 lines.append(f"### r/{sub_name} -- empty\n")
                 failed += 1
 
-            time.sleep(1.5)  # rate limit between subs
+            time.sleep(SPACING)  # Reddit's unauthenticated RSS allows roughly 10 requests a minute
 
         except Exception as e:
             err = str(e)[:60]
             lines.append(f"### r/{sub_name} -- ERROR: {err}\n")
             failed += 1
-            if "429" in err:
-                print(f"Rate limited at r/{sub_name}, waiting 15s...")
-                time.sleep(15)
-            else:
-                time.sleep(1.5)
+            time.sleep(SPACING)
 
 with open(os.environ["RECON_HOME"] + "/data-sources/reddit/latest.md", "w") as f:
     f.write("\n".join(lines))

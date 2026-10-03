@@ -18,7 +18,7 @@ Environment:
     RECON_TWSCRAPE_DB         accounts db (default ~/.recon_twscrape.db)
     RECON_TWITTER_PER_CAT     handles per category (default 8)
     RECON_TWITTER_PER_USER    tweets per handle (default 8)
-    RECON_TWITTER_MAX_MINUTES time budget; waits out X resets inside it (default 40)
+    RECON_TWITTER_MAX_MINUTES time budget; waits out X resets inside it (default 10)
     RECON_TWITTER_SEARCHES    "0" to skip topic searches (default 1)
     RECON_TWITTER_MAX_AGE_H   drop tweets older than this many hours (default 72)
 """
@@ -40,7 +40,7 @@ DB_PATH = os.environ.get("RECON_TWSCRAPE_DB") or str(Path.home() / ".recon_twscr
 
 PER_CATEGORY = int(os.environ.get("RECON_TWITTER_PER_CAT", "8"))
 PER_USER = int(os.environ.get("RECON_TWITTER_PER_USER", "8"))
-MAX_MINUTES = float(os.environ.get("RECON_TWITTER_MAX_MINUTES", "40"))  # one account ~50 timelines per 15-min window
+MAX_MINUTES = float(os.environ.get("RECON_TWITTER_MAX_MINUTES", "10"))  # decided 2026-10-04: 10 min, burner kept
 DO_SEARCHES = os.environ.get("RECON_TWITTER_SEARCHES", "1") != "0"
 MAX_AGE_H = int(os.environ.get("RECON_TWITTER_MAX_AGE_H", "72"))  # older tweets (pinned, quiet accounts) are dropped
 
@@ -182,7 +182,14 @@ async def run() -> int:
         return time.monotonic() > deadline
 
     retried: set[str] = set()
-    for cat, handles in seeds.items():
+    # A 10-minute budget does not reach every category; start at a different one each day so
+    # each category leads about once a week instead of the first ones taking the budget daily.
+    cats = list(seeds.items())
+    if cats:
+        k = datetime.now(timezone.utc).toordinal() % len(cats)
+        cats = cats[k:] + cats[:k]
+        log(f"category order starts at {cats[0][0]} today")
+    for cat, handles in cats:
         if not handles:
             continue
         lines.append(f"\n---\n## {cat.upper().replace('_', ' ')}\n")
