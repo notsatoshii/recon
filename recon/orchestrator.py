@@ -1171,6 +1171,21 @@ RAW DATA (for cross-referencing numbers; every package section, each trimmed):
         fin_iso = finished.strftime("%Y-%m-%dT%H:%M:%S+09:00")
         srcs, scope = export.source_records_dir(self.dir, fin_iso)
         ev_items = pos["evidence"]["items"]
+        # cites carry the package section name the RUBRIC page uses (export.package_sections), found by
+        # locating the quote in the package; unlocated quotes keep the closest name to what the model wrote
+        sec_bodies = []
+        for part in re.split(r"^# SECTION \d+: ", pkg_text, flags=re.M)[1:]:
+            title, _, body = part.partition("\n")
+            sec_bodies.append((title.strip().lower().replace(" & ", "_").replace(" ", "_")[:40], evidence.norm(body)))
+
+        def cite_section(quote: str, given: str) -> str:
+            q = evidence.norm(quote).strip(" .\"'")
+            for name, body in sec_bodies:
+                if q and q[:120] in body:
+                    return name
+            g = set(re.findall(r"[a-z]+", (given or "").lower())) - {"section", "and"}
+            best = max(sec_bodies, key=lambda nb: len(g & set(re.findall(r"[a-z]+", nb[0]))), default=None)
+            return best[0] if best and g & set(re.findall(r"[a-z]+", best[0])) else (given or "")
         made: dict[str, list] = {}
         got: dict[str, list] = {}
         edges = []
@@ -1205,7 +1220,8 @@ RAW DATA (for cross-referencing numbers; every package section, each trimmed):
                 "fed": {"package_sections": [s["name"] for s in sections], "raw_sections": [],
                         "memory_lines": mem.get(a, {}).get("memory_lines", 0), "state_lines": mem.get(a, {}).get("state_lines", 0),
                         "bytes": len(self.take_prompt(a, triage).encode("utf-8"))},
-                "cites": [{"section": e["section"], "quote": e["quote"], "verified": e["status"] in ("verified", "partial"),
+                "cites": [{"section": cite_section(e["quote"], e["section"]), "quote": e["quote"],
+                           "verified": e["status"] in ("verified", "partial"),
                            "status": e["status"], "where": e["where"]} for e in ev_items.get(a, [])],
                 "take": t.get("take", ""), "summary": t.get("summary", ""),
                 "response": (r or {}).get("text") or None, "verdict": (r or {}).get("verdict"),
