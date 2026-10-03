@@ -20,6 +20,7 @@ Environment:
     RECON_TWITTER_PER_USER    tweets per handle (default 8)
     RECON_TWITTER_MAX_MINUTES time budget; waits out X resets inside it (default 40)
     RECON_TWITTER_SEARCHES    "0" to skip topic searches (default 1)
+    RECON_TWITTER_MAX_AGE_H   drop tweets older than this many hours (default 72)
 """
 from __future__ import annotations
 
@@ -28,7 +29,7 @@ import json
 import os
 import sys
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 RECON_HOME = Path(os.environ.get("RECON_HOME") or Path(__file__).resolve().parent.parent)
@@ -41,6 +42,7 @@ PER_CATEGORY = int(os.environ.get("RECON_TWITTER_PER_CAT", "8"))
 PER_USER = int(os.environ.get("RECON_TWITTER_PER_USER", "8"))
 MAX_MINUTES = float(os.environ.get("RECON_TWITTER_MAX_MINUTES", "40"))  # one account ~50 timelines per 15-min window
 DO_SEARCHES = os.environ.get("RECON_TWITTER_SEARCHES", "1") != "0"
+MAX_AGE_H = int(os.environ.get("RECON_TWITTER_MAX_AGE_H", "72"))  # older tweets (pinned, quiet accounts) are dropped
 
 # Kept from v1: a few topic searches on top of the account list.
 TOPIC_SEARCHES = [
@@ -166,6 +168,7 @@ async def run() -> int:
     deadline = time.monotonic() + MAX_MINUTES * 60
 
     now = datetime.now(timezone.utc)
+    cutoff = now - timedelta(hours=MAX_AGE_H)
     lines = [
         "# Twitter/X Intelligence",
         f"## {now.strftime('%Y-%m-%d %H:%M UTC')}",
@@ -200,9 +203,11 @@ async def run() -> int:
                         continue
                     uid = user.id
                     ids[handle.lower()] = uid
-                tweets = await gather(api.user_tweets(uid, limit=PER_USER))
-                tweets = [t for t in tweets if t is not None][:PER_USER]
-                lines.append(f"### @{handle} ({len(tweets)} tweets)")
+                tweets = await gather(api.user_tweets(uid, limit=PER_USER + 4))
+                # newest first, and only the last MAX_AGE_H hours: pinned tweets come back first and can be years old
+                tweets = sorted((t for t in tweets if t is not None and t.date and t.date >= cutoff),
+                                key=lambda t: t.date, reverse=True)[:PER_USER]
+                lines.append(f"### @{handle} ({len(tweets)} tweets in {MAX_AGE_H} h)")
                 for t in tweets:
                     lines.append(fmt_tweet(t))
                 lines.append("")
@@ -232,8 +237,8 @@ async def run() -> int:
             if out_of_time():
                 break
             try:
-                results = await gather(api.search(q, limit=10))
-                lines.append(f'### "{q}" ({len(results)} results)')
+                results = [t for t in await gather(api.search(q, limit=10)) if t is not None and t.date and t.date >= cutoff]
+                lines.append(f'### "{q}" ({len(results)} results in {MAX_AGE_H} h)')
                 for t in results[:10]:
                     lines.append(fmt_tweet(t, include_user=True))
                 lines.append("")
