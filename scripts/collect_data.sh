@@ -23,15 +23,17 @@ log "========== DATA COLLECTION -- $TODAY =========="
 
 # ─── REDDIT (RSS feeds, no API key needed) ─────────────────
 
-log "Collecting Reddit data..."
+log "Collecting Reddit data (in the background, alongside X)..."
 
-python3 << 'PYREDDIT'
-import os
+python3 << 'PYREDDIT' &
+import os, re, json
 import sys, time, urllib.request, xml.etree.ElementTree as ET
 from datetime import datetime, timezone
 # Trimmed 2026-10-04 from 40 to 21 subreddits that serve the desks (40 on RSS drew ~30 HTTP 429s a
-# run and only 8-9 subs came back). Requests are spaced ~6.5 s, a 429 honours Retry-After once,
-# and the whole block stops after RECON_REDDIT_MAX_SECONDS (default 300).
+# run and only 8-9 subs came back). Unauthenticated RSS from the droplet gets roughly one request
+# per 10-45 s, so: requests are paced by Reddit's x-ratelimit-* headers, the fetch order rotates
+# daily, a sub that cannot be fetched today reuses its last good pull if it is under 48 h old
+# (labelled), and the block stops after RECON_REDDIT_MAX_SECONDS (default 420).
 SUBS = {
     "crypto_core": ["CryptoCurrency","Bitcoin","ethereum","CryptoMarkets","defi","ethfinance"],
     "prediction_markets": ["Polymarket","PredictionMarkets"],
@@ -41,96 +43,125 @@ SUBS = {
     "politics": ["geopolitics","worldnews","NeutralPolitics"],
     "economics": ["Economics","finance","stocks"],
 }
-SPACING = float(os.environ.get("RECON_REDDIT_SPACING", "6.5"))
-BUDGET = float(os.environ.get("RECON_REDDIT_MAX_SECONDS", "300"))
+SPACING = float(os.environ.get("RECON_REDDIT_SPACING", "2"))
+BUDGET = float(os.environ.get("RECON_REDDIT_MAX_SECONDS", "420"))
+CACHE_H = 48
 _start = time.monotonic()
+CACHE = os.path.join(os.environ["RECON_HOME"], "data-sources", "reddit", "cache.json")
 
 NS = {"atom": "http://www.w3.org/2005/Atom"}
 headers = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
     "Accept": "application/atom+xml,application/xml,text/xml,*/*",
 }
+now = datetime.now(timezone.utc)
+try:
+    cache = json.load(open(CACHE))
+except Exception:
+    cache = {}
 
-lines = [f"# Reddit Intelligence\n## {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}\n"]
-total_subs = sum(len(v) for v in SUBS.values())
-fetched = 0
-failed = 0
+_next_ok = 0.0
+
+def _pace(h):
+    """Reddit sends x-ratelimit-remaining / -reset (seconds). When the window is used up,
+    wait for its reset before the next request."""
+    global _next_ok
+    try:
+        remaining = float(h.get("x-ratelimit-remaining") or 1)
+        reset = float(h.get("x-ratelimit-reset") or 0)
+    except (TypeError, ValueError):
+        remaining, reset = 1.0, 0.0
+    _next_ok = time.monotonic() + (min(reset, 60.0) + 1 if remaining < 1 else 0)
 
 def fetch(url):
-    """GET with one retry on 429, waiting Retry-After (capped at 60 s, default 20 s)."""
+    """GET paced by Reddit's rate-limit headers; up to two retries on 429."""
     import urllib.error
-    for attempt in (1, 2):
+    global _next_ok
+    for attempt in (1, 2, 3):
+        wait = _next_ok - time.monotonic()
+        if wait > 0:
+            if time.monotonic() + wait - _start > BUDGET:
+                raise TimeoutError("time budget")
+            time.sleep(wait)
         try:
             req = urllib.request.Request(url, headers=headers)
             with urllib.request.urlopen(req, timeout=15) as r:
+                _pace(r.headers)
                 return r.read().decode()
         except urllib.error.HTTPError as e:
-            if e.code != 429 or attempt == 2 or time.monotonic() - _start > BUDGET:
+            _pace(e.headers or {})
+            if e.code != 429 or attempt == 3:
                 raise
-            try:
-                wait = min(60.0, float(e.headers.get("Retry-After") or 20))
-            except ValueError:
-                wait = 20.0
-            print(f"Rate limited at {url.split('/r/')[1].split('/')[0]}, waiting {wait:.0f}s (Retry-After)")
-            time.sleep(wait)
+            if _next_ok <= time.monotonic():  # no usable header: back off 15 s
+                _next_ok = time.monotonic() + 15
 
-for cat, subs in SUBS.items():
-    lines.append(f"\n---\n## {cat.upper()}\n")
-    for sub_name in subs:
-        if time.monotonic() - _start > BUDGET:
-            lines.append(f"### r/{sub_name} -- skipped (time budget)\n")
-            failed += 1
-            continue
+def parse(body):
+    out = []
+    root = ET.fromstring(body)
+    for e in root.findall("atom:entry", NS)[:5]:
+        title_el = e.find("atom:title", NS)
+        title = title_el.text[:180] if title_el is not None and title_el.text else "?"
+        link_el = e.find("atom:link", NS)
+        post_url = link_el.get("href", "") if link_el is not None else ""
+        content_el = e.find("atom:content", NS)
+        summary = ""
+        if content_el is not None and content_el.text:
+            text = re.sub(r'<[^>]+>', ' ', content_el.text)
+            text = re.sub(r'\s+', ' ', text).strip()[:150]
+            if text and text != title:
+                summary = text
+        out.append(f"- {title} {post_url}".rstrip())
+        if summary:
+            out.append(f"  {summary}")
+    return out
+
+order = [(c, s) for c, subs in SUBS.items() for s in subs]
+k = now.toordinal() % len(order)
+order = order[k:] + order[:k]
+blocks, fetched, cached, failed, rate_limited = {}, 0, 0, 0, 0
+for cat, sub in order:
+    err = ""
+    if time.monotonic() - _start > BUDGET:
+        err = "time budget"
+    else:
         try:
-            url = f"https://www.reddit.com/r/{sub_name}/hot.rss"
-            body = fetch(url)
-
-            root = ET.fromstring(body)
-            entries = root.findall("atom:entry", NS)[:5]
-
-            if entries:
-                lines.append(f"### r/{sub_name}")
-                for e in entries:
-                    title_el = e.find("atom:title", NS)
-                    title = title_el.text[:180] if title_el is not None and title_el.text else "?"
-                    # Extract Reddit URL
-                    link_el = e.find("atom:link", NS)
-                    post_url = link_el.get("href", "") if link_el is not None else ""
-                    # Extract text content from HTML summary if available
-                    content_el = e.find("atom:content", NS)
-                    summary = ""
-                    if content_el is not None and content_el.text:
-                        import re
-                        text = re.sub(r'<[^>]+>', ' ', content_el.text)
-                        text = re.sub(r'\s+', ' ', text).strip()[:150]
-                        if text and text != title:
-                            summary = text
-                    line = f"- {title}"
-                    if post_url:
-                        line += f" {post_url}"
-                    lines.append(line)
-                    if summary:
-                        lines.append(f"  {summary}")
-                lines.append("")
+            items = parse(fetch(f"https://www.reddit.com/r/{sub}/hot.rss"))
+            if items:
+                blocks[sub] = [f"### r/{sub}"] + items + [""]
+                cache[sub] = {"at": now.isoformat(timespec="minutes"), "items": items}
                 fetched += 1
             else:
-                lines.append(f"### r/{sub_name} -- empty\n")
-                failed += 1
-
-            time.sleep(SPACING)  # Reddit's unauthenticated RSS allows roughly 10 requests a minute
-
+                err = "empty"
         except Exception as e:
             err = str(e)[:60]
-            lines.append(f"### r/{sub_name} -- ERROR: {err}\n")
+            rate_limited += "429" in err
+        time.sleep(SPACING)
+    if err:
+        c = cache.get(sub)
+        age_h = (now - datetime.fromisoformat(c["at"])).total_seconds() / 3600 if c else None
+        if c and age_h <= CACHE_H:
+            blocks[sub] = [f"### r/{sub} (cached from {c['at'][:16].replace('T', ' ')} UTC)"] + c["items"] + [""]
+            cached += 1
+        else:
+            blocks[sub] = [f"### r/{sub} -- ERROR: {err}", ""]
             failed += 1
-            time.sleep(SPACING)
+
+lines = [f"# Reddit Intelligence\n## {now.strftime('%Y-%m-%d %H:%M UTC')}\n"]
+for cat, subs in SUBS.items():
+    lines.append(f"\n---\n## {cat.upper()}\n")
+    for s in subs:
+        lines.extend(blocks.get(s, [f"### r/{s} -- ERROR: not reached", ""]))
 
 with open(os.environ["RECON_HOME"] + "/data-sources/reddit/latest.md", "w") as f:
     f.write("\n".join(lines))
-print(f"Reddit: {len(lines)} lines from {fetched}/{total_subs} subreddits ({failed} failed)")
+try:
+    json.dump(cache, open(CACHE, "w"))
+except OSError:
+    pass
+print(f"Reddit: {fetched}/{len(order)} subreddits fetched, {cached} from cache (<{CACHE_H} h), "
+      f"{failed} missing ({rate_limited} on HTTP 429) in {int(time.monotonic() - _start)}s")
 PYREDDIT
-
-log "  Reddit: $(wc -l < "$DATA_DIR/reddit/latest.md" 2>/dev/null || echo FAILED) lines"
+REDDIT_PID=$!
 
 # ─── TWITTER/X (twscrape, account-backed X internal API) ─────
 
@@ -140,6 +171,9 @@ mkdir -p "$DATA_DIR/twitter"
 "$RECON_PY" "$RECON_HOME/scripts/collect_twitter.py" 2>&1 | while read line; do log "  $line"; done
 
 log "  Twitter: $(wc -l < "$DATA_DIR/twitter/latest.md" 2>/dev/null || echo SKIPPED) lines"
+
+wait "$REDDIT_PID" || log "  Reddit collector exited non-zero"
+log "  Reddit: $(wc -l < "$DATA_DIR/reddit/latest.md" 2>/dev/null || echo FAILED) lines"
 
 # ─── FUNDRAISING (RootData via Playwright) ────────────────
 
