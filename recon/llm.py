@@ -19,6 +19,9 @@ Environment (all optional)
     RECON_CLAUDE_MODEL_FAST / _ANALYST / _SYNTH Claude model ids (claude provider only)
     RECON_LLM_TIMEOUT          seconds per call (default 420)
     RECON_LLM_RETRIES          attempts on empty output / rate limit (default 3)
+    RECON_CODEX_SLIM           1 = replace Codex's built-in agent instructions and switch its tools off
+                               (measured 2026-10-04: a one-line call drops from 11.6 K to 2.2 K input
+                               tokens). The orchestrator sets it; the bash pipeline leaves it off.
 
 CLI (used by the bash pipeline)
     printf '%s' "$prompt" | python3 recon/llm.py --tier analyst --persona personas/trader.md
@@ -35,11 +38,19 @@ import re
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 from pathlib import Path
 
 RECON_HOME = Path(os.environ.get("RECON_HOME") or Path(__file__).resolve().parent.parent)
 LOG_FILE = RECON_HOME / "logs" / "llm_calls.log"
+SLIM_INSTRUCTIONS = Path(__file__).resolve().parent / "codex_instructions.md"
+_LOG_LOCK = threading.Lock()
+
+# Codex features that add tools or instructions a single-shot text call never uses.
+SLIM_DISABLE = ("apps", "browser_use", "computer_use", "image_generation", "multi_agent", "plugins",
+                "goals", "shell_tool", "unified_exec", "view_image", "skill_search", "tool_suggest",
+                "sleep_tool", "personality", "code_mode_host")
 
 TIERS = ("fast", "analyst", "synth")
 
@@ -129,6 +140,20 @@ def retries() -> int:
     return max(1, int(os.environ.get("RECON_LLM_RETRIES", "3")))
 
 
+def slim() -> bool:
+    return os.environ.get("RECON_CODEX_SLIM", "0").strip().lower() in ("1", "true", "yes")
+
+
+def slim_args() -> list[str]:
+    args = ["-c", f'model_instructions_file="{SLIM_INSTRUCTIONS}"',
+            "-c", "include_permissions_instructions=false", "-c", "include_apps_instructions=false",
+            "-c", "include_environment_context=false", "-c", "include_collaboration_mode_instructions=false",
+            "-c", 'web_search="disabled"']
+    for f in SLIM_DISABLE:
+        args += ["--disable", f]
+    return args
+
+
 # ── providers ──────────────────────────────────────────────────
 
 def _looks_rate_limited(text: str) -> bool:
@@ -176,6 +201,8 @@ def _call_codex(prompt: str, tier: str, schema_path: str | None) -> tuple[str, d
         ]
         if schema_path:
             cmd += ["--output-schema", schema_path]
+        if slim() and SLIM_INSTRUCTIONS.exists():
+            cmd += slim_args()
         try:
             proc = subprocess.run(
                 cmd, input=prompt, capture_output=True, text=True,
@@ -218,8 +245,69 @@ _DRY_FILLER = (
 )
 
 
-def _call_dry_run(prompt: str, tier: str, agent: str) -> tuple[str, dict, str]:
+def _dry_quotes(prompt: str) -> list[str]:
+    """Verbatim lines from the prompt's package block, so dry-run evidence verifies."""
+    lines = [l.strip() for l in prompt.splitlines()]
+    out = [l[:140] for l in lines if 50 <= len(l) <= 400 and l.startswith("- ") and any(c.isdigit() for c in l)]
+    return out or ["dry-run quote that is not in the package"]
+
+
+def _dry_json(schema: dict, prompt: str, agent: str) -> str:
+    """Fill a JSON schema with plausible values: question ids from the prompt, probabilities spread by
+    agent, quotes copied from the prompt (one in five invented, to exercise the unverified path)."""
+    import hashlib
+    qids = list(dict.fromkeys(re.findall(r"\[(q\d)\]", prompt))) or ["q1", "q2", "q3"]
+    quotes = _dry_quotes(prompt)
+    seed = int(hashlib.sha1((agent or "-").encode()).hexdigest()[:12], 16)
+    counter = [0]
+
+    def nxt() -> int:
+        counter[0] += 1
+        return (seed // (counter[0] * 7 + 1)) + counter[0] * 37
+
+    def gen(sch: dict, key: str = ""):
+        t = sch.get("type")
+        if isinstance(t, list):
+            t = next((x for x in t if x != "null"), "string")
+        if "enum" in sch:
+            return sch["enum"][nxt() % len(sch["enum"])]
+        if t == "object":
+            return {k: gen(v, k) for k, v in sch.get("properties", {}).items()}
+        if t == "array":
+            items = sch.get("items", {})
+            if items.get("type") == "object" and "question_id" in items.get("properties", {}):
+                out = []
+                for q in qids:
+                    o = gen(items, key)
+                    o["question_id"] = q
+                    out.append(o)
+                return out
+            return [gen(items, key) for _ in range(2)]
+        if t in ("number", "integer"):
+            return 5 + nxt() % 91 if "probab" in key else nxt() % 10
+        if t == "boolean":
+            return bool(nxt() % 2)
+        if key == "quote":
+            n = nxt()
+            return "dry-run invented figure 123.4%" if n % 5 == 0 else quotes[n % len(quotes)]
+        if key == "question_id":
+            return qids[nxt() % len(qids)]
+        if key in ("resolves_on", "by_date"):
+            return "2026-10-31"
+        if key == "section":
+            return "ON-CHAIN & MARKET DATA"
+        if key in ("take", "text"):
+            return f"[dry-run] {agent or '-'} {key}. " + _DRY_FILLER * 2
+        return f"[dry-run] {key or 'value'}"
+
+    return json.dumps(gen(schema), ensure_ascii=False)
+
+
+def _call_dry_run(prompt: str, tier: str, agent: str, schema_path: str | None = None) -> tuple[str, dict, str]:
     p = prompt
+    if schema_path:
+        schema = json.loads(Path(schema_path).read_text(encoding="utf-8"))
+        return _dry_json(schema, p, agent), {}, ""
     if "Reply EXACTLY: CHALLENGER" in p:
         return "CHALLENGER: trader TARGET: ai_engineer", {}, ""
     if "DEEP_DIVE:" in p and "NO_DEEP_DIVE" in p:
@@ -252,7 +340,7 @@ def _log(agent: str, tier: str, model: str, provider: str, in_bytes: int, out_by
         if usage.get("input_tokens") or usage.get("output_tokens"):
             tok = (f" in_tok={usage.get('input_tokens', 0)} cached_tok={usage.get('cached_input_tokens', 0)}"
                    f" out_tok={usage.get('output_tokens', 0)} reason_tok={usage.get('reasoning_output_tokens', 0)}")
-        with LOG_FILE.open("a", encoding="utf-8") as f:
+        with _LOG_LOCK, LOG_FILE.open("a", encoding="utf-8") as f:
             f.write(
                 f"[{time.strftime('%H:%M:%S')}] agent={agent or '-'} tier={tier} model={model} "
                 f"provider={provider} input={in_bytes}b output={out_bytes}b duration={seconds}s{tok}"
@@ -262,11 +350,12 @@ def _log(agent: str, tier: str, model: str, provider: str, in_bytes: int, out_by
         pass
 
 
-def ask(prompt: str, tier: str = "analyst", persona_path: str | None = None,
-        schema_path: str | None = None, agent: str | None = None) -> str:
-    """Send a prompt through the configured provider. Returns the final text.
+def ask_ex(prompt: str, tier: str = "analyst", persona_path: str | None = None,
+           schema_path: str | None = None, agent: str | None = None, note: str = "") -> dict:
+    """Like ask(), but returns {text, usage, seconds, attempts, model, provider, tier, prompt_bytes}.
 
-    Raises LLMError after all retries fail. Never returns an empty string.
+    Retries: a rate-limit or usage-window error waits 180 s x attempt; anything else retries after
+    2 s (no fixed pauses between calls). Raises LLMError after all retries fail.
     """
     tier = resolve_tier(tier)
     provider = provider_name()
@@ -285,6 +374,7 @@ def ask(prompt: str, tier: str = "analyst", persona_path: str | None = None,
         model = "dry-run"
 
     last_err = "no attempts"
+    started = time.time()
     for attempt in range(1, retries() + 1):
         start = time.time()
         try:
@@ -293,23 +383,34 @@ def ask(prompt: str, tier: str = "analyst", persona_path: str | None = None,
             elif provider == "claude":
                 text, usage, diag = _call_claude(full_prompt, tier)
             else:
-                text, usage, diag = _call_dry_run(full_prompt, tier, agent or "")
+                text, usage, diag = _call_dry_run(full_prompt, tier, agent or "", schema_path)
         except LLMError as e:
             text, usage, diag = "", {}, str(e)
 
         elapsed = int(time.time() - start)
         if text:
-            _log(agent or "", tier, model, provider, len(full_prompt), len(text), elapsed, usage)
-            return text
+            _log(agent or "", tier, model, provider, len(full_prompt), len(text), elapsed, usage, note=note)
+            return {"text": text, "usage": usage, "seconds": round(time.time() - started, 1), "attempts": attempt,
+                    "model": model, "provider": provider, "tier": tier,
+                    "prompt_bytes": len(full_prompt.encode("utf-8"))}
 
         last_err = diag.strip()[-300:] or "empty output"
         _log(agent or "", tier, model, provider, len(full_prompt), 0, elapsed, usage,
-             note=f"attempt={attempt} FAILED: {last_err[:120]!r}")
+             note=(note + " " if note else "") + f"attempt={attempt} FAILED: {last_err[:120]!r}")
         if attempt < retries():
-            # Usage-window exhaustion needs a long pause; anything else a short one.
-            time.sleep(180 * attempt if _looks_rate_limited(last_err) else 5 * attempt)
+            # Usage-window exhaustion needs a long pause; anything else retries almost at once.
+            time.sleep(180 * attempt if _looks_rate_limited(last_err) else 2)
 
     raise LLMError(f"all {retries()} attempts failed ({provider}/{model}): {last_err}")
+
+
+def ask(prompt: str, tier: str = "analyst", persona_path: str | None = None,
+        schema_path: str | None = None, agent: str | None = None) -> str:
+    """Send a prompt through the configured provider. Returns the final text.
+
+    Raises LLMError after all retries fail. Never returns an empty string.
+    """
+    return ask_ex(prompt, tier, persona_path, schema_path, agent)["text"]
 
 
 # ── CLI ────────────────────────────────────────────────────────
