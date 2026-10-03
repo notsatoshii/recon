@@ -195,10 +195,30 @@ def package_sections(pkg: str) -> list[dict]:
 
 
 def parse_vote(txt: str) -> dict:
+    """Votes since 2026-10-04 use labelled lines (1. ACT ON: / 2. MARKET IS WRONG ABOUT: /
+    3. UNDISCUSSED RISK:). Older votes are numbered, or follow the persona's own headings."""
+    def clean(s):
+        s = re.sub(r"^\W*(ACT ON|MARKET IS WRONG ABOUT|UNDISCUSSED RISK)\s*:\**\s*", "", s.strip(), flags=re.I)
+        return re.sub(r"\s+", " ", s).strip()[:400]
+
     def grab(n):
-        m = re.search(rf"(?:^|\n)\s*\**{n}[.)]\**\s*(.*?)(?=\n\s*\**{n + 1}[.)]|\Z)", txt, re.S)
-        return re.sub(r"\s+", " ", m.group(1)).strip()[:400] if m else ""
-    return {"act_on": grab(1), "market_wrong_about": grab(2), "unseen_risk": grab(3)}
+        m = re.search(rf"(?:^|\n)\s*[#*]*\s*{n}[.)]\**\s*(.*?)(?=\n\s*[#*]*\s*{n + 1}[.)]|\Z)", txt, re.S)
+        return clean(m.group(1)) if m else ""
+    out = {"act_on": grab(1), "market_wrong_about": grab(2), "unseen_risk": grab(3)}
+    if all(out.values()):
+        return out
+    labels = [("act_on", r"ACT ON"), ("market_wrong_about", r"MARKET IS WRONG ABOUT"), ("unseen_risk", r"UNDISCUSSED RISK")]
+    for key, lab in labels:
+        m = re.search(rf"{lab}\s*:\**\s*(.*?)(?=\n\s*[#*]*\s*(?:\d[.)]\s*)?\**(?:ACT ON|MARKET IS WRONG ABOUT|UNDISCUSSED RISK)\b|\Z)",
+                      txt, re.S | re.I)
+        if m and not out[key]:
+            out[key] = clean(m.group(1))
+    if not any(out.values()):
+        # persona format: take the first three heading blocks or paragraphs in order
+        blocks = [b for b in re.split(r"\n\s*#{1,4} [^\n]*\n|\n\s*\n", "\n" + txt) if b.strip()]
+        for key, b in zip(("act_on", "market_wrong_about", "unseen_risk"), blocks):
+            out[key] = clean(b)
+    return out
 
 
 def memory_entry(agent: str, date: str) -> tuple[str, int, int]:

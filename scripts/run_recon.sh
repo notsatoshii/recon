@@ -522,7 +522,7 @@ if [ ${#all_takes[@]} -ge 4 ]; then
     done
     sleep 3
     wc_assign=$(ask_hermes "$PERSONAS/synthesizer.md" \
-        "Pick ONE unexpected cross-examination between agents NOT in these pairs: trader-narrator, builder-policy_analyst, analyst-skeptic, macro_strategist-user_agent.
+        "Pick ONE unexpected cross-examination between agents NOT in these pairs: trader-narrator, builder-policy_analyst, analyst-skeptic, macro_strategist-user_agent, ai_engineer-builder.
 
 Agents:
 $takes_summary
@@ -604,16 +604,26 @@ DEBATE RECORD:
 $debate_summary" "fast")
 
     if echo "$deep_dive_decision" | grep -q "^DEEP_DIVE:"; then
-        dd_agents=$(echo "$deep_dive_decision" | grep -oi "DEEP_DIVE: *[a-z_]* vs [a-z_]*" | sed 's/DEEP_DIVE: *//' || echo "")
+        # "DEEP_DIVE: a vs b on <point>": take the point after the FIRST " on " that follows
+        # the two names (the old greedy sed kept only the text after the last " on ").
+        dd_line=$(echo "$deep_dive_decision" | grep -m1 "^DEEP_DIVE:" || true)
+        dd_agents=$(echo "$dd_line" | grep -oiE "DEEP_DIVE: *[a-z_]+ +vs\.? +[a-z_]+" | sed -E 's/DEEP_DIVE: *//I' || echo "")
         dd_agent1=$(echo "$dd_agents" | awk '{print $1}' | tr '[:upper:]' '[:lower:]' || echo "")
         dd_agent2=$(echo "$dd_agents" | awk '{print $3}' | tr '[:upper:]' '[:lower:]' || echo "")
-        dd_point=$(echo "$deep_dive_decision" | sed 's/.*on //' || echo "unknown")
+        dd_point=$(echo "$dd_line" | sed -E 's/^DEEP_DIVE: *[A-Za-z_]+ +vs\.? +[A-Za-z_]+ *(on)?:? *//I')
+        [ -z "$dd_point" ] && dd_point="the point of contention in the debate record"
+        # The decision may continue on later lines; keep them as context for the deep dive
+        dd_more=$(echo "$deep_dive_decision" | sed -n '/^DEEP_DIVE:/,$p' | tail -n +2 | head -c 1500)
+        [ -n "$dd_more" ] && dd_point="$dd_point
+$dd_more"
 
-        log "  DEEP DIVE: $dd_agent1 vs $dd_agent2 on: $dd_point"
+        log "  DEEP DIVE: $dd_agent1 vs $dd_agent2 on: $(echo "$dd_point" | head -1)"
 
-        # Send both agents back for a second round (skip if agent names are empty)
+        # Send both agents back for a second round (skip if agent names are empty).
+        # Each side now also sees the other side's take and response.
         for dd_agent in "$dd_agent1" "$dd_agent2"; do
             [ -z "$dd_agent" ] && continue
+            dd_other="$dd_agent2"; [ "$dd_agent" = "$dd_agent2" ] && dd_other="$dd_agent1"
             if [ -f "$RUN_DIR/03_take_${dd_agent}.md" ]; then
                 throttle_wait
                 (
@@ -627,7 +637,10 @@ This is the ONE unresolved disagreement that could change today's brief. Be prec
 2. What specific evidence would change your mind?
 
 YOUR ORIGINAL TAKE: $(cat "$RUN_DIR/03_take_${dd_agent}.md")
-YOUR RESPONSE TO CHALLENGES: ${all_responses[$dd_agent]:-none}")
+YOUR RESPONSE TO CHALLENGES: ${all_responses[$dd_agent]:-none}
+
+THE OTHER SIDE (${dd_other^^}) TAKE: $(cat "$RUN_DIR/03_take_${dd_other}.md" 2>/dev/null || echo none)
+THE OTHER SIDE'S RESPONSE TO CHALLENGES: ${all_responses[$dd_other]:-none}")
                     echo "$dd_resp" > "$RUN_DIR/05_5_deepdive_${dd_agent}.md"
                 ) &
             fi
@@ -652,10 +665,11 @@ for agent in "${!all_takes[@]}"; do
     (
         sleep 3
         vote=$(ask_hermes "$PERSONAS/$agent.md" \
-            "VOTE. Answer:
-1. Most important thing to act on today
-2. What the market is wrong about
-3. Risk nobody is discussing
+            "VOTE. This format replaces your persona's usual output format: no headings, no sections,
+no extra lines. Reply with EXACTLY three numbered lines, each starting with its label:
+1. ACT ON: the most important thing to act on today (1-3 sentences)
+2. MARKET IS WRONG ABOUT: what the market is wrong about (1-3 sentences)
+3. UNDISCUSSED RISK: the risk nobody is discussing (1-3 sentences)
 
 Debate summary: $ctx")
         echo "$vote" > "$RUN_DIR/06_vote_${agent}.md"

@@ -223,12 +223,22 @@ def _call_dry_run(prompt: str, tier: str, agent: str) -> tuple[str, dict, str]:
     if "Reply EXACTLY: CHALLENGER" in p:
         return "CHALLENGER: trader TARGET: ai_engineer", {}, ""
     if "DEEP_DIVE:" in p and "NO_DEEP_DIVE" in p:
-        return "NO_DEEP_DIVE: dry run, nothing unresolved", {}, ""
+        # exercises the point parser: the point itself contains " on "
+        return ("DEEP_DIVE: analyst vs skeptic on whether stablecoin depth on Base is a choke point\n"
+                "Both cite the same liquidity figures but read them differently."), {}, ""
     if "Reply EXACTLY: ENVIRONMENT" in p:
         return "ENVIRONMENT: QUIET WEIGHT: skeptic, analyst", {}, ""
+    if "VOTE. This format replaces" in p:
+        return ("1. ACT ON: dry-run action.\n2. MARKET IS WRONG ABOUT: dry-run mispricing.\n"
+                "3. UNDISCUSSED RISK: dry-run risk."), {}, ""
+    if "Update your running memory file" in p:
+        return ("### Active Tracking\n- [dry-run] item\n\n### Predictions\n- [dry-run] prediction [status: pending]\n\n"
+                "### Recurring Themes\n- dry-run theme — seen 1x\n\n### Lessons Learned\n- none\n\n### Archived\n- none"), {}, ""
     body = f"[dry-run] agent={agent or '-'} tier={tier} prompt_bytes={len(p)}\n\n" + _DRY_FILLER * 3
     if "RECON DAILY BRIEF" in p:
-        return "# RECON DAILY BRIEF\n\n" + body, {}, ""
+        sections = ("WHAT HAPPENED", "WHAT IT MEANS", "MARKET MOOD", "THE CONTRARIAN CASE", "AI NEWSLETTER",
+                    "FUNDRAISING", "KOREA", "AI EDUCATION", "RISKS", "WHAT TO WATCH", "SCORECARD")
+        return "# RECON DAILY BRIEF\n\n" + "\n".join(f"### {s}\n- {_DRY_FILLER}\n" for s in sections), {}, ""
     return body, {}, ""
 
 
