@@ -14,6 +14,13 @@ found dead Kalshi series picks, a 20 MB Polymarket page, an always-empty NEW MAR
 Atom feeds that hide stable releases behind pre-releases, and Phase C `LENS_RAW` headings that do
 not exist in the raw file. All fixes are folded into the sections below; §10 lists them.
 
+**Revision 2026-10-04, second review (measured output).** The collectors' real output was 3 to 4
+times the size estimates the §4 caps were set from, the §5 tests did not exist, and ZDNet's shared
+2-request budget let one retry on the first feed stop the second. Polymarket BY TOPIC now keeps 2
+events a topic and ZDNet descriptions 60 characters; sizes, caps and cost below are the measured
+numbers of 2026-10-04 (§3, §4.4, §4.5a, §6); the tests and fixtures exist (§5); ZDNet has a budget
+per feed (§3.4). §10.1 lists the changes.
+
 ---
 
 ## 0. Scope and rules
@@ -118,6 +125,9 @@ can say how old the file it is about to use is without parsing it.
   given (capped at 30 s), else 2 s then 6 s.
 - A per-collector `Budget(seconds, requests, bytes)`; when it runs out, the collector stops
   fetching and writes what it has, noting `(budget reached after N requests)` in the header block.
+  Retries count against it. A collector that reads independent feeds whose failures must stay
+  separate gives each feed its own budget (ZDNet, §3.4), so one feed's retries cannot use up
+  another's share. `http_get(..., timeout=)` caps one attempt below the 20 s default.
 - 4xx other than 429 is not retried. HTTP 451 (Polymarket from a Korean IP, §3.1) is reported as
   `error: "geo-blocked (HTTP 451)"`.
 
@@ -201,7 +211,7 @@ JSON strings inside JSON (`"[\"0.87\", \"0.13\"]"`): decode both.
 | Section | Rule | Lines |
 |---|---|---|
 | `## TOP EVENTS BY 24H VOLUME (sports excluded)` | first 100 events by `volume24hr` (2 pages, `exclude_tag_id=1`), backstop filter, top 12 | `- <title> — 24h vol $X \| total vol $Y \| liq $Z \| OI $W \| ends YYYY-MM-DD \| leading: "<outcome or groupItemTitle>" YES n% (1d ±a pts) …up to 3 \| <url>` |
-| `## BY TOPIC` | `tag_slug` in crypto, fed-rates, economy, politics, geopolitics, ai, tech; top 4 each by 24 h volume, events already listed above skipped | same line, prefixed `[crypto]` etc. |
+| `## BY TOPIC` | `tag_slug` in crypto, fed-rates, economy, politics, geopolitics, ai, tech; top 2 each by 24 h volume (4 made this section 7 KB of a 19 KB file), events already listed above skipped | same line, prefixed `[crypto]` etc. |
 | `## 24H MOVERS` | all markets of the events fetched above with `liquidityNum ≥ 25,000` and `volume24hr ≥ 10,000`; \|points\| ≥ 5; sorted by \|points\|; top 10 | `- [topic] <question> YES n% (1d ±a pts, 1w ±b pts) \| 24h vol $X \| liq $Y \| <url>` |
 | `## NEW MARKETS (started in the last 48 h)` | the `start_date_min` call; drop events with any tag slug in `{recurring, up-or-down, hide-from-new}` (the automatic "Dogecoin/Solana/Hyperliquid Up or Down - 5m" markets), then `volume24hr ≥ 5,000`; top 8 | `- <title> — started YYYY-MM-DD HH:MM UTC \| 24h vol $X \| liq $Y \| ends … \| <url>` |
 | `## RESOLVING IN THE NEXT 7 DAYS` | the `end_date_min/max` `/events` call; per event, the market with the most 24 h volume among its open markets ending inside the window; top 10 by 24 h volume | `- <title>: "<leading market>" — ends YYYY-MM-DD HH:MM UTC \| YES n% \| 24h vol $X \| liq $Y \| <url>` |
@@ -214,7 +224,10 @@ point the 09-11 debate raised and the brief dropped ($1.63 M volume against $238
 F14): it is now one quotable line.
 
 **Budget**: ≤ 30 requests (2 + 7 + 1 + 1 + up to 12 books + spare), ≤ 45 s, ≤ 25 MB read
-(measured total about 16 MB with `exclude_tag_id=1`). **Size**: ~5–7 KB of output on a normal day.
+(16 MB decompressed with `exclude_tag_id=1`; the budget counts bytes on the wire, 1.6 MB gzipped).
+Measured 2026-10-04 on the droplet: 19 requests, 3–7 s. **Size**: ~16 KB: 15,932 B, 60 lines of
+~265 B (TOP 3.7 KB, BY TOPIC 3.9 KB, MOVERS 2.1 KB, NEW 1.7 KB, RESOLVING 2.1 KB, BOOK DEPTH
+2.0 KB). With 4 events a topic it was 19,102 B.
 
 **Failure modes**: 451 or 403 (wrong host) → `ok: false`, previous file kept. A market whose decode
 fails is skipped, never the run.
@@ -288,7 +301,9 @@ read from `data-sources/kalshi/prev.json` (written each run).
 
 **Budget**: ≤ 110 requests (7 series lists + 10 watchlist + ≤ 84 probes), ≤ 90 s, ≤ 40 MB read
 (the series lists alone are ~6.5 MB; Politics is 3.4 MB and takes 2.2 s). Kalshi's public read
-limit is far above 4 parallel requests. **Size**: ~4–6 KB.
+limit is far above 4 parallel requests. Measured 2026-10-04: 73 requests, 17.5 s, 0.9 MB on the
+wire; a 429 now and then on a probe is retried. **Size**: ~9 KB: 8,923 B, 36 lines of ~250 B (TOP
+3.4 KB, CLOSING 2.7 KB, MOVERS 1.6 KB, LADDERS and MACRO 0.4 KB each).
 
 **Not in this collector**: matching the same question across Polymarket and Kalshi. Titles do not
 line up and a wrong match is worse than none; it is a Lever-desk feature (desk half of Phase E).
@@ -365,7 +380,9 @@ news collector (no duplicate).
   Cline, GitHub Changelog), `## SDKS & PROTOCOLS` (Agents SDK, Claude Agent SDK, Anthropic SDK,
   OpenAI SDK, MCP), `## MODEL SERVING` (Ollama, vLLM), `## VENDOR BLOGS` (Google AI).
 
-**Budget**: 20 requests (12 REST + 3 feeds + spare), ≤ 40 s, 4 in parallel. **Size**: ~2–3 KB.
+**Budget**: 20 requests (12 REST + 3 feeds + spare), ≤ 40 s, 4 in parallel. Measured 2026-10-04:
+15 requests, 1–3 s, 1.4 MB. **Size**: ~3.5 KB: 3,534 B, 10 lines of up to ~430 B (9 sources with a
+release, 6 quiet). A day with a release from all 15 sources is ~6 KB.
 
 ### 3.4 Korean source: ZDNet Korea — `data-sources/zdnet_kr/latest.md`
 
@@ -401,13 +418,17 @@ Matching: Latin keywords (`AI`, `LLM`, `GPU`, `STO`) match on ASCII word boundar
 still match. Hangul keywords stay plain substrings. An item matching both sets is tagged `[AI]`
 once, unless it came from 디지털애셋.
 
-Line: `- [YYYY-MM-DD HH:MM UTC] [AI] <title> | <link>`, with up to 120 characters of the description
+Line: `- [YYYY-MM-DD HH:MM UTC] [AI] <title> | <link>`, with up to 60 characters of the description
 appended after ` — ` when it adds information (not when it repeats the title). Max 12 `[AI]` and 8
 `[가상자산]` items, newest first, under `## AI` and `## 가상자산·블록체인`; each 가상자산 line names its
 feed (`ZDNet` or `디지털애셋`). Titles stay in Korean (the KOREA section is written in English from
 them, as today).
 
-**Budget**: 2 requests, ≤ 20 s. **Size**: ~2–3 KB.
+**Budget**: one per feed, 3 requests (1 + 2 retries), ≤ 20 s, 15 s per attempt; ≤ 6 requests and
+≤ 40 s for the run. A shared 2-request budget let a single 5xx/429 retry, or one 20 s timeout, on
+ZDNet stop the 디지털애셋 request, which carries most `[가상자산]` lines (all 8 on 2026-10-04).
+Measured 2026-10-04: 2 requests, 1 s, 0.1 MB. **Size**: ~6.5 KB: 6,465 B, 20 lines of ~320 B
+(Korean is 3 bytes a character; with 120-character descriptions it was 9,228 B).
 
 ---
 
@@ -442,20 +463,38 @@ same commit, because `collect_data.sh`, `run_recon.sh` and the orchestrator are 
 3. **Remove the duplicate.** The `## POLYMARKET LIVE MARKETS` block in the on-chain collector is
    deleted (the DeFiLlama `## PREDICTION MARKET PROTOCOLS` block stays: TVL and fees are different
    data).
-4. **Agent view caps** (`scripts/build_agent_package.py` `CAPS`): `PREDICTION MARKETS` 7,000 (new),
-   `AI & TOOLS` 6,000 → 8,000, `NEWS INTELLIGENCE` 13,000 → 14,000. `FALLBACK_NAMES` gains
+4. **Agent view caps** (`scripts/build_agent_package.py` `CAPS`): `PREDICTION MARKETS` 20,000 (new),
+   `AI & TOOLS` 6,000 → 9,000, `NEWS INTELLIGENCE` 13,000 → 18,000. `FALLBACK_NAMES` gains
    `polymarket`, `kalshi` → PREDICTION MARKETS, `changelogs` → AI & TOOLS, `zdnet korea` → NEWS
-   INTELLIGENCE. The view grows from ~65 KB to ~75 KB.
+   INTELLIGENCE. The view grows from ~65 KB to ~92 KB.
+
+   The caps come from running `fair_share` on the measured 2026-10-04 files (Polymarket 15.9 KB +
+   Kalshi 8.9 KB; news section 47.3 KB + ZDNet 6.5 KB; ai_tools 4.2 KB + changelogs 3.5 KB):
+
+   | Section | Cap | Lines kept in the agent view |
+   |---|---|---|
+   | PREDICTION MARKETS | 7,000 (first estimate) | Polymarket 10 of 60, Kalshi 10 of 36 |
+   | | 16,000 | 36 of 60, 24 of 36 |
+   | | **20,000** | **50 of 60, 29 of 36** |
+   | NEWS INTELLIGENCE | 13,000 (news alone, today) | news 44 of 146 |
+   | | 14,000 (first estimate) | news 36, ZDNet 10 of 20: the news lines are squeezed |
+   | | **18,000** | **news 44, ZDNet 13 of 20** |
+   | AI & TOOLS | 8,000 | ai_tools 23 of 23, changelogs 10 of 10 (7.7 KB, no headroom) |
+   | | **9,000** | all, with room for a busy changelog day |
+
+   The ZDNet lines the view drops still reach the draft through `KR_RAW` (5a) and the
+   policy_analyst and user_agent lenses (5b); Polymarket and Kalshi reach the trader's lens.
 5. **Orchestrator.** `shared()` lists `SECTION 8 (PREDICTION MARKETS)` in its header and reads the
-   view up to 90 KB (was 80 KB); the `--skip-collect` assembly list gains the four names (package
+   view up to 100 KB (was 80 KB; the view is ~92 KB with the caps in item 4); the `--skip-collect` assembly list gains the four names (package
    and raw file, item 1a). The Phase E entries of `LENS_RAW` are in the corrected table in 5b; they
    only match once item 1a puts the files into `00_raw_data.md`.
 5a. **Synthesizer raw blocks.** The draft's AI NEWSLETTER and KOREA material comes from
    `orchestrator.raw_sections()` (`AI_RAW` = ai_tools + the news `## AI & TECH NEWS` section;
    `KR_RAW` = the news `## KOREA — …` sections), not from the agent view, so without this item the
    changelogs and ZDNet never reach the draft they exist for. `AI_RAW` gains the
-   `# Changelogs Intelligence` block (≤ 3,000 B) and `KR_RAW` the `# ZDNet Korea Intelligence` block
-   (≤ 3,000 B), both read from the run folder's `00_raw_data.md` (item 1a), not from
+   `# Changelogs Intelligence` block (≤ 5,000 B; measured 3,534 B, so 3,000 cut its end) and `KR_RAW`
+   the `# ZDNet Korea Intelligence` block (≤ 7,000 B; measured 6,465 B, so 3,000 dropped about
+   half of the Korean items, which are what the source is for), both read from the run folder's `00_raw_data.md` (item 1a), not from
    `data-sources/`, so a replay reads the day it replays. Test: `07_raw_sections.json` contains
    both headers when the files exist, and neither when they do not.
 5b. **`LENS_RAW`, corrected (replaces the table in Phase C §3).** The Phase C table named headings
@@ -508,13 +547,31 @@ same commit, because `collect_data.sh`, `run_recon.sh` and the orchestrator are 
 7. **Archive.** `ph_deliver` copies the four new `latest.md` files into `archive/<date>/`.
 8. **`.gitignore`**: `data-sources/*/status.json`, `data-sources/*/seen.json`,
    `data-sources/*/prev.json`.
-9. **`sources-audit.md`**: one row per new source after the first live pull.
+9. **`sources-audit.md`**: one row per new source after the first live pull (done 2026-10-04).
 
 ---
 
 ## 5. Test plan
 
-All `unittest`, no network, in `tests/collectors/`.
+All `unittest`, no network, in `tests/collectors/`. Run from the repo root:
+`python3 -m unittest discover -s tests/collectors` (63 tests, ~2 s, desktop and droplet).
+
+**Status 2026-10-04.** Built: fixtures, header, items, export compatibility, quote round trip,
+freshness (collector level), failure keeps file, Polymarket, Kalshi, changelogs, ZDNet Korea,
+budget, package fixtures, live smoke. A golden test compares each collector's replay with the replay
+recorded on the droplet (`tests/fixtures/collectors/replay_<name>.md`), so any change in output
+shows up. Left for Phase B's wiring commit, since they test the wiring: the package-level
+`SOURCE STALE` line and `source_record`'s `stale (73 h)` (freshness rows 2 and 3) and the `package`
+row (`--dry-run --package-from …`).
+
+**Recording.** `tests/record_collector_fixtures.py`, run on the droplet (Polymarket answers 451 from
+Korea), runs the four collectors live in a scratch `RECON_HOME` with `RECON_COLLECTOR_NOW` frozen
+and `RECON_COLLECTOR_RECORD` set, so each response is saved under the name `_fixture_path` expects
+(the first 16 hex digits of the URL's sha1); trims each to the fields the collectors read and
+≤ 200 KB; writes `manifest.json` (frozen `now`, every URL, live and replay status lines); and replays
+the trimmed set to check all four still produce an ok file. The set recorded 2026-10-03 20:55 UTC
+(05:55 KST on 10-04) is 107 responses, 1.8 MB (39 MB live). Re-record when an endpoint or a
+collector's output changes.
 
 Package fixtures: `briefs/` is gitignored and exists only on the droplet, so trimmed copies of two
 real days are committed to `tests/fixtures/package/2026-09-11/` and `tests/fixtures/package/2026-10-04/`
@@ -546,12 +603,15 @@ same folders.
 
 ## 6. Cost
 
-No LLM calls. HTTP per day: ~25 (Polymarket) + ~90 (Kalshi) + 15 (changelogs) + 2 (ZDNet) ≈ 130
-requests, ~25–45 MB read, ~30–45 s wall in parallel with the rest of collection.
+No LLM calls. HTTP per day, measured 2026-10-04: 19 (Polymarket) + 73 (Kalshi) + 15 (changelogs) +
+2 (ZDNet, up to 6 with retries) ≈ 110 requests, ~4 MB on the wire (~40 MB decompressed), 17.7 s wall
+for the four in parallel, inside the rest of collection.
 
-What the agents pay: the view grows ~10 KB ≈ 2.8 K tokens per call that reads the shared block
-(triage + takes = 10 calls). The block is byte-identical across them, so after the first call it is
-mostly cached: ~28 K input tokens a day, ~25 K of them cached.
+What the agents pay: the view grows ~27 KB (PREDICTION MARKETS ~20 KB, NEWS +5 KB, AI & TOOLS
++2 KB) ≈ 7.5 K tokens per call that reads the shared block (triage + takes = 10 calls). The block
+is byte-identical across them, so after the first call it is mostly cached: ~75 K input tokens a
+day, ~68 K of them cached. The synthesizer's `AI_RAW` and `KR_RAW` grow by up to 12 KB ≈ 3.4 K
+tokens on one call.
 
 ---
 
@@ -592,7 +652,7 @@ files exist.
 | 6 | The 15-minute and hourly series are excluded from the category picks |
 | 7 | Changelogs come from the GitHub REST releases API (the `prerelease` flag decides) plus Cursor, GitHub Changelog (Copilot only) and Google AI RSS |
 | 8 | The Korean addition is ZDNet Korea (feedburner) plus 디지털애셋 for 가상자산, both read every run |
-| 9 | New package SECTION 8: PREDICTION MARKETS; changelogs into AI & TOOLS; ZDNet into NEWS; view ~75 KB |
+| 9 | New package SECTION 8: PREDICTION MARKETS; changelogs into AI & TOOLS; ZDNet into NEWS; view ~92 KB (caps from measured sizes, §4.4) |
 | 10 | Built in parallel with Phase C/D; no quota needed |
 | 11 | Every Polymarket `/events` call excludes tag 1 (Sports); `/markets` is not used |
 | 12 | The collectors land standalone; wiring (§4) is Phase B's commit |
@@ -620,5 +680,16 @@ files exist.
 | §5 (and Phase C §17) | committed package fixtures for 2026-09-11 and 2026-10-04 |
 | §3.4 ZDNet | Latin keywords on word boundaries; 디지털애셋 read every run |
 | §1.1, §4.1 | scripts layout, run from `RECON_HOME`, output paths from `RECON_HOME` |
+
+### 10.1 Second review (2026-10-04, after the first live pull)
+
+| Where | Fix |
+|---|---|
+| §3.1, §3.4 | Output was 3–4× the estimates (Polymarket 19,102 B, ZDNet 9,228 B). Trimmed at the source: BY TOPIC 2 events a topic (15,932 B), ZDNet descriptions 60 characters (6,465 B) |
+| §3, §6 | Size, request, time and cost figures are the measured 2026-10-04 numbers |
+| §4.4, §4.5 | Caps re-derived by running `fair_share` on the measured files: PREDICTION MARKETS 20,000, NEWS 18,000, AI & TOOLS 9,000; view ~92 KB; the orchestrator reads up to 100 KB |
+| §4.5a | `AI_RAW` changelogs ≤ 5,000 B, `KR_RAW` ZDNet ≤ 7,000 B (3,000 cut both) |
+| §3.4, §1.4 | ZDNet: a budget per feed (3 requests, 20 s, 15 s per attempt), so ZDNet's retries or a timeout never leave 디지털애셋 unread; tested for both cases |
+| §5 | Tests, recorded endpoint fixtures (droplet) and the 09-11 / 10-04 package fixtures committed; `sources-audit.md` has the live-smoke numbers |
 
 Path: `docs/v2/phase-e-collectors-spec.md`.

@@ -25,3 +25,28 @@ Notes
   collectors report per-source `{ok, items, seconds}` as they finish.
 - Total collection time is dominated by two broken sources (Reddit waits + X timeouts): ~25 of
   28 minutes. Fixing those alone brings collection under 5 minutes.
+
+## 2026-10-04 — Phase E collectors, first live pulls (droplet)
+
+Live smoke (phase-e spec §5): the four collectors started in parallel from the repo root on the
+droplet, as `collect_data.sh` will start them (§4.1), at 2026-10-03 20:55 UTC (05:55 KST), after
+the second-review fixes (Polymarket BY TOPIC 2 a topic, ZDNet descriptions 60 characters, ZDNet
+budget per feed). Wall time 17.7 s for all four; each within its budget.
+
+```
+  Changelogs: ok, 10 items, 15 requests, 0.8 s, 1.4 MB
+  Kalshi: ok, 36 items, 73 requests, 17.5 s, 0.9 MB
+  Polymarket: ok, 60 items, 19 requests, 3.2 s, 1.6 MB
+  ZDNet Korea: ok, 20 items, 2 requests, 1.2 s, 0.1 MB
+```
+
+| Source | Result | Output | Verdict | Notes |
+|---|---|---|---|---|
+| Polymarket (Gamma + CLOB, sports excluded) | 60 items: TOP 12, BY TOPIC 12, MOVERS 10, NEW 8, RESOLVING 10, BOOK DEPTH 8 | 15,932 B (19,102 B at 05:43 KST with 4 events a topic) | OK | top 100 events, 107 in all; 9 of 50 new events kept after the recurring/up-or-down filter; books 8 of 8. Droplet only (HTTP 451 from Korea). |
+| Kalshi (public market data) | 36 items: TOP 12, MOVERS 10, CLOSING 10, BTC/ETH ladders, MACRO 2 | 8,923 B | OK | 36 series kept, 55 events. World kept 0 of 12 probed series (the top World series by lifetime volume have no open event); Politics 3 of 12. The local recording saw an occasional 429 on a probe, retried. |
+| Changelogs (GitHub REST + 3 RSS) | 10 items, 9 sources with a release in 72 h | 3,534 B | OK | quiet: Gemini CLI, Cursor, Claude Agent SDK, MCP spec, Ollama, vLLM. 15 of 60 anonymous GitHub calls an hour. 293 older entries dropped by the 72 h window. |
+| ZDNet Korea + 디지털애셋 | 20 items: AI 12, 가상자산 8 | 6,465 B (9,228 B with 120-character descriptions) | OK | 14 AI and 45 가상자산 matches in 72 h; the 8 가상자산 lines shown all came from 디지털애셋. 2 items older than 72 h dropped. |
+
+Output sizes were 3 to 4 times the first estimates; the agent-view caps were re-derived from
+these numbers (phase-e spec §4.4, §10.1). The endpoint fixtures for the tests were recorded in the
+same minute (`tests/record_collector_fixtures.py`, 107 responses, 1.8 MB after trimming).

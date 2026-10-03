@@ -1,0 +1,278 @@
+<?xml version='1.0' encoding='utf-8'?>
+<rss xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:ns0="http://www.w3.org/2005/Atom" xmlns:ns1="http://purl.org/rss/1.0/modules/syndication/" xmlns:ns2="com-wordpress:feed-additions:1" xmlns:ns4="http://purl.org/rss/1.0/modules/content/" version="2.0">
+
+<channel>
+	<title>Archive: 2026 - GitHub Changelog</title>
+	<ns0:link href="https://github.blog/changelog/feed/" rel="self" type="application/rss+xml" />
+	<link>https://github.blog/changelog/</link>
+	<description>Updates, ideas, and inspiration from GitHub to help developers build and design software.</description>
+	<lastBuildDate>Fri, 02 Oct 2026 22:18:59 +0000</lastBuildDate>
+	<language>en-US</language>
+	<ns1:updatePeriod>
+	hourly	</ns1:updatePeriod>
+	<ns1:updateFrequency>
+	1	</ns1:updateFrequency>
+	<generator>https://wordpress.org/?v=7.1.2</generator>
+
+<image>
+	<url>https://github.blog/wp-content/uploads/2019/01/cropped-github-favicon-512.png?fit=32%2C32</url>
+	<title>Archive: 2026 - GitHub Changelog</title>
+	<link>https://github.blog/changelog/</link>
+	<width>32</width>
+	<height>32</height>
+</image> 
+<ns2:site>153214340</ns2:site>	<item>
+		<title>Stateless GitHub App installation tokens rolled out</title>
+		<link>https://github.blog/changelog/2026-10-02-stateless-github-app-installation-tokens-rolled-out</link>
+		
+		<dc:creator>Allison</dc:creator>
+		<pubDate>Fri, 02 Oct 2026 22:18:23 +0000</pubDate>
+				<guid isPermaLink="false">https://github.blog/changelog/2026-10-02-stateless-github-app-installation-tokens-rolled-out</guid>
+
+					<description>&lt;p&gt;The staged rollout of the stateless GitHub App installation token format, which began on April 27, 2026, is complete. By default, all newly minted GitHub App installation tokens will be&amp;#8230;&lt;/p&gt;
+&lt;p&gt;The post &lt;a href="https://github.blog/changelog/2026-10-02-stateless-github-app-installation-tokens-rolled-out"&gt;Stateless GitHub App installation tokens rolled out&lt;/a&gt; appeared first on &lt;a href="https://github.blog"&gt;The GitHub Blog&lt;/a&gt;.&lt;/p&gt;
+</description>
+										<ns4:encoded>&lt;!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.0 Transitional//EN" "http://www.w3.org/TR/REC-html40/loose.dtd"&gt;
+&lt;html&gt;&lt;body&gt;&lt;p&gt;The staged rollout of the stateless GitHub App installation token format, which began on April 27, 2026, is complete. By default, all newly minted GitHub App installation tokens will be in the stateless &lt;code&gt;ghs_APPID_JWT&lt;/code&gt; format, which makes token issuance and validation faster and improves the reliability of the GitHub API.&lt;/p&gt;
+&lt;h2 id="whats-changed" id="whats-changed" &gt;&lt;a class="heading-link" href="#whats-changed"&gt;What&amp;rsquo;s changed&lt;span class="heading-hash pl-2 text-italic text-bold" aria-hidden="true"&gt;&lt;/span&gt;&lt;/a&gt;&lt;/h2&gt;
+&lt;p&gt;Installation tokens still start with </ns4:encoded>
+					
+		
+		
+		<category domain="changelog-type">Improvement</category>
+<category domain="changelog-label">actions</category>
+<category domain="changelog-label">ecosystem &amp;amp; accessibility</category>
+<ns2:post-id>99283</ns2:post-id>	</item>
+		<item>
+		<title>Copilot code review: API support and new default effort level</title>
+		<link>https://github.blog/changelog/2026-10-02-copilot-code-review-api-support-and-new-default-effort-level</link>
+		
+		<dc:creator>Allison</dc:creator>
+		<pubDate>Fri, 02 Oct 2026 19:13:50 +0000</pubDate>
+				<guid isPermaLink="false">https://github.blog/changelog/2026-10-02-copilot-code-review-api-support-and-new-default-effort-level</guid>
+
+					<description>&lt;p&gt;You can now request a GitHub Copilot code review through the REST and GraphQL APIs and set the review effort level for each request. Balanced is also now the default&amp;#8230;&lt;/p&gt;
+&lt;p&gt;The post &lt;a href="https://github.blog/changelog/2026-10-02-copilot-code-review-api-support-and-new-default-effort-level"&gt;Copilot code review: API support and new default effort level&lt;/a&gt; appeared first on &lt;a href="https://github.blog"&gt;The GitHub Blog&lt;/a&gt;.&lt;/p&gt;
+</description>
+										<ns4:encoded>&lt;!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.0 Transitional//EN" "http://www.w3.org/TR/REC-html40/loose.dtd"&gt;
+&lt;html&gt;&lt;body&gt;&lt;p&gt;You can now request a GitHub Copilot code review through the REST and GraphQL APIs and set the review effort level for each request. &lt;strong&gt;Balanced&lt;/strong&gt; is also now the default review effort level. These changes are generally available to Copilot Pro, Pro+, Max, Business, and Enterprise plans.&lt;/p&gt;
+&lt;h2 id="%f0%9f%94%8c-request-copilot-code-review-with-the-api" id="%f0%9f%94%8c-request-copilot-code-review-with-the-api" &gt;&lt;a class="heading-link" href="#%f0%9f%94%8c-request-copilot-code-review-with-the-api"&gt;&amp;#128268; Request Copilot code review with the API&lt;span class="h</ns4:encoded>
+					
+		
+		
+		<category domain="changelog-type">Improvement</category>
+<category domain="changelog-label">copilot</category>
+<ns2:post-id>99263</ns2:post-id>	</item>
+		<item>
+		<title>Selected models in GitHub Copilot deprecated</title>
+		<link>https://github.blog/changelog/2026-10-02-selected-models-in-github-copilot-deprecated</link>
+		
+		<dc:creator>Allison</dc:creator>
+		<pubDate>Fri, 02 Oct 2026 18:24:19 +0000</pubDate>
+				<guid isPermaLink="false">https://github.blog/changelog/2026-10-02-selected-models-in-github-copilot-deprecated</guid>
+
+					<description>&lt;p&gt;As of today, October 2, 2026, we have deprecated the following models across all GitHub Copilot experiences (including Copilot Chat, inline edits, ask and agent modes, and code completions). Model&amp;#8230;&lt;/p&gt;
+&lt;p&gt;The post &lt;a href="https://github.blog/changelog/2026-10-02-selected-models-in-github-copilot-deprecated"&gt;Selected models in GitHub Copilot deprecated&lt;/a&gt; appeared first on &lt;a href="https://github.blog"&gt;The GitHub Blog&lt;/a&gt;.&lt;/p&gt;
+</description>
+										<ns4:encoded>&lt;!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.0 Transitional//EN" "http://www.w3.org/TR/REC-html40/loose.dtd"&gt;
+&lt;html&gt;&lt;body&gt;&lt;p&gt;As of today, October 2, 2026, we have deprecated the following models across all GitHub Copilot experiences (including Copilot Chat, inline edits, ask and agent modes, and code completions).&lt;/p&gt;
+&lt;div data-target="content-table-wrap.container" class="content-table-wrap"&gt;&lt;content-table-wrap&gt;&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;Model&lt;/th&gt;
+&lt;th&gt;Deprecation date&lt;/th&gt;
+&lt;th&gt;Suggested alternative&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;Gemini 3.5 Flash&lt;/td&gt;
+&lt;td&gt;2026-10-02&lt;/td&gt;
+&lt;td&gt;Gemini 3.8 Flash&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;Gemini 3.6 Flash&lt;/td&gt;
+&lt;td&gt;2026-10-02&lt;/td&gt;
+&lt;td&gt;Gemini 3.8 Flash&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;</ns4:encoded>
+					
+		
+		
+		<category domain="changelog-type">Retired</category>
+<category domain="changelog-label">copilot</category>
+<ns2:post-id>99255</ns2:post-id>	</item>
+		<item>
+		<title>New fields for SecurityAdvisory GraphQL API</title>
+		<link>https://github.blog/changelog/2026-10-02-new-fields-for-securityadvisory-graphql-api</link>
+		
+		<dc:creator>Allison</dc:creator>
+		<pubDate>Fri, 02 Oct 2026 13:18:00 +0000</pubDate>
+				<guid isPermaLink="false">https://github.blog/changelog/2026-10-02-new-fields-for-securityadvisory-graphql-api</guid>
+
+					<description>&lt;p&gt;You can now read more of the GitHub Advisory Database directly from the GraphQL API without falling back to the REST API. The SecurityAdvisory object gained five new fields: cveId:&amp;#8230;&lt;/p&gt;
+&lt;p&gt;The post &lt;a href="https://github.blog/changelog/2026-10-02-new-fields-for-securityadvisory-graphql-api"&gt;New fields for SecurityAdvisory GraphQL API&lt;/a&gt; appeared first on &lt;a href="https://github.blog"&gt;The GitHub Blog&lt;/a&gt;.&lt;/p&gt;
+</description>
+										<ns4:encoded>&lt;!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.0 Transitional//EN" "http://www.w3.org/TR/REC-html40/loose.dtd"&gt;
+&lt;html&gt;&lt;body&gt;&lt;p&gt;You can now read more of the GitHub Advisory Database directly from the GraphQL API without falling back to the REST API.&lt;/p&gt;
+&lt;p&gt;The &lt;code&gt;SecurityAdvisory&lt;/code&gt; object gained five new fields:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;cveId&lt;/code&gt;: The advisory&amp;rsquo;s CVE identifier.&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;sourceCodeLocation&lt;/code&gt;: A link to the affected source code relevant to the advisory.&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;githubReviewedAt&lt;/code&gt;: When GitHub reviewed the advisory.&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;nvdPublishedAt&lt;/code&gt;: When the National Vulnerability Database (NVD) published its record.&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;repositoryAdvi</ns4:encoded>
+					
+		
+		
+		<category domain="changelog-type">Improvement</category>
+<category domain="changelog-label">ecosystem &amp;amp; accessibility</category>
+<category domain="changelog-label">supply chain security</category>
+<ns2:post-id>99246</ns2:post-id>	</item>
+		<item>
+		<title>Confidential comments on repository security advisories</title>
+		<link>https://github.blog/changelog/2026-10-02-confidential-comments-on-repository-security-advisories</link>
+		
+		<dc:creator>Allison</dc:creator>
+		<pubDate>Fri, 02 Oct 2026 13:15:40 +0000</pubDate>
+				<guid isPermaLink="false">https://github.blog/changelog/2026-10-02-confidential-comments-on-repository-security-advisories</guid>
+
+					<description>&lt;p&gt;You can now post confidential comments on repository security advisories. Confidential comments are visible only to people with write access to the repository, so you can discuss a report with&amp;#8230;&lt;/p&gt;
+&lt;p&gt;The post &lt;a href="https://github.blog/changelog/2026-10-02-confidential-comments-on-repository-security-advisories"&gt;Confidential comments on repository security advisories&lt;/a&gt; appeared first on &lt;a href="https://github.blog"&gt;The GitHub Blog&lt;/a&gt;.&lt;/p&gt;
+</description>
+										<ns4:encoded>&lt;!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.0 Transitional//EN" "http://www.w3.org/TR/REC-html40/loose.dtd"&gt;
+&lt;html&gt;&lt;body&gt;&lt;p&gt;You can now post confidential comments on repository security advisories. Confidential comments are visible only to people with write access to the repository, so you can discuss a report with your team without the reporter or other invited collaborators seeing it.&lt;/p&gt;
+&lt;p&gt;Previously, every comment on an advisory was visible to all of its collaborators, including the reporter. To discuss suspected abuse, investigation details, or coordination notes, you had to move the conversation somewhere else and lose it from the advisory&amp;rsquo;s history.&lt;/p&gt;
+&lt;p&gt;With this update:&lt;/p&gt;
+&lt;</ns4:encoded>
+					
+		
+		
+		<category domain="changelog-type">Release</category>
+<category domain="changelog-label">supply chain security</category>
+<ns2:post-id>99244</ns2:post-id>	</item>
+		<item>
+		<title>Repository security advisory comments API in public preview</title>
+		<link>https://github.blog/changelog/2026-10-02-repository-security-advisory-comments-api-in-public-preview</link>
+		
+		<dc:creator>Allison</dc:creator>
+		<pubDate>Fri, 02 Oct 2026 13:15:25 +0000</pubDate>
+				<guid isPermaLink="false">https://github.blog/changelog/2026-10-02-repository-security-advisory-comments-api-in-public-preview</guid>
+
+					<description>&lt;p&gt;You can now read, add, and edit comments on repository security advisories using the REST API, including advisories created from private vulnerability reports. Until now, the discussion on an advisory&amp;#8230;&lt;/p&gt;
+&lt;p&gt;The post &lt;a href="https://github.blog/changelog/2026-10-02-repository-security-advisory-comments-api-in-public-preview"&gt;Repository security advisory comments API in public preview&lt;/a&gt; appeared first on &lt;a href="https://github.blog"&gt;The GitHub Blog&lt;/a&gt;.&lt;/p&gt;
+</description>
+										<ns4:encoded>&lt;!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.0 Transitional//EN" "http://www.w3.org/TR/REC-html40/loose.dtd"&gt;
+&lt;html&gt;&lt;body&gt;&lt;p&gt;You can now read, add, and edit comments on repository security advisories using the REST API, including advisories created from private vulnerability reports.&lt;/p&gt;
+&lt;p&gt;Until now, the discussion on an advisory was only reachable in the web UI, even though it often holds the most useful triage context on a vulnerability report. With the new endpoints, you can:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;List the comments on a repository security advisory, optionally limited to those updated since a given time.&lt;/li&gt;
+&lt;li&gt;Get a single comment.&lt;/li&gt;
+&lt;li&gt;Add a comment.&lt;/li&gt;
+&lt;li&gt;Edit a comment.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;Re</ns4:encoded>
+					
+		
+		
+		<category domain="changelog-type">Release</category>
+<category domain="changelog-label">ecosystem &amp;amp; accessibility</category>
+<category domain="changelog-label">supply chain security</category>
+<ns2:post-id>99243</ns2:post-id>	</item>
+		<item>
+		<title>Rate limits for private vulnerability reports</title>
+		<link>https://github.blog/changelog/2026-10-01-rate-limits-for-private-vulnerability-reports</link>
+		
+		<dc:creator>Allison</dc:creator>
+		<pubDate>Thu, 01 Oct 2026 19:57:39 +0000</pubDate>
+				<guid isPermaLink="false">https://github.blog/changelog/2026-10-01-rate-limits-for-private-vulnerability-reports</guid>
+
+					<description>&lt;p&gt;Open source maintainers are receiving more low-quality and automated vulnerability reports, which can bury the reports that matter. Rate limits cap how many new reports a single account can submit&amp;#8230;&lt;/p&gt;
+&lt;p&gt;The post &lt;a href="https://github.blog/changelog/2026-10-01-rate-limits-for-private-vulnerability-reports"&gt;Rate limits for private vulnerability reports&lt;/a&gt; appeared first on &lt;a href="https://github.blog"&gt;The GitHub Blog&lt;/a&gt;.&lt;/p&gt;
+</description>
+										<ns4:encoded>&lt;!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.0 Transitional//EN" "http://www.w3.org/TR/REC-html40/loose.dtd"&gt;
+&lt;html&gt;&lt;body&gt;&lt;p&gt;Open source maintainers are receiving more low-quality and automated vulnerability reports, which can bury the reports that matter. Rate limits cap how many new reports a single account can submit in a day, both to your repository and across GitHub. This helps protect you from bulk and automated submissions, while legitimate researchers can still reach you.&lt;/p&gt;
+&lt;p&gt;With this update:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;Private vulnerability reporting now applies daily per-user rate limits to new reports. &lt;/li&gt;
+&lt;li&gt;Reporters who reach a limit see a message asking them to try again later.&lt;/li&gt;
+&lt;li&gt;</ns4:encoded>
+					
+		
+		
+		<category domain="changelog-type">Improvement</category>
+<category domain="changelog-label">supply chain security</category>
+<ns2:post-id>99231</ns2:post-id>	</item>
+		<item>
+		<title>Structured forms for private vulnerability reports</title>
+		<link>https://github.blog/changelog/2026-10-01-structured-forms-for-private-vulnerability-reports</link>
+		
+		<dc:creator>Allison</dc:creator>
+		<pubDate>Thu, 01 Oct 2026 19:57:28 +0000</pubDate>
+				<guid isPermaLink="false">https://github.blog/changelog/2026-10-01-structured-forms-for-private-vulnerability-reports</guid>
+
+					<description>&lt;p&gt;Private vulnerability reports can now use a structured form that asks reporters for the details you need to assess a vulnerability, including a reproducible proof of concept. A single free-text&amp;#8230;&lt;/p&gt;
+&lt;p&gt;The post &lt;a href="https://github.blog/changelog/2026-10-01-structured-forms-for-private-vulnerability-reports"&gt;Structured forms for private vulnerability reports&lt;/a&gt; appeared first on &lt;a href="https://github.blog"&gt;The GitHub Blog&lt;/a&gt;.&lt;/p&gt;
+</description>
+										<ns4:encoded>&lt;!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.0 Transitional//EN" "http://www.w3.org/TR/REC-html40/loose.dtd"&gt;
+&lt;html&gt;&lt;body&gt;&lt;p&gt;Private vulnerability reports can now use a structured form that asks reporters for the details you need to assess a vulnerability, including a reproducible proof of concept.&lt;/p&gt;
+&lt;p&gt;A single free-text box made it easy to submit low-quality or AI-generated reports and hard for you to find the signal in them. Now, by default, reporters must fill in four required fields: summary, details, proof of concept (at least 150 characters), and impact. Their answers are combined into the advisory description, so you review and edit the report as you do today.&lt;/p&gt;
+&lt;p&gt;With this update:</ns4:encoded>
+					
+		
+		
+		<category domain="changelog-type">Release</category>
+<category domain="changelog-label">supply chain security</category>
+<ns2:post-id>99229</ns2:post-id>	</item>
+		<item>
+		<title>GitHub Copilot can now interact with desktop apps with computer use</title>
+		<link>https://github.blog/changelog/2026-10-01-github-copilot-can-now-interact-with-desktop-apps</link>
+		
+		<dc:creator>Allison</dc:creator>
+		<pubDate>Thu, 01 Oct 2026 19:11:26 +0000</pubDate>
+				<guid isPermaLink="false">https://github.blog/changelog/2026-10-01-github-copilot-can-now-interact-with-desktop-apps</guid>
+
+					<description>&lt;p&gt;Computer use is now available in public preview in GitHub Copilot CLI and the GitHub Copilot app on macOS and Windows. Copilot can interact with desktop applications on your behalf&amp;#8230;&lt;/p&gt;
+&lt;p&gt;The post &lt;a href="https://github.blog/changelog/2026-10-01-github-copilot-can-now-interact-with-desktop-apps"&gt;GitHub Copilot can now interact with desktop apps with computer use&lt;/a&gt; appeared first on &lt;a href="https://github.blog"&gt;The GitHub Blog&lt;/a&gt;.&lt;/p&gt;
+</description>
+										<ns4:encoded>&lt;!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.0 Transitional//EN" "http://www.w3.org/TR/REC-html40/loose.dtd"&gt;
+&lt;html&gt;&lt;body&gt;&lt;p&gt;Computer use is now available in public preview in GitHub Copilot CLI and the GitHub Copilot app on macOS and Windows.&lt;/p&gt;
+&lt;p&gt;Copilot can interact with desktop applications on your behalf (e.g., reading accessible app content and visual context, clicking controls, entering and editing text, pressing keys, scrolling, dragging, and navigating workflows across applications). This expands the tasks Copilot can help automate, including workflows in legacy and GUI-only software that do not provide an API, command-line interface, or MCP integration.&lt;/p&gt;
+&lt;p&gt;&lt;video loop controls a</ns4:encoded>
+					
+		
+		
+		<category domain="changelog-type">Release</category>
+<category domain="changelog-label">client apps</category>
+<category domain="changelog-label">copilot</category>
+<ns2:post-id>99220</ns2:post-id>	</item>
+		<item>
+		<title>GitHub Actions: macOS 14 runner image retirement</title>
+		<link>https://github.blog/changelog/2026-10-01-github-actions-macos-14-runner-image-retirement</link>
+		
+		<dc:creator>Allison</dc:creator>
+		<pubDate>Thu, 01 Oct 2026 19:11:23 +0000</pubDate>
+				<guid isPermaLink="false">https://github.blog/changelog/2026-10-01-github-actions-macos-14-runner-image-retirement</guid>
+
+					<description>&lt;p&gt;The macOS 14 runner image will be retired on November 2, 2026. To raise awareness of the upcoming removal, jobs using macOS 14 will temporarily fail during the following scheduled&amp;#8230;&lt;/p&gt;
+&lt;p&gt;The post &lt;a href="https://github.blog/changelog/2026-10-01-github-actions-macos-14-runner-image-retirement"&gt;GitHub Actions: macOS 14 runner image retirement&lt;/a&gt; appeared first on &lt;a href="https://github.blog"&gt;The GitHub Blog&lt;/a&gt;.&lt;/p&gt;
+</description>
+										<ns4:encoded>&lt;!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.0 Transitional//EN" "http://www.w3.org/TR/REC-html40/loose.dtd"&gt;
+&lt;html&gt;&lt;body&gt;&lt;p&gt;The macOS 14 runner image will be retired on November 2, 2026. To raise awareness of the upcoming removal, jobs using macOS 14 will temporarily fail during the following scheduled brownout periods:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;October 5, 14:00 UTC to October 6, 00:00 UTC&lt;/li&gt;
+&lt;li&gt;October 12, 14:00 UTC to October 13, 00:00 UTC&lt;/li&gt;
+&lt;li&gt;October 16, 14:00 UTC to October 17, 00:00 UTC&lt;/li&gt;
+&lt;li&gt;October 19, 14:00 UTC to October 20, 00:00 UTC&lt;/li&gt;
+&lt;li&gt;October 23, 14:00 UTC to October 24, 00:00 UTC&lt;/li&gt;
+&lt;li&gt;October 26, 14:00 UTC to October 27, 00:00 UTC&lt;/li&gt;
+&lt;li&gt;October 29, 14:00 UTC to October </ns4:encoded>
+					
+		
+		
+		<category domain="changelog-type">Retired</category>
+<category domain="changelog-label">actions</category>
+<ns2:post-id>99219</ns2:post-id>	</item>
+	</channel>
+</rss>

@@ -170,6 +170,8 @@ def http_get(url: str, budget: Budget, accept: str = "*/*", retries: int = 2,
             raise HTTPFailure(url, 404, "no fixture")
         body = fx.read_bytes()
         budget.add_bytes(len(body))
+        if status == 451:
+            raise HTTPFailure(url, 451, "geo-blocked (HTTP 451)")
         if status >= 400:
             raise HTTPFailure(url, status, f"HTTP {status}")
         return body, {}

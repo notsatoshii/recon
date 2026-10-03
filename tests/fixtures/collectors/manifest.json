@@ -1,0 +1,661 @@
+{
+ "now": "2026-10-03T20:55:00Z",
+ "recorded_on": "Timmy-OpenClaw-16gb",
+ "recorded_at": "2026-10-03T20:55:56Z",
+ "live": {
+  "polymarket": "Polymarket: ok, 60 items, 19 requests, 6.7 s, 1.6 MB",
+  "kalshi": "Kalshi: ok, 36 items, 73 requests, 17.6 s, 0.9 MB",
+  "changelogs": "Changelogs: ok, 10 items, 15 requests, 2.5 s, 1.4 MB",
+  "zdnet_kr": "ZDNet Korea: ok, 20 items, 2 requests, 1.1 s, 0.1 MB"
+ },
+ "replay": {
+  "polymarket": "Polymarket: ok, 55 items, 19 requests, 0.0 s, 0.6 MB",
+  "kalshi": "Kalshi: ok, 36 items, 73 requests, 0.1 s, 0.6 MB",
+  "changelogs": "Changelogs: ok, 10 items, 15 requests, 0.1 s, 0.5 MB",
+  "zdnet_kr": "ZDNet Korea: ok, 20 items, 2 requests, 0.0 s, 0.2 MB"
+ },
+ "files": {
+  "032059955d6442a8": {
+   "url": "https://api.elections.kalshi.com/trade-api/v2/events?series_ticker=KXFLIGHTORD&status=open&with_nested_markets=true&limit=10",
+   "status": 200,
+   "bytes_live": 42,
+   "bytes": 14
+  },
+  "059da08dd36b3439": {
+   "url": "https://api.elections.kalshi.com/trade-api/v2/series?category=Science+and+Technology&include_volume=true",
+   "status": 200,
+   "bytes_live": 462497,
+   "bytes": 11840
+  },
+  "088fdcab195f2bb0": {
+   "url": "https://api.elections.kalshi.com/trade-api/v2/events/KXBTCD-26OCT0417?with_nested_markets=true",
+   "status": 200,
+   "bytes_live": 150287,
+   "bytes": 40361
+  },
+  "098a6b89d2c3caa0": {
+   "url": "https://api.github.com/repos/ollama/ollama/releases?per_page=30",
+   "status": 200,
+   "bytes_live": 910053,
+   "bytes": 28306
+  },
+  "0bbb658b49f1ff96": {
+   "url": "https://api.elections.kalshi.com/trade-api/v2/events?series_ticker=KXAAAGASM&status=open&with_nested_markets=true&limit=10",
+   "status": 200,
+   "bytes_live": 37861,
+   "bytes": 12571
+  },
+  "0db91b107c371b11": {
+   "url": "https://api.elections.kalshi.com/trade-api/v2/events?series_ticker=KXCPI&status=open&with_nested_markets=true&limit=10",
+   "status": 200,
+   "bytes_live": 84010,
+   "bytes": 22383
+  },
+  "10e935e8b6a65707": {
+   "url": "https://api.github.com/repos/modelcontextprotocol/modelcontextprotocol/releases?per_page=30",
+   "status": 200,
+   "bytes_live": 22736,
+   "bytes": 6535
+  },
+  "1201b671431fbd5c": {
+   "url": "https://api.elections.kalshi.com/trade-api/v2/events?series_ticker=KXSUPERBOWLAD&status=open&with_nested_markets=true&limit=10",
+   "status": 200,
+   "bytes_live": 42946,
+   "bytes": 9441
+  },
+  "12d9f5f96b1d2405": {
+   "url": "https://api.elections.kalshi.com/trade-api/v2/events?series_ticker=KXBTCMAXMON&status=open&with_nested_markets=true&limit=10",
+   "status": 200,
+   "bytes_live": 19782,
+   "bytes": 4421
+  },
+  "1a9d4678556553dd": {
+   "url": "https://gamma-api.polymarket.com/events?closed=false&exclude_tag_id=1&end_date_min=2026-10-03T20%3A55%3A00Z&end_date_max=2026-10-10T20%3A55%3A00Z&order=volume24hr&ascending=false&limit=20",
+   "status": 200,
+   "bytes_live": 1294679,
+   "bytes": 94142
+  },
+  "1c9cb5879b42761a": {
+   "url": "https://api.elections.kalshi.com/trade-api/v2/series?category=World&include_volume=true",
+   "status": 200,
+   "bytes_live": 148895,
+   "bytes": 10546
+  },
+  "20cccfdfee4c1bb9": {
+   "url": "https://api.elections.kalshi.com/trade-api/v2/events?series_ticker=KXMUSKPACKAGEVOTE&status=open&with_nested_markets=true&limit=10",
+   "status": 200,
+   "bytes_live": 42,
+   "bytes": 14
+  },
+  "20f862d2864b21c0": {
+   "url": "https://api.elections.kalshi.com/trade-api/v2/series?category=Companies&include_volume=true",
+   "status": 200,
+   "bytes_live": 412603,
+   "bytes": 10981
+  },
+  "26398fbd064780a1": {
+   "url": "https://api.elections.kalshi.com/trade-api/v2/events?series_ticker=KXFEDCHAIRNOM&status=open&with_nested_markets=true&limit=10",
+   "status": 200,
+   "bytes_live": 42,
+   "bytes": 14
+  },
+  "2772d7bc0a8359c2": {
+   "url": "https://api.github.com/repos/vllm-project/vllm/releases?per_page=30",
+   "status": 200,
+   "bytes_live": 791162,
+   "bytes": 39506
+  },
+  "2b80248df55d0c58": {
+   "url": "https://api.elections.kalshi.com/trade-api/v2/events?series_ticker=KXSPACEXCOUNT&status=open&with_nested_markets=true&limit=10",
+   "status": 200,
+   "bytes_live": 31550,
+   "bytes": 10958
+  },
+  "30b838beb40189a0": {
+   "url": "https://api.elections.kalshi.com/trade-api/v2/events?series_ticker=KXMAYORNYCPARTY&status=open&with_nested_markets=true&limit=10",
+   "status": 200,
+   "bytes_live": 42,
+   "bytes": 14
+  },
+  "3175da9707795583": {
+   "url": "https://api.github.com/repos/anthropics/anthropic-sdk-python/releases?per_page=30",
+   "status": 200,
+   "bytes_live": 112995,
+   "bytes": 34871
+  },
+  "3303b23e9daba702": {
+   "url": "https://gamma-api.polymarket.com/events?closed=false&exclude_tag_id=1&tag_slug=geopolitics&order=volume24hr&ascending=false&limit=8",
+   "status": 200,
+   "bytes_live": 672339,
+   "bytes": 28722
+  },
+  "3518e703cfbe6fee": {
+   "url": "https://api.elections.kalshi.com/trade-api/v2/series?category=Financials&include_volume=true",
+   "status": 200,
+   "bytes_live": 1092738,
+   "bytes": 10714
+  },
+  "367182e54adcaeb1": {
+   "url": "https://api.elections.kalshi.com/trade-api/v2/events?series_ticker=KXBAA&status=open&with_nested_markets=true&limit=10",
+   "status": 200,
+   "bytes_live": 15080,
+   "bytes": 4331
+  },
+  "47ed62f949d324b1": {
+   "url": "https://cursor.com/changelog/rss.xml",
+   "status": 200,
+   "bytes_live": 125892,
+   "bytes": 62103
+  },
+  "488c2e79e584b3f1": {
+   "url": "https://api.elections.kalshi.com/trade-api/v2/events?series_ticker=KXFLIGHTJFK&status=open&with_nested_markets=true&limit=10",
+   "status": 200,
+   "bytes_live": 42,
+   "bytes": 14
+  },
+  "49099ab17d881735": {
+   "url": "https://www.digitalasset.works/rss/allArticle.xml",
+   "status": 200,
+   "bytes_live": 51212,
+   "bytes": 49298
+  },
+  "4a302519cc23a748": {
+   "url": "https://api.elections.kalshi.com/trade-api/v2/events?series_ticker=KXAPPRANKFREE2&status=open&with_nested_markets=true&limit=10",
+   "status": 200,
+   "bytes_live": 42,
+   "bytes": 14
+  },
+  "4a4c248d955e28b0": {
+   "url": "https://api.github.com/repos/openai/codex/releases?per_page=30",
+   "status": 200,
+   "bytes_live": 9044059,
+   "bytes": 12839
+  },
+  "4a7377dfccbd405a": {
+   "url": "https://api.elections.kalshi.com/trade-api/v2/events?series_ticker=KXCPIYOY&status=open&with_nested_markets=true&limit=10",
+   "status": 200,
+   "bytes_live": 118253,
+   "bytes": 33989
+  },
+  "501efb8f08b20dcc": {
+   "url": "https://clob.polymarket.com/book?token_id=55404192439775628931124671719520886657525387168536821457706619003199189099864",
+   "status": 200,
+   "bytes_live": 6271,
+   "bytes": 4522
+  },
+  "538fd0e35637faf0": {
+   "url": "https://api.elections.kalshi.com/trade-api/v2/events?series_ticker=KXFERTILITYSK&status=open&with_nested_markets=true&limit=10",
+   "status": 200,
+   "bytes_live": 42,
+   "bytes": 14
+  },
+  "55db075db101cde3": {
+   "url": "https://api.elections.kalshi.com/trade-api/v2/events?series_ticker=KXRAINNY&status=open&with_nested_markets=true&limit=10",
+   "status": 200,
+   "bytes_live": 42,
+   "bytes": 14
+  },
+  "5881476d6cb453cd": {
+   "url": "https://api.elections.kalshi.com/trade-api/v2/series?category=Crypto&include_volume=true",
+   "status": 200,
+   "bytes_live": 245960,
+   "bytes": 10530
+  },
+  "58b1bd62d762073b": {
+   "url": "https://gamma-api.polymarket.com/events?closed=false&exclude_tag_id=1&start_date_min=2026-10-01T20%3A55%3A00Z&order=volume24hr&ascending=false&limit=50",
+   "status": 200,
+   "bytes_live": 2782756,
+   "bytes": 108690
+  },
+  "595b2a7977679e49": {
+   "url": "https://gamma-api.polymarket.com/events?closed=false&exclude_tag_id=1&order=volume24hr&ascending=false&limit=50&offset=0",
+   "status": 200,
+   "bytes_live": 4340267,
+   "bytes": 105606
+  },
+  "5acb643232b9dd74": {
+   "url": "https://api.elections.kalshi.com/trade-api/v2/events?series_ticker=KXGOVSHUTLENGTH&status=open&with_nested_markets=true&limit=10",
+   "status": 200,
+   "bytes_live": 42,
+   "bytes": 14
+  },
+  "5be7f0653815c732": {
+   "url": "https://api.elections.kalshi.com/trade-api/v2/events?series_ticker=KXGOVSHUT&status=open&with_nested_markets=true&limit=10",
+   "status": 200,
+   "bytes_live": 42,
+   "bytes": 14
+  },
+  "5bf4cfab23b76bb5": {
+   "url": "https://api.elections.kalshi.com/trade-api/v2/series?category=Economics&include_volume=true",
+   "status": 200,
+   "bytes_live": 836842,
+   "bytes": 10731
+  },
+  "5d0512882ca3bb0d": {
+   "url": "https://clob.polymarket.com/book?token_id=34722410608062854697106861099776685947172185964394483545370684749662285977831",
+   "status": 200,
+   "bytes_live": 3087,
+   "bytes": 1367
+  },
+  "6344fd8612cf53df": {
+   "url": "https://gamma-api.polymarket.com/events?closed=false&exclude_tag_id=1&tag_slug=ai&order=volume24hr&ascending=false&limit=8",
+   "status": 200,
+   "bytes_live": 345614,
+   "bytes": 29623
+  },
+  "63f18bf36fe4be77": {
+   "url": "https://gamma-api.polymarket.com/events?closed=false&exclude_tag_id=1&tag_slug=fed-rates&order=volume24hr&ascending=false&limit=8",
+   "status": 200,
+   "bytes_live": 311062,
+   "bytes": 35154
+  },
+  "6cc474b161807f32": {
+   "url": "https://api.elections.kalshi.com/trade-api/v2/events?series_ticker=KXMODELHIGH&status=open&with_nested_markets=true&limit=10",
+   "status": 200,
+   "bytes_live": 12033,
+   "bytes": 3916
+  },
+  "6e7bfc8e76065ce3": {
+   "url": "https://api.elections.kalshi.com/trade-api/v2/events?series_ticker=KXNEWPOPEROUNDS&status=open&with_nested_markets=true&limit=10",
+   "status": 200,
+   "bytes_live": 42,
+   "bytes": 14
+  },
+  "703e76e587d5f8c1": {
+   "url": "https://clob.polymarket.com/book?token_id=17772357652541837838268340566054305212337253685162402420922433137448964217470",
+   "status": 200,
+   "bytes_live": 2062,
+   "bytes": 1239
+  },
+  "723de2951e05ee24": {
+   "url": "https://api.elections.kalshi.com/trade-api/v2/events?series_ticker=KXCOCACOLAPOS&status=open&with_nested_markets=true&limit=10",
+   "status": 200,
+   "bytes_live": 23790,
+   "bytes": 4669
+  },
+  "7660f256ef329cca": {
+   "url": "https://api.elections.kalshi.com/trade-api/v2/series?category=Politics&include_volume=true",
+   "status": 200,
+   "bytes_live": 3378541,
+   "bytes": 11285
+  },
+  "76b1d8525503d6d3": {
+   "url": "https://api.elections.kalshi.com/trade-api/v2/events?series_ticker=KXGOVTSHUTLENGTH&status=open&with_nested_markets=true&limit=10",
+   "status": 200,
+   "bytes_live": 42,
+   "bytes": 14
+  },
+  "79596d91d8b3f947": {
+   "url": "https://api.elections.kalshi.com/trade-api/v2/events?series_ticker=KXALIENS&status=open&with_nested_markets=true&limit=10",
+   "status": 200,
+   "bytes_live": 16813,
+   "bytes": 3835
+  },
+  "79dfca65c95faa29": {
+   "url": "https://api.elections.kalshi.com/trade-api/v2/events?series_ticker=KXBTCY&status=open&with_nested_markets=true&limit=10",
+   "status": 200,
+   "bytes_live": 51351,
+   "bytes": 14255
+  },
+  "7b998808c14fd597": {
+   "url": "https://api.elections.kalshi.com/trade-api/v2/events?series_ticker=POPVOTE&status=open&with_nested_markets=true&limit=10",
+   "status": 200,
+   "bytes_live": 42,
+   "bytes": 14
+  },
+  "7d85616742a48370": {
+   "url": "https://api.elections.kalshi.com/trade-api/v2/events?series_ticker=KXNASDAQ100&status=open&with_nested_markets=true&limit=10",
+   "status": 200,
+   "bytes_live": 114570,
+   "bytes": 35940
+  },
+  "802e964a72d8efd8": {
+   "url": "https://api.elections.kalshi.com/trade-api/v2/events?series_ticker=PRES&status=open&with_nested_markets=true&limit=10",
+   "status": 200,
+   "bytes_live": 42,
+   "bytes": 14
+  },
+  "80faf1d7ab2ee6a8": {
+   "url": "https://api.github.com/repos/openai/openai-agents-python/releases?per_page=30",
+   "status": 200,
+   "bytes_live": 222029,
+   "bytes": 44135
+  },
+  "8508a60922fe3613": {
+   "url": "https://api.elections.kalshi.com/trade-api/v2/events?series_ticker=KXETHMAXY&status=open&with_nested_markets=true&limit=10",
+   "status": 200,
+   "bytes_live": 16765,
+   "bytes": 4249
+  },
+  "86c2bb489bb9c2c4": {
+   "url": "https://clob.polymarket.com/book?token_id=55115078421062885512539156303747803058407616201213034911037320915726138659123",
+   "status": 200,
+   "bytes_live": 3439,
+   "bytes": 1516
+  },
+  "86fc0df911be012b": {
+   "url": "https://api.github.com/repos/anthropics/claude-code/releases?per_page=30",
+   "status": 200,
+   "bytes_live": 827710,
+   "bytes": 37046
+  },
+  "88a193cd9032aa5d": {
+   "url": "https://gamma-api.polymarket.com/events?closed=false&exclude_tag_id=1&order=volume24hr&ascending=false&limit=50&offset=50",
+   "status": 200,
+   "bytes_live": 3686909,
+   "bytes": 99390
+  },
+  "8b83aca64bf9f313": {
+   "url": "https://api.elections.kalshi.com/trade-api/v2/events?series_ticker=KXNASDAQ100Y&status=open&with_nested_markets=true&limit=10",
+   "status": 200,
+   "bytes_live": 55002,
+   "bytes": 18204
+  },
+  "8eaf2b7225d68896": {
+   "url": "https://api.elections.kalshi.com/trade-api/v2/events?series_ticker=KXRATECUTCOUNT&status=open&with_nested_markets=true&limit=10",
+   "status": 200,
+   "bytes_live": 32048,
+   "bytes": 11081
+  },
+  "90cfc9ecee199a72": {
+   "url": "https://api.elections.kalshi.com/trade-api/v2/events?series_ticker=KXNEWPOPEDATE&status=open&with_nested_markets=true&limit=10",
+   "status": 200,
+   "bytes_live": 42,
+   "bytes": 14
+  },
+  "911ca737da72bf92": {
+   "url": "https://api.elections.kalshi.com/trade-api/v2/events?series_ticker=KXAMZNCC&status=open&with_nested_markets=true&limit=10",
+   "status": 200,
+   "bytes_live": 45254,
+   "bytes": 9216
+  },
+  "92e1673973c03ca0": {
+   "url": "https://clob.polymarket.com/book?token_id=49821065181473419798146957267480015506102711160660718636601116902870701340131",
+   "status": 200,
+   "bytes_live": 2882,
+   "bytes": 1382
+  },
+  "9633925bb561dd68": {
+   "url": "https://gamma-api.polymarket.com/events?closed=false&exclude_tag_id=1&tag_slug=tech&order=volume24hr&ascending=false&limit=8",
+   "status": 200,
+   "bytes_live": 212629,
+   "bytes": 27229
+  },
+  "985fc6b78558153e": {
+   "url": "https://api.elections.kalshi.com/trade-api/v2/events?series_ticker=KXARGDOLLAR&status=open&with_nested_markets=true&limit=10",
+   "status": 200,
+   "bytes_live": 42,
+   "bytes": 14
+  },
+  "9df88a200c0d77e6": {
+   "url": "https://gamma-api.polymarket.com/events?closed=false&exclude_tag_id=1&tag_slug=economy&order=volume24hr&ascending=false&limit=8",
+   "status": 200,
+   "bytes_live": 352071,
+   "bytes": 32564
+  },
+  "a2893ffe0467afde": {
+   "url": "https://api.elections.kalshi.com/trade-api/v2/events?series_ticker=KXLAYOFFSYINFO&status=open&with_nested_markets=true&limit=10",
+   "status": 200,
+   "bytes_live": 2340,
+   "bytes": 735
+  },
+  "a31a1c88b74d9c23": {
+   "url": "https://api.elections.kalshi.com/trade-api/v2/events?series_ticker=KXINX&status=open&with_nested_markets=true&limit=10",
+   "status": 200,
+   "bytes_live": 112093,
+   "bytes": 34532
+  },
+  "a6d6d6d8e5b0dcac": {
+   "url": "https://api.elections.kalshi.com/trade-api/v2/events?series_ticker=KXGOVTSHUTDOWN&status=open&with_nested_markets=true&limit=10",
+   "status": 200,
+   "bytes_live": 2997,
+   "bytes": 667
+  },
+  "a9c6ef6be7ea4815": {
+   "url": "https://api.elections.kalshi.com/trade-api/v2/events/KXETHD-26OCT0417?with_nested_markets=true",
+   "status": 200,
+   "bytes_live": 75645,
+   "bytes": 20590
+  },
+  "abfc5f333568e53f": {
+   "url": "https://api.elections.kalshi.com/trade-api/v2/events?series_ticker=KXTOPMODEL&status=open&with_nested_markets=true&limit=10",
+   "status": 200,
+   "bytes_live": 19362,
+   "bytes": 5098
+  },
+  "aca7dccd60eef0be": {
+   "url": "https://api.elections.kalshi.com/trade-api/v2/events?series_ticker=PRESPARTYFULL&status=open&with_nested_markets=true&limit=10",
+   "status": 200,
+   "bytes_live": 42,
+   "bytes": 14
+  },
+  "ad46fdf74151c299": {
+   "url": "https://clob.polymarket.com/book?token_id=5019810753168153471323122473105082718702229310401435759781569586768450866932",
+   "status": 200,
+   "bytes_live": 2984,
+   "bytes": 1016
+  },
+  "afd4f2828b8feec5": {
+   "url": "https://api.elections.kalshi.com/trade-api/v2/events?series_ticker=KXBTCMINY&status=open&with_nested_markets=true&limit=10",
+   "status": 200,
+   "bytes_live": 9475,
+   "bytes": 2234
+  },
+  "b146b33760b22fa9": {
+   "url": "https://api.elections.kalshi.com/trade-api/v2/events?series_ticker=KXRAINNOSB&status=open&with_nested_markets=true&limit=10",
+   "status": 200,
+   "bytes_live": 42,
+   "bytes": 14
+  },
+  "b3e0f04797168c31": {
+   "url": "https://gamma-api.polymarket.com/events?closed=false&exclude_tag_id=1&tag_slug=politics&order=volume24hr&ascending=false&limit=8",
+   "status": 200,
+   "bytes_live": 1406175,
+   "bytes": 34659
+  },
+  "b40db7326ee9a71f": {
+   "url": "https://api.elections.kalshi.com/trade-api/v2/events?series_ticker=KXTOPAI&status=open&with_nested_markets=true&limit=10",
+   "status": 200,
+   "bytes_live": 18762,
+   "bytes": 5847
+  },
+  "b8a35974e76b91ef": {
+   "url": "https://api.github.com/repos/google-gemini/gemini-cli/releases?per_page=30",
+   "status": 200,
+   "bytes_live": 229263,
+   "bytes": 29684
+  },
+  "bbccc9010d11b26b": {
+   "url": "https://clob.polymarket.com/book?token_id=17089873339510493583130721327117290536779565918479254716887985637191946608224",
+   "status": 200,
+   "bytes_live": 1689,
+   "bytes": 1114
+  },
+  "bdffd73739ed964d": {
+   "url": "https://api.elections.kalshi.com/trade-api/v2/events?series_ticker=KXFOOTBALL1001&status=open&with_nested_markets=true&limit=10",
+   "status": 200,
+   "bytes_live": 42,
+   "bytes": 14
+  },
+  "c299b5f8760e74e6": {
+   "url": "https://api.elections.kalshi.com/trade-api/v2/events?series_ticker=KXBTCMAXY&status=open&with_nested_markets=true&limit=10",
+   "status": 200,
+   "bytes_live": 16435,
+   "bytes": 3879
+  },
+  "c309d373c77389c6": {
+   "url": "https://api.elections.kalshi.com/trade-api/v2/events?series_ticker=KXAAAGASW&status=open&with_nested_markets=true&limit=10",
+   "status": 200,
+   "bytes_live": 31128,
+   "bytes": 10387
+  },
+  "c3699a46f980abde": {
+   "url": "https://api.github.com/repos/openai/openai-python/releases?per_page=30",
+   "status": 200,
+   "bytes_live": 105446,
+   "bytes": 32647
+  },
+  "ca58f828207ff24b": {
+   "url": "https://api.elections.kalshi.com/trade-api/v2/events?series_ticker=KXBTCMAX150&status=open&with_nested_markets=true&limit=10",
+   "status": 200,
+   "bytes_live": 6058,
+   "bytes": 1823
+  },
+  "ccd5b8e23c4af028": {
+   "url": "https://api.elections.kalshi.com/trade-api/v2/events?series_ticker=KXHORMUZNORM&status=open&with_nested_markets=true&limit=10",
+   "status": 200,
+   "bytes_live": 21735,
+   "bytes": 7166
+  },
+  "cd1f416f9ea17716": {
+   "url": "https://api.elections.kalshi.com/trade-api/v2/events?series_ticker=CLOSESTSTATE&status=open&with_nested_markets=true&limit=10",
+   "status": 200,
+   "bytes_live": 42,
+   "bytes": 14
+  },
+  "cd28abf46a4b5922": {
+   "url": "https://api.elections.kalshi.com/trade-api/v2/events?series_ticker=KXNYCBOROUGHWINMAN&status=open&with_nested_markets=true&limit=10",
+   "status": 200,
+   "bytes_live": 42,
+   "bytes": 14
+  },
+  "cec6359c1b268542": {
+   "url": "https://api.elections.kalshi.com/trade-api/v2/events?series_ticker=KXOAIPROFIT&status=open&with_nested_markets=true&limit=10",
+   "status": 200,
+   "bytes_live": 42,
+   "bytes": 14
+  },
+  "d00d25ac0dc4e08e": {
+   "url": "https://clob.polymarket.com/book?token_id=30630994248667897740988010928640156931882346081873066002335460180076741328029",
+   "status": 200,
+   "bytes_live": 3363,
+   "bytes": 1444
+  },
+  "d46a124ca4994402": {
+   "url": "https://api.elections.kalshi.com/trade-api/v2/events?series_ticker=KXRECSS&status=open&with_nested_markets=true&limit=10",
+   "status": 200,
+   "bytes_live": 42,
+   "bytes": 14
+  },
+  "d5ef28342f149c64": {
+   "url": "https://api.github.com/repos/github/copilot-cli/releases?per_page=30",
+   "status": 200,
+   "bytes_live": 1148821,
+   "bytes": 23099
+  },
+  "d96f43ec98fdc609": {
+   "url": "https://api.elections.kalshi.com/trade-api/v2/events?series_ticker=KXHOODA&status=open&with_nested_markets=true&limit=10",
+   "status": 200,
+   "bytes_live": 90163,
+   "bytes": 25512
+  },
+  "db853f34c79dcfe9": {
+   "url": "https://api.elections.kalshi.com/trade-api/v2/events?series_ticker=KXTIKTOKBAN&status=open&with_nested_markets=true&limit=10",
+   "status": 200,
+   "bytes_live": 42,
+   "bytes": 14
+  },
+  "dd43a425c94cdcbe": {
+   "url": "https://api.elections.kalshi.com/trade-api/v2/events?series_ticker=KXFED&status=open&with_nested_markets=true&limit=10",
+   "status": 200,
+   "bytes_live": 392636,
+   "bytes": 54485
+  },
+  "dd515f16b5bd2efd": {
+   "url": "https://api.elections.kalshi.com/trade-api/v2/events?series_ticker=KXLLM1&status=open&with_nested_markets=true&limit=10",
+   "status": 200,
+   "bytes_live": 42608,
+   "bytes": 11537
+  },
+  "e0ac038635c39e4a": {
+   "url": "https://api.elections.kalshi.com/trade-api/v2/events?series_ticker=KXBTCD&status=open&limit=200",
+   "status": 200,
+   "bytes_live": 1608,
+   "bytes": 471
+  },
+  "e0b4cfb673df7f35": {
+   "url": "https://api.elections.kalshi.com/trade-api/v2/events?series_ticker=KXAPPRANKFREE&status=open&with_nested_markets=true&limit=10",
+   "status": 200,
+   "bytes_live": 42,
+   "bytes": 14
+  },
+  "e29626f45250d29e": {
+   "url": "https://api.github.com/repos/cline/cline/releases?per_page=30",
+   "status": 200,
+   "bytes_live": 373611,
+   "bytes": 41091
+  },
+  "e503f1b14b9bfac8": {
+   "url": "https://gamma-api.polymarket.com/events?closed=false&exclude_tag_id=1&tag_slug=crypto&order=volume24hr&ascending=false&limit=8",
+   "status": 200,
+   "bytes_live": 644641,
+   "bytes": 37739
+  },
+  "e529300ee7c91573": {
+   "url": "https://api.github.com/repos/anthropics/claude-agent-sdk-python/releases?per_page=30",
+   "status": 200,
+   "bytes_live": 72989,
+   "bytes": 18921
+  },
+  "e62723262a17b4b4": {
+   "url": "https://github.blog/changelog/feed/",
+   "status": 200,
+   "bytes_live": 38526,
+   "bytes": 20935
+  },
+  "e957f1841b5e44be": {
+   "url": "https://api.elections.kalshi.com/trade-api/v2/events?series_ticker=KXETHD&status=open&limit=200",
+   "status": 200,
+   "bytes_live": 1547,
+   "bytes": 471
+  },
+  "e9b4482ee668b4c2": {
+   "url": "https://api.elections.kalshi.com/trade-api/v2/events?series_ticker=KXMAMDANIBOROUGHS&status=open&with_nested_markets=true&limit=10",
+   "status": 200,
+   "bytes_live": 42,
+   "bytes": 14
+  },
+  "ea11f01cc908c83d": {
+   "url": "https://api.elections.kalshi.com/trade-api/v2/events?series_ticker=KXPAYROLLS&status=open&with_nested_markets=true&limit=10",
+   "status": 200,
+   "bytes_live": 41718,
+   "bytes": 13498
+  },
+  "f54725449fec375c": {
+   "url": "https://feeds.feedburner.com/zdkorea",
+   "status": 200,
+   "bytes_live": 288756,
+   "bytes": 106277
+  },
+  "f60d6bd18266d3c2": {
+   "url": "https://api.elections.kalshi.com/trade-api/v2/events?series_ticker=KXINXY&status=open&with_nested_markets=true&limit=10",
+   "status": 200,
+   "bytes_live": 107827,
+   "bytes": 33899
+  },
+  "f86efc5c0f00dd15": {
+   "url": "https://api.elections.kalshi.com/trade-api/v2/events?series_ticker=KXFEDDECISION&status=open&with_nested_markets=true&limit=10",
+   "status": 200,
+   "bytes_live": 93258,
+   "bytes": 14110
+  },
+  "f8adc8cd9b0871a2": {
+   "url": "https://api.elections.kalshi.com/trade-api/v2/events?series_ticker=KXSPACEXSTARSHIP&status=open&with_nested_markets=true&limit=10",
+   "status": 200,
+   "bytes_live": 9404,
+   "bytes": 2819
+  },
+  "f94bd1843b43c518": {
+   "url": "https://blog.google/innovation-and-ai/technology/ai/rss/",
+   "status": 200,
+   "bytes_live": 30368,
+   "bytes": 28772
+  },
+  "fe02a93b5a843d61": {
+   "url": "https://api.elections.kalshi.com/trade-api/v2/events?series_ticker=KXAAAGASD&status=open&with_nested_markets=true&limit=10",
+   "status": 200,
+   "bytes_live": 25301,
+   "bytes": 8481
+  }
+ }
+}

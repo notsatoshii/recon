@@ -1,0 +1,675 @@
+<?xml version='1.0' encoding='utf-8'?>
+<rss xmlns:ns0="http://www.w3.org/2005/Atom" xmlns:ns1="http://purl.org/rss/1.0/modules/content/" version="2.0">
+  <channel>
+    <title>Cursor Changelog</title>
+    <description>The latest product updates, release notes, and improvements from Cursor.</description>
+    <link>https://cursor.com/changelog</link>
+    <language>en-US</language>
+    <lastBuildDate>Sat, 03 Oct 2026 20:46:32 GMT</lastBuildDate>
+    <ns0:link href="https://cursor.com/changelog/rss.xml" rel="self" type="application/rss+xml" />
+    <item>
+      <title>Rollouts and Security Review</title>
+      <link>https://cursor.com/changelog/rollouts-and-security-reviewer</link>
+      <guid isPermaLink="true">https://cursor.com/changelog/rollouts-and-security-reviewer</guid>
+      <pubDate>Wed, 23 Sep 2026 00:00:00 GMT</pubDate>
+      <description>Two bots for the last mile of shipping code: Rollouts watches every change as it deploys, and Security Review reports exploitable bugs on every pull request.</description>
+
+      <ns1:encoded>&lt;p&gt;Today we&amp;#39;re launching two Cursor bots for the last mile of shipping code. Rollouts watches every change as it deploys and reports its health per environment. Security Review reports exploitable bugs on every pull request.&lt;/p&gt;
+&lt;p&gt;Both are available today on Teams and Enterprise plans.&lt;/p&gt;
+&lt;h2&gt;Rollouts&lt;/h2&gt;
+&lt;p&gt;Rollouts attaches a monitor to every pull request and watches the change as it deploys, reporting change health per environment: verified healthy, regression detected, or inconclusive. It&amp;#39;s the Cursor version of &lt;a href="https://cursor.com/blog/firetiger"&gt;Firetiger&lt;/a&gt; Change Monitors, rebuilt with the Bot Development Kit.&lt;/p&gt;
+&lt;p&gt;Enable it from the dashboard and connect source</ns1:encoded>
+    </item>
+    <item>
+      <title>Cursor Projects</title>
+      <link>https://cursor.com/changelog/projects</link>
+      <guid isPermaLink="true">https://cursor.com/changelog/projects</guid>
+      <pubDate>Thu, 10 Sep 2026 00:00:00 GMT</pubDate>
+      <description>Projects lets you take on larger bodies of work, maintain context over months, and delegate tasks to thousands of subagents.</description>
+
+      <ns1:encoded>&lt;p&gt;Today we&amp;#39;re launching Projects in Cursor. Projects lets you take on larger bodies of work, such as a feature, a migration, or a full app. It maintains context over months of work, delegates tasks to thousands of subagents, and performs recurring work without being prompted.&lt;/p&gt;
+&lt;p&gt;Access Projects from the left-hand nav. The coordinator agent in a project doesn&amp;#39;t write code itself; it plans the work, delegates it to agents that implement it, and brings the finished work back to you to check. Coordinators create and manage agents on your behalf, running as many in parallel as the work needs.&lt;/p&gt;
+&lt;h2&gt;Powered by Cloud Agents&lt;/h2&gt;
+&lt;p&gt;A Project runs on its own computer in the cloud, so </ns1:encoded>
+    </item>
+    <item>
+      <title>Self-hosted machines</title>
+      <link>https://cursor.com/changelog/self-hosted-machines</link>
+      <guid isPermaLink="true">https://cursor.com/changelog/self-hosted-machines</guid>
+      <pubDate>Wed, 02 Sep 2026 00:00:00 GMT</pubDate>
+      <description>Cursor supports self-hosted machines, which let you keep tool execution entirely in your own network.</description>
+
+      <ns1:encoded>&lt;p&gt;Cursor supports **self-hosted machines**, which let you keep tool execution entirely in your own network.&lt;/p&gt;
+&lt;p&gt;Your codebase, build outputs, and secrets all stay on internal machines running in your infrastructure, while the agent handles tool calls locally.&lt;/p&gt;
+&lt;p&gt;&amp;lt;figure&amp;gt;&amp;lt;img src=&amp;quot;https://ptht05hbb1ssoooe.public.blob.vercel-storage.com/assets/uploads/remote-machines-QjJ0ZzGDelSdT7v2CXDdh0BQHqjmH0.png&amp;quot; loading=&amp;quot;lazy&amp;quot; alt=&amp;quot;Run on menu showing Remote Machines with self-hosted options lambda-test, cloud-demo, and jacks-desktop&amp;quot; /&amp;gt;&amp;lt;figcaption&amp;gt;Run on menu showing Remote Machines with self-hosted options lambda-test, cloud-demo, and jacks-deskt</ns1:encoded>
+    </item>
+    <item>
+      <title>Start from scratch, without a repo</title>
+      <link>https://cursor.com/changelog/start-from-scratch</link>
+      <guid isPermaLink="true">https://cursor.com/changelog/start-from-scratch</guid>
+      <pubDate>Thu, 27 Aug 2026 00:00:00 GMT</pubDate>
+      <description>Cloud Agents now work without a connected repo, plus live preview and Vercel publishing.</description>
+
+      <ns1:encoded>&lt;p&gt;Cloud Agents no longer require a connected GitHub or other third-party SCM provider to get started. Prompt from the get-go, then save your work to a Cursor Origin repo.&lt;/p&gt;
+&lt;h2&gt;Get started&lt;/h2&gt;
+&lt;p&gt;Select **Start from scratch** in the repo picker, then prompt the agent. In the background, Cursor creates an Origin repo for you.&lt;/p&gt;
+&lt;p&gt;&amp;lt;figure&amp;gt;&amp;lt;img src=&amp;quot;https://ptht05hbb1ssoooe.public.blob.vercel-storage.com/assets/changelog/start-from-scratch-QflXlxizUwAvBbal0Kst46I0mEZT93.png&amp;quot; loading=&amp;quot;lazy&amp;quot; alt=&amp;quot;Start from scratch in the repo picker&amp;quot; /&amp;gt;&amp;lt;figcaption&amp;gt;Start from scratch in the repo picker&amp;lt;/figcaption&amp;gt;&amp;lt;/figure&amp;gt;&lt;/p&gt;
+&lt;h2&gt;Turn it into a </ns1:encoded>
+    </item>
+    <item>
+      <title>Cloud Agents and Cursor Harness Improvements</title>
+      <link>https://cursor.com/changelog/08-19-26</link>
+      <guid isPermaLink="true">https://cursor.com/changelog/08-19-26</guid>
+      <pubDate>Wed, 19 Aug 2026 00:00:00 GMT</pubDate>
+      <description>We're continuing to improve cloud agents and the Cursor harness so always-on agents can operate as a system, building and shipping software on their own without the need for intervention at each loop.</description>
+
+      <ns1:encoded>&lt;p&gt;We&amp;#39;re continuing to improve cloud agents and the Cursor harness so always-on agents can operate as a system, building and shipping software on their own without the need for intervention at each loop.&lt;/p&gt;
+&lt;p&gt;With this release, cloud agents can automatically pick up work in response to events, hold a goal until it&amp;#39;s met, and stay on course through long-running sessions.&lt;/p&gt;
+&lt;h2&gt;Subscriptions&lt;/h2&gt;
+&lt;p&gt;Cursor can now monitor your PRs, watch a Slack thread, or run scheduled tasks. Cursor Agent subscribes to an event source (a thread or conversation) and wakes when something happens. Subscriptions are available for cloud agents only, for now.&lt;/p&gt;
+&lt;p&gt;Cloud agents automatically subscribe </ns1:encoded>
+    </item>
+    <item>
+      <title>Origin Code Hosting</title>
+      <link>https://cursor.com/changelog/origin-code-hosting</link>
+      <guid isPermaLink="true">https://cursor.com/changelog/origin-code-hosting</guid>
+      <pubDate>Mon, 17 Aug 2026 00:00:00 GMT</pubDate>
+      <description>Cursor can now host your code.</description>
+
+      <ns1:encoded>&lt;p&gt;Cursor can now host your code.&lt;/p&gt;
+&lt;p&gt;Origin begins rolling out today in early beta on all paid plans. We&amp;#39;re starting with the essentials, designed for agent scale: repos, pull requests, code browsing, and GitHub sync. Agent-native features ship soon.&lt;/p&gt;
+&lt;h2&gt;Origin Repos&lt;/h2&gt;
+&lt;p&gt;The new **Codebase** tab is home for Origin repos.&lt;/p&gt;
+&lt;p&gt;Click **+New** to create a new repo and name it. Once you do, a page shows you how to install the CLI, with commands for how to clone a repo or push a local project. Push, and your code is hosted on Origin.&lt;/p&gt;
+&lt;p&gt;For Origin-hosted repos, Origin is the source of truth. Pushes land on Origin, and GitHub is not in the path.&lt;/p&gt;
+&lt;p&gt;Name your codebase when</ns1:encoded>
+    </item>
+    <item>
+      <title>Cloud Agents Start 3x Faster with Builds</title>
+      <link>https://cursor.com/changelog/08-13-26</link>
+      <guid isPermaLink="true">https://cursor.com/changelog/08-13-26</guid>
+      <pubDate>Thu, 13 Aug 2026 00:00:00 GMT</pubDate>
+      <description>Agents do their best work when they start in a ready environment: repos cloned, dependencies installed, and your install script already run.</description>
+
+      <ns1:encoded>&lt;p&gt;Agents do their best work when they start in a ready environment: repos cloned, dependencies installed, and your install script already run.&lt;/p&gt;
+&lt;p&gt;This release introduces **builds**: ready-to-use copies of your development environment that Cursor prepares in the background. Agents boot into a ready environment instead of setting up from scratch each session. Builds are included with Cloud Agents at no additional cost.&lt;/p&gt;
+&lt;h2&gt;Faster starts&lt;/h2&gt;
+&lt;p&gt;Cursor runs a new build of your environment regularly. When a build succeeds, it becomes the environment future agents start from. Cursor keeps warm copies ready so the next agent does not wait. Internally, our environments now boot 10x faster,</ns1:encoded>
+    </item>
+    <item>
+      <title>Google Workspace Plugins</title>
+      <link>https://cursor.com/changelog/google-workspace-plugins</link>
+      <guid isPermaLink="true">https://cursor.com/changelog/google-workspace-plugins</guid>
+      <pubDate>Mon, 03 Aug 2026 00:00:00 GMT</pubDate>
+      <description>Cursor can now read, write, and act across your Google Workspace.</description>
+
+      <ns1:encoded>&lt;p&gt;Cursor can now read, write, and act across your Google Workspace.&lt;/p&gt;
+&lt;p&gt;New plugins give coding agents direct access to Gmail, Google Drive, and Calendar, so you can pull context, draft and update files, and manage your inbox and calendar without leaving Cursor.&lt;/p&gt;
+&lt;p&gt;Install plugins to connect:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;**&lt;a href="https://cursor.com/marketplace/cursor/google-drive"&gt;Google Drive&lt;/a&gt;:** search files and folders, open and download content, create and organize files&lt;/li&gt;
+&lt;li&gt;**&lt;a href="https://cursor.com/marketplace/cursor/gmail"&gt;Gmail&lt;/a&gt;:** search and read mail, draft and send messages, apply labels and manage threads&lt;/li&gt;
+&lt;li&gt;**&lt;a href="https://cursor.com/marketplace/cursor/google-c</ns1:encoded>
+    </item>
+    <item>
+      <title>Cursor, now on iPad</title>
+      <link>https://cursor.com/changelog/ipad</link>
+      <guid isPermaLink="true">https://cursor.com/changelog/ipad</guid>
+      <pubDate>Wed, 29 Jul 2026 00:00:00 GMT</pubDate>
+      <description>Cursor for iPad is now available on all paid plans.</description>
+
+      <ns1:encoded>&lt;p&gt;Cursor for iPad is now available on all paid plans.&lt;/p&gt;
+&lt;p&gt;New to both iPhone and iPad: an inbox to stay organized, and a review experience that covers the full PR. Create, review, and merge from anywhere.&lt;/p&gt;
+&lt;h2&gt;Built for the bigger screen&lt;/h2&gt;
+&lt;p&gt;The iPad layout is rebuilt around the extra space. Sidebar chats stay pinned so you can watch several agents run at once. Split screen keeps a review open next to a chat, and file diffs render in full.&lt;/p&gt;
+&lt;p&gt;Markup gets more room to work too. Attach a screenshot, then tap to drop a comment at a specific point, or draw directly on the image with Apple Pencil.&lt;/p&gt;
+&lt;h2&gt;A full review surface&lt;/h2&gt;
+&lt;p&gt;On iPhone and iPad, the review screen now cover</ns1:encoded>
+    </item>
+    <item>
+      <title>Cursor Start</title>
+      <link>https://cursor.com/changelog/cursor-start</link>
+      <guid isPermaLink="true">https://cursor.com/changelog/cursor-start</guid>
+      <pubDate>Tue, 28 Jul 2026 12:00:00 GMT</pubDate>
+      <description>We're introducing Cursor Start , a new ₹649 monthly plan for developers in India, making daily agentic development accessible and payment easy with local pricing and UPI.</description>
+
+      <ns1:encoded>&lt;p&gt;We&amp;#39;re introducing &lt;a href="https://cursor.com/blog/cursor-start-india"&gt;Cursor Start&lt;/a&gt;, a new ₹649 monthly plan for developers in India, making daily agentic development accessible and payment easy with local pricing and UPI.&lt;/p&gt;
+&lt;p&gt;Existing Free users in India can upgrade their plan from the &lt;a href="https://cursor.com/dashboard?modal=plan-selection"&gt;dashboard&lt;/a&gt;. New users in India can visit &lt;a href="https://cursor.com/signup"&gt;cursor.com/signup&lt;/a&gt; and select the Start plan during onboarding.&lt;/p&gt;
+&lt;p&gt;Start bills monthly with auto-renewal and is available from July 28, 2026.&lt;/p&gt;
+&lt;p&gt;Cursor Start includes:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;**Generous access to Cursor models:** Grok and Composer, with enou</ns1:encoded>
+    </item>
+    <item>
+      <title>Cursor Router</title>
+      <link>https://cursor.com/changelog/router</link>
+      <guid isPermaLink="true">https://cursor.com/changelog/router</guid>
+      <pubDate>Wed, 22 Jul 2026 00:00:00 GMT</pubDate>
+      <description>Auto mode is now powered by Cursor Router.</description>
+
+      <ns1:encoded>&lt;p&gt;Auto mode is now powered by Cursor Router.&lt;/p&gt;
+&lt;p&gt;&lt;a href="https://cursor.com/blog/router"&gt;Cursor Router&lt;/a&gt; is our intelligent model router. It analyzes each request and sends it to the right model for the job. Frontier models handle work that demands them. Price-efficient models handle the rest.&lt;/p&gt;
+&lt;h2&gt;Optimization modes&lt;/h2&gt;
+&lt;p&gt;Select Auto, then choose how the router optimizes:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;**Intelligence:** Frontier quality, matching the most expensive and powerful models that might be out of reach for daily use.&lt;/li&gt;
+&lt;li&gt;**Balance:** Strong quality, matching the frontier models that most people like to daily drive.&lt;/li&gt;
+&lt;li&gt;**Cost:** Good quality, reaching the highest available inte</ns1:encoded>
+    </item>
+    <item>
+      <title>Improvements to Cursor in Slack</title>
+      <link>https://cursor.com/changelog/slack-improvements</link>
+      <guid isPermaLink="true">https://cursor.com/changelog/slack-improvements</guid>
+      <pubDate>Fri, 17 Jul 2026 00:00:00 GMT</pubDate>
+      <description>Cursor in Slack now shares a plan before it starts, runs in multi-repo environments, and can work across channels and threads.</description>
+
+      <ns1:encoded>&lt;p&gt;Cursor in Slack now shares a plan before it starts, runs in multi-repo environments, and can work across channels and threads.&lt;/p&gt;
+&lt;h2&gt;Interaction improvements&lt;/h2&gt;
+&lt;p&gt;Cursor now responds with a plan before it begins, so you can jump in and redirect early. As it works, it updates its status so you can follow each step.&lt;/p&gt;
+&lt;p&gt;We also refined how Cursor&amp;#39;s responses look in Slack. In-message buttons are gone, replaced by compact footer links. Tables, PRs, and artifacts now render more cleanly.&lt;/p&gt;
+&lt;h2&gt;Multi-repo environment support&lt;/h2&gt;
+&lt;p&gt;From Slack, Cursor can now start in a named multi-repo environment instead of a single default repository. If your frontend, backend, and shared code</ns1:encoded>
+    </item>
+    <item>
+      <title>Side Chats and Conversation Search</title>
+      <link>https://cursor.com/changelog/side-chat</link>
+      <guid isPermaLink="true">https://cursor.com/changelog/side-chat</guid>
+      <pubDate>Fri, 10 Jul 2026 00:00:00 GMT</pubDate>
+      <description>This release makes it easier to stay in flow with side chats that run alongside your main chat, the ability to search agent transcripts, and simplified project and repo pickers.</description>
+
+      <ns1:encoded>&lt;p&gt;This release makes it easier to stay in flow with side chats that run alongside your main chat, the ability to search agent transcripts, and simplified project and repo pickers.&lt;/p&gt;
+&lt;h2&gt;Side chats&lt;/h2&gt;
+&lt;p&gt;Open a side chat to ask questions, explore ideas, and investigate tangents without interrupting your main agent conversation. Use `/side`, `/btw`, or the plus button at the top of the chat panel to create a new side chat that has context from the main chat.&lt;/p&gt;
+&lt;p&gt;Each side chat is a durable, full agent conversation that you can follow up on, revisit later, and at-mention to pull context back into the main thread.&lt;/p&gt;
+&lt;p&gt;By default, side chats focus on reading, searching, and answering. </ns1:encoded>
+    </item>
+    <item>
+      <title>MCPs and Organizations in Team Marketplaces</title>
+      <link>https://cursor.com/changelog/team-marketplace-updates</link>
+      <guid isPermaLink="true">https://cursor.com/changelog/team-marketplace-updates</guid>
+      <pubDate>Tue, 30 Jun 2026 00:00:00 GMT</pubDate>
+      <description>We've expanded team marketplaces to support Team MCPs and organization groups.</description>
+
+      <ns1:encoded>&lt;p&gt;We&amp;#39;ve expanded &lt;a href="https://cursor.com/docs/plugins#team-marketplaces"&gt;team marketplaces&lt;/a&gt; to support Team MCPs and organization groups.&lt;/p&gt;
+&lt;h2&gt;Team MCPs in team marketplaces&lt;/h2&gt;
+&lt;p&gt;Admins can now configure Team MCP servers once and distribute them across cloud agents, the agents window, IDE, and CLI.&lt;/p&gt;
+&lt;p&gt;When an admin sets up Team MCP servers for cloud agents, they can make those same servers available in a team marketplace from **Dashboard -&amp;gt; Plugins &amp;amp; MCPs**. This allows members of the team to install approved integrations locally without configuring servers themselves.&lt;/p&gt;
+&lt;p&gt;Learn more in the docs on &lt;a href="https://cursor.com/docs/plugins#migrate-existing-team</ns1:encoded>
+    </item>
+    <item>
+      <title>Cursor Mobile App for iOS</title>
+      <link>https://cursor.com/changelog/ios-mobile-app</link>
+      <guid isPermaLink="true">https://cursor.com/changelog/ios-mobile-app</guid>
+      <pubDate>Mon, 29 Jun 2026 00:00:00 GMT</pubDate>
+      <description>Cursor for iOS is now available in public beta on all paid plans. Launch and manage always-on agents from anywhere.</description>
+
+      <ns1:encoded>&lt;p&gt;&lt;a href="https://cursor.com/blog/ios-mobile-app"&gt;Cursor for iOS&lt;/a&gt; is now available in public beta on all paid plans. Launch and manage always-on agents from anywhere.&lt;/p&gt;
+&lt;h2&gt;Cloud agents on mobile&lt;/h2&gt;
+&lt;p&gt;Open the Cursor mobile app, choose a repo, and launch an agent the same way you would on the desktop app. Pick any frontier model, describe ideas out loud with voice input, and use slash commands to guide Cursor in the right direction.&lt;/p&gt;
+&lt;p&gt;Cloud agents run in isolated virtual machines with full development environments to test, verify, and demo work. Move sessions from local to cloud to keep them running with your laptop closed.&lt;/p&gt;
+&lt;h2&gt;Remote Control&lt;/h2&gt;
+&lt;p&gt;Use &lt;a href="https://c</ns1:encoded>
+    </item>
+    <item>
+      <title>Customize Cursor</title>
+      <link>https://cursor.com/changelog/customize</link>
+      <guid isPermaLink="true">https://cursor.com/changelog/customize</guid>
+      <pubDate>Mon, 22 Jun 2026 00:00:00 GMT</pubDate>
+      <description>Plugins, skills, and MCPs let you customize Cursor for your workflows. The new Customize page brings them into one place.</description>
+
+      <ns1:encoded>&lt;p&gt;Plugins, skills, and MCPs let you customize Cursor for your workflows. The new Customize page brings them into one place.&lt;/p&gt;
+&lt;p&gt;You can now add and manage plugins, skills, MCPs, subagents, rules, commands, and hooks at the user, team, or workspace level, and even bring your own custom MCPs.&lt;/p&gt;
+&lt;h2&gt;Marketplace leaderboard&lt;/h2&gt;
+&lt;p&gt;Cursor now shows you a leaderboard of the most popular plugins, skills, and MCPs across your team.&lt;/p&gt;
+&lt;p&gt;Add any to your setup with one click from the new Customize page and extend Cursor for your workflow.&lt;/p&gt;
+&lt;h2&gt;Plugin canvases&lt;/h2&gt;
+&lt;p&gt;Plugins now support prebuilt canvases: shared setup templates your team can open and reuse.&lt;/p&gt;
+&lt;p&gt;Use the Hex Canvas to bui</ns1:encoded>
+    </item>
+    <item>
+      <title>Improvements to Cursor Automations</title>
+      <link>https://cursor.com/changelog/06-18-26</link>
+      <guid isPermaLink="true">https://cursor.com/changelog/06-18-26</guid>
+      <pubDate>Thu, 18 Jun 2026 00:00:00 GMT</pubDate>
+      <description>Cursor Automations save you time by automating repetitive tasks with always-on agents. This release introduces the **/automate** skill, new triggers for GitHub and Slack, and support for computer use.</description>
+
+      <ns1:encoded>&lt;p&gt;Cursor Automations save you time by automating repetitive tasks with always-on agents. This release introduces the **/automate** skill, new triggers for GitHub and Slack, and support for computer use.&lt;/p&gt;
+&lt;h2&gt;/automate skill&lt;/h2&gt;
+&lt;p&gt;Use **/automate** to create an automation directly in your local agent session.&lt;/p&gt;
+&lt;p&gt;Describe the task you want to automate in plain language and Cursor will configure the triggers, instructions, and tools for you.&lt;/p&gt;
+&lt;h2&gt;An emoji trigger for Slack&lt;/h2&gt;
+&lt;p&gt;React to any Slack message with a designated emoji to kick off an automation. At Cursor, we use this to trigger specific automations right from Slack.&lt;/p&gt;
+&lt;h2&gt;New GitHub triggers&lt;/h2&gt;
+&lt;p&gt;Automations now s</ns1:encoded>
+    </item>
+    <item>
+      <title>Cloud Environment Setup and Cloud Subagents in Agents Window</title>
+      <link>https://cursor.com/changelog/cloud-in-agents-window</link>
+      <guid isPermaLink="true">https://cursor.com/changelog/cloud-in-agents-window</guid>
+      <pubDate>Wed, 17 Jun 2026 00:00:00 GMT</pubDate>
+      <description>This release introduces updates to cloud agents in the Agents Window of the Cursor desktop app.</description>
+
+      <ns1:encoded>&lt;p&gt;This release introduces updates to &lt;a href="https://cursor.com/docs/cloud-agent"&gt;cloud agents&lt;/a&gt; in the &lt;a href="https://cursor.com/docs/agent/agents-window"&gt;Agents Window&lt;/a&gt; of the Cursor desktop app.&lt;/p&gt;
+&lt;h2&gt;Cloud environment setup&lt;/h2&gt;
+&lt;p&gt;Cursor can now help you set up your dev environment in the cloud in less than 10 minutes. You can watch the agent&amp;#39;s progress in a shared terminal session as it handles setup tasks like installing dependencies.&lt;/p&gt;
+&lt;p&gt;Your environment is captured in a reusable snapshot, so future cloud agents start up faster with the ability to test changes by running your software. It can iterate over long time horizons until outputs are verified. This benefits </ns1:encoded>
+    </item>
+    <item>
+      <title>Bugbot is now over 3x faster, 22% cheaper, and finds 10% more bugs</title>
+      <link>https://cursor.com/changelog/bugbot-updates-june-2026</link>
+      <guid isPermaLink="true">https://cursor.com/changelog/bugbot-updates-june-2026</guid>
+      <pubDate>Wed, 10 Jun 2026 00:00:00 GMT</pubDate>
+      <description>Bugbot is now over 3x faster, 22% cheaper, and finds 10% more bugs per review, plus a new /review command to run reviews before you push.</description>
+
+      <ns1:encoded>&lt;p&gt;The average review time for Bugbot is now ~90 seconds, down from ~5 minutes. Bugbot also finds 10% more bugs per review on average — 0.62, up from 0.56 — and costs ~22% less per run.&lt;/p&gt;
+&lt;p&gt;&amp;lt;figure&amp;gt;&amp;lt;img src=&amp;quot;https://ptht05hbb1ssoooe.public.blob.vercel-storage.com/assets/changelog/bugbot-performance.png&amp;quot; loading=&amp;quot;lazy&amp;quot; alt=&amp;quot;Bugbot is now over 3x faster, 22% cheaper, and finds 10% more bugs per review.&amp;quot; /&amp;gt;&amp;lt;figcaption&amp;gt;Bugbot is now over 3x faster, 22% cheaper, and finds 10% more bugs per review.&amp;lt;/figcaption&amp;gt;&amp;lt;/figure&amp;gt;&lt;/p&gt;
+&lt;p&gt;These performance gains are made possible by progress we&amp;#39;ve made training Composer 2.5, which now powers B</ns1:encoded>
+    </item>
+    <item>
+      <title>Design Mode Improvements</title>
+      <link>https://cursor.com/changelog/design-mode-improvements</link>
+      <guid isPermaLink="true">https://cursor.com/changelog/design-mode-improvements</guid>
+      <pubDate>Fri, 05 Jun 2026 00:00:00 GMT</pubDate>
+      <description>With Design Mode in the Cursor browser, you can click, draw, or describe changes by voice to help agents update your UI.</description>
+
+      <ns1:encoded>&lt;p&gt;With Design Mode in the Cursor browser, you can click, draw, or describe changes by voice to help agents update your UI.&lt;/p&gt;
+&lt;h2&gt;Multi-select elements&lt;/h2&gt;
+&lt;p&gt;Click on two or more elements together in the browser. Cursor sees the selected elements, their code, the surrounding layout, and the visual relationships on the page.&lt;/p&gt;
+&lt;p&gt;Ask the agent to make one match the other, remove repeated content, or adjust a group of components at once.&lt;/p&gt;
+&lt;h2&gt;Voice input&lt;/h2&gt;
+&lt;p&gt;Narrate changes through the Design Mode overlay. The mic stays available while an agent is mid-run, so you can queue the next change by voice without waiting for the previous one to finish.&lt;/p&gt;</ns1:encoded>
+    </item>
+    <item>
+      <title>Custom stores, custom tools, and auto-review for the Cursor SDK</title>
+      <link>https://cursor.com/changelog/sdk-updates-jun-2026</link>
+      <guid isPermaLink="true">https://cursor.com/changelog/sdk-updates-jun-2026</guid>
+      <pubDate>Thu, 04 Jun 2026 00:00:00 GMT</pubDate>
+      <description>New stores, custom tools, auto-review, and nested subagents for the TypeScript and Python SDKs, plus run correlation IDs, lighter imports, and reliability fixes.</description>
+
+      <ns1:encoded>&lt;p&gt;We&amp;#39;ve shipped a batch of new functionality across the &lt;a href="https://cursor.com/docs/sdk/typescript"&gt;TypeScript&lt;/a&gt; and &lt;a href="https://cursor.com/docs/sdk/python"&gt;Python&lt;/a&gt; SDKs. You can now choose how agent and run metadata is persisted, expose your own functions to the agent as tools, route local tool calls through auto-review, and nest subagents to any depth. This release also brings a set of reliability, performance, and platform fixes that make local and cloud SDK agents easier to run in production scripts, CI, and custom integrations.&lt;/p&gt;
+&lt;h2&gt;Custom tools&lt;/h2&gt;
+&lt;p&gt;You can now hand the local agent your own tools by passing function definitions through `local.customTools`, on </ns1:encoded>
+    </item>
+    <item>
+      <title>Canvas Design Mode and Context Usage Report</title>
+      <link>https://cursor.com/changelog/canvas-improvements</link>
+      <guid isPermaLink="true">https://cursor.com/changelog/canvas-improvements</guid>
+      <pubDate>Thu, 04 Jun 2026 00:00:00 GMT</pubDate>
+      <description>With canvases , agents can create interactive artifacts like dashboards, reports, and internal tools that you can share with your team .</description>
+
+      <ns1:encoded>&lt;p&gt;With &lt;a href="https://cursor.com/docs/agent/tools/canvas"&gt;canvases&lt;/a&gt;, agents can create interactive artifacts like dashboards, reports, and internal tools that you can &lt;a href="https://cursor.com/changelog/shared-canvases#shared-canvases"&gt;share with your team&lt;/a&gt;.&lt;/p&gt;
+&lt;p&gt;This release introduces Design Mode for faster canvas editing, new ways to understand context usage, and other quality-of-life improvements.&lt;/p&gt;
+&lt;h2&gt;Design Mode in canvases&lt;/h2&gt;
+&lt;p&gt;Design Mode is now available in canvases.&lt;/p&gt;
+&lt;p&gt;Select and annotate UI elements directly in a canvas to guide Cursor&amp;#39;s edits, just as you would in the browser. Instead of describing the change in text, you can point to it, provide feedba</ns1:encoded>
+    </item>
+    <item>
+      <title>Organizations for Cursor Enterprise</title>
+      <link>https://cursor.com/changelog/enterprise-organizations</link>
+      <guid isPermaLink="true">https://cursor.com/changelog/enterprise-organizations</guid>
+      <pubDate>Wed, 03 Jun 2026 00:00:00 GMT</pubDate>
+      <description>Enterprise customers can now manage multiple Cursor teams from one place, with different security, governance, budget, and feature controls for each. These capabilities are now generally available to all Enterprise customers.</description>
+
+      <ns1:encoded>&lt;p&gt;Enterprise customers can now manage multiple Cursor teams from one place, with different security, governance, budget, and feature controls for each. These capabilities are now generally available to all Enterprise customers.&lt;/p&gt;
+&lt;p&gt;&amp;lt;figure&amp;gt;&amp;lt;img src=&amp;quot;https://ptht05hbb1ssoooe.public.blob.vercel-storage.com/assets/blog/ent-org-arch-4-light.png&amp;quot; loading=&amp;quot;lazy&amp;quot; alt=&amp;quot;Cursor Enterprise organization architecture with organizations, teams, and groups&amp;quot; /&amp;gt;&amp;lt;figcaption&amp;gt;Cursor Enterprise organization architecture with organizations, teams, and groups&amp;lt;/figcaption&amp;gt;&amp;lt;/figure&amp;gt;&lt;/p&gt;
+&lt;h2&gt;Organizations&lt;/h2&gt;
+&lt;p&gt;An organization is the top-level containe</ns1:encoded>
+    </item>
+    <item>
+      <title>Auto-review Run Mode</title>
+      <link>https://cursor.com/changelog/auto-review</link>
+      <guid isPermaLink="true">https://cursor.com/changelog/auto-review</guid>
+      <pubDate>Fri, 29 May 2026 00:00:00 GMT</pubDate>
+      <description>Auto-review is a new run mode that allows Cursor to work for longer with fewer approval prompts and safer execution.</description>
+
+      <ns1:encoded>&lt;p&gt;Auto-review is a new run mode that allows Cursor to work for longer with fewer approval prompts and safer execution.&lt;/p&gt;
+&lt;p&gt;Auto-review applies to Shell, MCP, and Fetch tool calls. Allowlisted calls run immediately, and calls that can be sandboxed run in the sandbox. All other agent actions go to a classifier subagent that decides whether to allow the call, try a different approach, or ask for your approval.&lt;/p&gt;
+&lt;p&gt;Configure your run mode in **Settings &amp;gt; Cursor Settings &amp;gt; Agents &amp;gt; Approvals &amp;amp; Execution**. You can also steer the classifier agent by giving it custom instructions.&lt;/p&gt;
+&lt;p&gt;Learn more in our &lt;a href="https://cursor.com/docs/agent/security/run-modes"&gt;docs&lt;/a&gt;.&lt;/p&gt;</ns1:encoded>
+    </item>
+    <item>
+      <title>Shared Canvases and /loop Skill</title>
+      <link>https://cursor.com/changelog/shared-canvases</link>
+      <guid isPermaLink="true">https://cursor.com/changelog/shared-canvases</guid>
+      <pubDate>Wed, 20 May 2026 00:00:00 GMT</pubDate>
+      <description>You can now share canvases from Cursor with your teammates.</description>
+
+      <ns1:encoded>&lt;h2&gt;Shared canvases&lt;/h2&gt;
+&lt;p&gt;You can now share canvases from Cursor with your teammates.&lt;/p&gt;
+&lt;p&gt;Canvases are interactive artifacts created by agents, like reports, dashboards, and custom interfaces. Instead of sharing a full chat thread, you can share a link to a live snapshot of a canvas for teammates to open in the browser.&lt;/p&gt;
+&lt;p&gt;Teammates open a shared canvas from its link with read-only access. The Shared Canvases page in the Cursor Dashboard lists the canvases you&amp;#39;ve published, so you can manage your own shares. Shared canvases are available on Pro, Teams, and Enterprise plans.&lt;/p&gt;
+&lt;p&gt;Learn more in our &lt;a href="https://cursor.com/docs/agent/tools/canvas#sharing-canvases"&gt;docs&lt;/a&gt;.&lt;/</ns1:encoded>
+    </item>
+    <item>
+      <title>Improvements to Cursor Automations</title>
+      <link>https://cursor.com/changelog/05-20-26</link>
+      <guid isPermaLink="true">https://cursor.com/changelog/05-20-26</guid>
+      <pubDate>Wed, 20 May 2026 00:00:00 GMT</pubDate>
+      <description>This release brings Cursor Automations to the Agents Window and introduces the ability to configure automations with multiple attached repos or no repos at all.</description>
+
+      <ns1:encoded>&lt;p&gt;This release brings &lt;a href="https://cursor.com/docs/cloud-agent/automations"&gt;Cursor Automations&lt;/a&gt; to the Agents Window and introduces the ability to configure automations with multiple attached repos or no repos at all.&lt;/p&gt;
+&lt;p&gt;For the next 7 days, all agent runs for newly created automations are 50% off.&lt;/p&gt;
+&lt;h2&gt;Automations in the Agents Window&lt;/h2&gt;
+&lt;p&gt;Cursor Automations are now available in the &lt;a href="https://cursor.com/blog/cursor-3"&gt;Agents Window&lt;/a&gt;, in addition to cursor.com/automations. Create and manage your automations in the same workspace as your agents.&lt;/p&gt;
+&lt;h2&gt;Multi-repo automations&lt;/h2&gt;
+&lt;p&gt;A lot of engineering work spans more than one codebase. You can now attach multipl</ns1:encoded>
+    </item>
+    <item>
+      <title>Cursor in Jira</title>
+      <link>https://cursor.com/changelog/05-19-26</link>
+      <guid isPermaLink="true">https://cursor.com/changelog/05-19-26</guid>
+      <pubDate>Tue, 19 May 2026 00:00:00 GMT</pubDate>
+      <description>Cursor is now available in Jira.</description>
+
+      <ns1:encoded>&lt;p&gt;Cursor is now available in Jira.&lt;/p&gt;
+&lt;p&gt;Assign work items to Cursor, or mention `@Cursor` in a comment to kick off a &lt;a href="https://cursor.com/docs/cloud-agent"&gt;cloud agent&lt;/a&gt;. Cursor uses the work item title, description, comments, and your team&amp;#39;s repository settings to scope the task.&lt;/p&gt;
+&lt;p&gt;You can ask Cursor to fix bugs, add features, update tests, or investigate something described in the ticket. When the agent finishes, Jira shows completion updates and includes a link to the pull request.&lt;/p&gt;
+&lt;p&gt;Install the integration from &lt;a href="https://cursor.com/dashboard/integrations#integrations"&gt;Cursor integrations&lt;/a&gt;. You need Cursor admin access and Jira Commercial Cloud with Rov</ns1:encoded>
+    </item>
+    <item>
+      <title>Composer 2.5</title>
+      <link>https://cursor.com/changelog/composer-2-5</link>
+      <guid isPermaLink="true">https://cursor.com/changelog/composer-2-5</guid>
+      <pubDate>Mon, 18 May 2026 00:00:00 GMT</pubDate>
+      <description>Composer 2.5 is now available in Cursor.</description>
+
+      <ns1:encoded>&lt;p&gt;&lt;a href="https://cursor.com/blog/composer-2-5"&gt;Composer 2.5&lt;/a&gt; is now available in Cursor.&lt;/p&gt;
+&lt;p&gt;It&amp;#39;s a substantial improvement in intelligence and behavior over &lt;a href="https://cursor.com/blog/composer-2"&gt;Composer 2&lt;/a&gt;. It is better at sustained work on long-running tasks, follows complex instructions more reliably, and is more pleasant to collaborate with.&lt;/p&gt;
+&lt;p&gt;&amp;lt;figure&amp;gt;&amp;lt;img src=&amp;quot;https://ptht05hbb1ssoooe.public.blob.vercel-storage.com/assets/blog/composer-2.5-benchmark-table-landscape-light04.png&amp;quot; loading=&amp;quot;lazy&amp;quot; alt=&amp;quot;Composer 2.5 benchmark results&amp;quot; /&amp;gt;&amp;lt;figcaption&amp;gt;Composer 2.5 benchmark results&amp;lt;/figcaption&amp;gt;&amp;lt;/figure&amp;gt;&lt;/p&gt;
+</ns1:encoded>
+    </item>
+    <item>
+      <title>Full-screen Tabs and Compact Chats</title>
+      <link>https://cursor.com/changelog/3-4</link>
+      <guid isPermaLink="true">https://cursor.com/changelog/3-4</guid>
+      <pubDate>Wed, 13 May 2026 00:00:00 GMT</pubDate>
+      <description>This release introduces quality-of-life improvements to the Agents Window .</description>
+
+      <ns1:encoded>&lt;p&gt;This release introduces quality-of-life improvements to the &lt;a href="https://cursor.com/docs/agent/agents-window"&gt;Agents Window&lt;/a&gt;.&lt;/p&gt;
+&lt;h2&gt;Full-screen tabs&lt;/h2&gt;
+&lt;p&gt;Full screen maximizes the right panel so you can focus on a single tab.&lt;/p&gt;
+&lt;p&gt;Files, changes, canvases, PRs, browsers, and terminals can expand to fill the entire working area. This replaces the agent chat with a floating prompt bar.&lt;/p&gt;
+&lt;p&gt;Enter and exit full screen by clicking on the expand/contract button in the panel header, using the command palette, or pressing `Cmd/Ctrl+Shift+M`.&lt;/p&gt;
+&lt;h2&gt;Compact chat responses&lt;/h2&gt;
+&lt;p&gt;Compact chats give you a tighter view of your agent conversations so you can read threads more quickl</ns1:encoded>
+    </item>
+    <item>
+      <title>Development environments for cloud agents</title>
+      <link>https://cursor.com/changelog/05-13-26</link>
+      <guid isPermaLink="true">https://cursor.com/changelog/05-13-26</guid>
+      <pubDate>Wed, 13 May 2026 00:00:00 GMT</pubDate>
+      <description>To take engineering tasks from start to finish, agents need a development environment similar to the setup on your laptop: cloned repositories, installed dependencies, credentials for internal toolchains, and access to build systems.</description>
+
+      <ns1:encoded>&lt;p&gt;To take engineering tasks from start to finish, agents need a development environment similar to the setup on your laptop: cloned repositories, installed dependencies, credentials for internal toolchains, and access to build systems.&lt;/p&gt;
+&lt;p&gt;This release introduces new tools for teams to configure development environments for their agents. Cursor also can use these tools to set up and maintain environments for you. Together, this makes it easier for teams to run fleets of parallelized agents that handle tasks from end-to-end, inside development environments you fully control.&lt;/p&gt;
+&lt;h2&gt;Multi-repo environments&lt;/h2&gt;
+&lt;p&gt;Cloud agents and automations now support multi-repo environments, building </ns1:encoded>
+    </item>
+    <item>
+      <title>Cursor in Microsoft Teams</title>
+      <link>https://cursor.com/changelog/microsoft-teams</link>
+      <guid isPermaLink="true">https://cursor.com/changelog/microsoft-teams</guid>
+      <pubDate>Mon, 11 May 2026 23:59:00 GMT</pubDate>
+      <description>Cursor is now available in Microsoft Teams.</description>
+
+      <ns1:encoded>&lt;p&gt;Cursor is now available in Microsoft Teams.&lt;/p&gt;
+&lt;p&gt;Mention @Cursor in any Teams channel to delegate a task to a &lt;a href="https://cursor.com/docs/cloud-agent"&gt;cloud agent&lt;/a&gt; or pull information from Cursor into Teams.&lt;/p&gt;
+&lt;p&gt;Cursor automatically picks the right repository and model based on your prompt and recent agent activity. It reads the entire thread for context before implementing a solution and creating a PR for your team to review.&lt;/p&gt;
+&lt;p&gt;Get started by installing the integration in the &lt;a href="https://cursor.com/dashboard/integrations#integrations"&gt;Cursor dashboard&lt;/a&gt;. Learn more in our &lt;a href="https://cursor.com/docs/integrations/microsoft-teams"&gt;docs&lt;/a&gt;.&lt;/p&gt;</ns1:encoded>
+    </item>
+    <item>
+      <title>Bugbot Effort Levels</title>
+      <link>https://cursor.com/changelog/05-11-26</link>
+      <guid isPermaLink="true">https://cursor.com/changelog/05-11-26</guid>
+      <pubDate>Mon, 11 May 2026 00:00:00 GMT</pubDate>
+      <description>Teams admins and Individual plan users can now customize the effort level Bugbot uses for its PR reviews, with three different configurations:</description>
+
+      <ns1:encoded>&lt;p&gt;Teams admins and Individual plan users can now customize the effort level Bugbot uses for its PR reviews, with three different configurations:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;**Default:** Bugbot continues to use the same effort level as it does today. Optimized for efficiency and speed.&lt;/li&gt;
+&lt;li&gt;**High:** Bugbot spends more time reasoning. Reviews are more expensive and take longer, but Bugbot may find more bugs.&lt;/li&gt;
+&lt;li&gt;**Custom:** Describe in natural language when Bugbot should use default or high effort. Cursor will dynamically set effort levels based on your instructions.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;Customers must be on usage-based billing for Bugbot to customize effort levels. Learn more in our &lt;a href="https://cur</ns1:encoded>
+    </item>
+    <item>
+      <title>PR Review, Build Plan in Parallel, and Split PRs</title>
+      <link>https://cursor.com/changelog/05-07-26</link>
+      <guid isPermaLink="true">https://cursor.com/changelog/05-07-26</guid>
+      <pubDate>Thu, 07 May 2026 00:00:00 GMT</pubDate>
+      <description>This release introduces a new PR review experience, faster execution on plans through parallel agents, and new quick-action pills for common workflows.</description>
+
+      <ns1:encoded>&lt;p&gt;This release introduces a new PR review experience, faster execution on plans through parallel agents, and new quick-action pills for common workflows.&lt;/p&gt;
+&lt;h2&gt;PR review&lt;/h2&gt;
+&lt;p&gt;A new PR review experience is now available in Cursor 3. Take PRs from creation to merge all in one place.&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;The Reviews tab now shows inline review threads and top-level PR comments.&lt;/li&gt;
+&lt;li&gt;The Commits tab gives you a focused view of commit history for the PR.&lt;/li&gt;
+&lt;li&gt;The Changes tab makes it easier to navigate larger PRs with a file tree and changes picker.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;You can see useful context like reviewer status and pending review banners, and quick action pills allow you to take next steps f</ns1:encoded>
+    </item>
+    <item>
+      <title>Context Usage Breakdown</title>
+      <link>https://cursor.com/changelog/05-06-26</link>
+      <guid isPermaLink="true">https://cursor.com/changelog/05-06-26</guid>
+      <pubDate>Wed, 06 May 2026 00:00:00 GMT</pubDate>
+      <description>You can now see a breakdown of your agent's context usage .</description>
+
+      <ns1:encoded>&lt;p&gt;You can now see a breakdown of your agent&amp;#39;s &lt;a href="https://cursor.com/docs/agent/prompting#context-usage"&gt;context usage&lt;/a&gt;.&lt;/p&gt;
+&lt;p&gt;Use these stats to diagnose context issues and improve your setup across rules, skills, MCPs, and subagents.&lt;/p&gt;</ns1:encoded>
+    </item>
+    <item>
+      <title>Model controls, spend management, and usage analytics</title>
+      <link>https://cursor.com/changelog/05-04-26</link>
+      <guid isPermaLink="true">https://cursor.com/changelog/05-04-26</guid>
+      <pubDate>Mon, 04 May 2026 00:00:00 GMT</pubDate>
+      <description>This release introduces updates for Enterprise admins: a new system for model controls, updated spend management, and more detail for usage analytics.</description>
+
+      <ns1:encoded>&lt;p&gt;This release introduces updates for Enterprise admins: a new system for model controls, updated spend management, and more detail for usage analytics.&lt;/p&gt;
+&lt;h2&gt;Model access controls&lt;/h2&gt;
+&lt;p&gt;Admins can now set more granular allow or blocklists at the model and provider level. You can block entire providers or specific model configurations for speed and context window size.&lt;/p&gt;
+&lt;p&gt;Enterprises also have the option to block new providers or model versions by default.&lt;/p&gt;
+&lt;p&gt;Customers with existing blocklists will need to migrate to the new system by June 1st. Admins should go to their &lt;a href="https://cursor.com/dashboard/team-settings/models"&gt;team model settings&lt;/a&gt; in the Cursor dashboard to</ns1:encoded>
+    </item>
+    <item>
+      <title>Team Marketplace Updates</title>
+      <link>https://cursor.com/changelog/05-01-26</link>
+      <guid isPermaLink="true">https://cursor.com/changelog/05-01-26</guid>
+      <pubDate>Fri, 01 May 2026 00:00:00 GMT</pubDate>
+      <description>Admins can now create a team marketplace without connecting a repository first. Add, remove, and configure install behavior for first-party plugins directly in team marketplace settings.</description>
+
+      <ns1:encoded>&lt;p&gt;Admins can now create a &lt;a href="https://cursor.com/docs/plugins#team-marketplaces"&gt;team marketplace&lt;/a&gt; without connecting a repository first. Add, remove, and configure install behavior for first-party plugins directly in team marketplace settings.&lt;/p&gt;
+&lt;p&gt;Plugins bundle capabilities like MCP servers, skills, subagents, rules, and hooks that extend agents with custom functionality. Each plugin can be distributed in one of three ways:&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;Default Off: users can discover and opt in&lt;/li&gt;
+&lt;li&gt;Default On: users get the plugin installed by default, but can opt out&lt;/li&gt;
+&lt;li&gt;Required: users always have the plugin and cannot uninstall it&lt;/li&gt;
+&lt;/ol&gt;
+&lt;p&gt;Get started in the &lt;a href="https://</ns1:encoded>
+    </item>
+    <item>
+      <title>Cursor Security Review</title>
+      <link>https://cursor.com/changelog/04-30-26</link>
+      <guid isPermaLink="true">https://cursor.com/changelog/04-30-26</guid>
+      <pubDate>Thu, 30 Apr 2026 00:00:00 GMT</pubDate>
+      <description>Cursor Security Review is now in beta on Teams and Enterprise plans. You can run two types of always-on security agents: Security Reviewer and Vulnerability Scanner.</description>
+
+      <ns1:encoded>&lt;p&gt;&lt;a href="https://cursor.com/docs/security-agents"&gt;Cursor Security Review&lt;/a&gt; is now in beta on Teams and Enterprise plans. You can run two types of always-on security agents: Security Reviewer and Vulnerability Scanner.&lt;/p&gt;
+&lt;h2&gt;Security Reviewer&lt;/h2&gt;
+&lt;p&gt;Security Reviewer checks every PR for security vulnerabilities, auth regressions, privacy and data-handling risks, agent tool auto-approvals, and prompt injection attacks. It will leave inline comments at the exact diff location with severity and remediation.&lt;/p&gt;
+&lt;p&gt;&amp;lt;figure&amp;gt;&amp;lt;img src=&amp;quot;https://ptht05hbb1ssoooe.public.blob.vercel-storage.com/assets/changelog/security-reviewer.png&amp;quot; loading=&amp;quot;lazy&amp;quot; alt=&amp;quot;Security</ns1:encoded>
+    </item>
+    <item>
+      <title>Build programmatic agents with the Cursor SDK</title>
+      <link>https://cursor.com/changelog/sdk-release</link>
+      <guid isPermaLink="true">https://cursor.com/changelog/sdk-release</guid>
+      <pubDate>Wed, 29 Apr 2026 00:00:00 GMT</pubDate>
+      <description>We're introducing the Cursor SDK so you can build agents with the same runtime, harness, and models that power Cursor.</description>
+
+      <ns1:encoded>&lt;p&gt;We&amp;#39;re introducing the Cursor SDK so you can build agents with the same runtime, harness, and models that power Cursor.&lt;/p&gt;
+&lt;p&gt;The agents that run in the Cursor desktop app, CLI, and web app are now accessible with a few lines of TypeScript. Run it on your machine or on Cursor&amp;#39;s cloud against a dedicated VM, with any frontier model.&lt;/p&gt;
+&lt;p&gt;Run `npm install @cursor/sdk` to get started. You can also use Cursor&amp;#39;s native `/sdk` skill to help you start building.&lt;/p&gt;
+&lt;p&gt;```jsx import { Agent } from &amp;quot;@cursor/sdk&amp;quot;;&lt;/p&gt;
+&lt;p&gt;const agent = await Agent.create({ apiKey: process.env.CURSOR_API_KEY!, model: { id: &amp;quot;composer-2.5&amp;quot; }, local: { cwd: process.cwd() }, });&lt;/p&gt;
+&lt;p&gt;c</ns1:encoded>
+    </item>
+    <item>
+      <title>Multitask, Worktrees, and Multi-root Workspaces</title>
+      <link>https://cursor.com/changelog/04-24-26</link>
+      <guid isPermaLink="true">https://cursor.com/changelog/04-24-26</guid>
+      <pubDate>Fri, 24 Apr 2026 00:00:00 GMT</pubDate>
+      <description>This release introduces a new way to multitask with async subagents, an improved worktrees experience, and multi-root workspaces for making cross-repo changes.</description>
+
+      <ns1:encoded>&lt;p&gt;This release introduces a new way to multitask with async subagents, an improved worktrees experience, and multi-root workspaces for making cross-repo changes.&lt;/p&gt;
+&lt;h2&gt;Multitask in Agents Window&lt;/h2&gt;
+&lt;p&gt;With `/multitask`, Cursor will run async subagents to parallelize your requests instead of adding them to the queue. It will also break down larger tasks into smaller chunks for a fleet of async subagents to tackle simultaneously.&lt;/p&gt;
+&lt;p&gt;If you already have messages in the queue, you can ask Cursor to multitask on them instead of waiting for the current run to finish.&lt;/p&gt;
+&lt;h2&gt;Worktrees in Agents Window&lt;/h2&gt;
+&lt;p&gt;We&amp;#39;ve added new and improved &lt;a href="https://cursor.com/docs/configuration/</ns1:encoded>
+    </item>
+    <item>
+      <title>Canvases</title>
+      <link>https://cursor.com/changelog/04-15-26</link>
+      <guid isPermaLink="true">https://cursor.com/changelog/04-15-26</guid>
+      <pubDate>Wed, 15 Apr 2026 00:00:00 GMT</pubDate>
+      <description>Cursor can now respond by creating interactive canvases .</description>
+
+      <ns1:encoded>&lt;p&gt;Cursor can now respond by creating interactive &lt;a href="https://cursor.com/docs/agent/tools/canvas"&gt;canvases&lt;/a&gt;.&lt;/p&gt;
+&lt;p&gt;These visualizations can include dashboards and custom interfaces built using first-party components like tables, boxes, diagrams, and charts, as well as existing Cursor components like diffs and to-do lists.&lt;/p&gt;
+&lt;p&gt;In the &lt;a href="https://cursor.com/docs/agent/agents-window"&gt;Agents Window&lt;/a&gt;, canvases are durable artifacts that live in the side panel alongside the terminal, browser, and source control.&lt;/p&gt;
+&lt;p&gt;Try it out in &lt;a href="https://cursor.com/download"&gt;Cursor 3.1&lt;/a&gt; in the Agents Window or the editor. Read more in our &lt;a href="https://cursor.com/blog/canvas"&gt;</ns1:encoded>
+    </item>
+    <item>
+      <title>CLI Debug Mode and /btw Support</title>
+      <link>https://cursor.com/changelog/04-14-26</link>
+      <guid isPermaLink="true">https://cursor.com/changelog/04-14-26</guid>
+      <pubDate>Tue, 14 Apr 2026 00:00:00 GMT</pubDate>
+      <description>We've shipped quality-of-life improvements to the Cursor CLI to make working with agents in the terminal more delightful.</description>
+
+      <ns1:encoded>&lt;p&gt;We&amp;#39;ve shipped quality-of-life improvements to the Cursor CLI to make working with agents in the terminal more delightful.&lt;/p&gt;
+&lt;h2&gt;Debug Mode in CLI&lt;/h2&gt;
+&lt;p&gt;Use `/debug` to find root causes and fix tricky bugs that are hard to reproduce or understand. In &lt;a href="https://cursor.com/docs/agent/debug-mode"&gt;Debug Mode&lt;/a&gt;, Cursor generates hypotheses, adds log statements, and uses runtime information to pinpoint the issue before making a targeted fix.&lt;/p&gt;
+&lt;h2&gt;/btw support in CLI&lt;/h2&gt;
+&lt;p&gt;Ask a quick side question without derailing the agent&amp;#39;s main task. `/btw` allows you to get clarification on the change Cursor is making without stopping the current run.&lt;/p&gt;
+&lt;h2&gt;Configuration menu in </ns1:encoded>
+    </item>
+    <item>
+      <title>Tiled Layout and Upgraded Voice Input in the Agents Window</title>
+      <link>https://cursor.com/changelog/3-1</link>
+      <guid isPermaLink="true">https://cursor.com/changelog/3-1</guid>
+      <pubDate>Mon, 13 Apr 2026 00:00:00 GMT</pubDate>
+      <description>This release introduces improvements to our Agents Window interface as part of Cursor 3.</description>
+
+      <ns1:encoded>&lt;p&gt;This release introduces improvements to our Agents Window interface as part of Cursor 3.&lt;/p&gt;
+&lt;h2&gt;Tiled layout&lt;/h2&gt;
+&lt;p&gt;Split your current view into panes to run and manage several agents in parallel. The tiled layout makes it easier to multi-task and compare outputs across agents without jumping between tabs.&lt;/p&gt;
+&lt;p&gt;Expand panes to focus on a conversation, drag agents into tiles, and use keybindings for quick navigation and organization. Your setup also persists across sessions.&lt;/p&gt;
+&lt;h2&gt;Upgraded voice input&lt;/h2&gt;
+&lt;p&gt;Dictation through voice input is more reliable and accurate. It records your full voice clip and transcribes it with batch STT for higher-quality speech-to-text.&lt;/p&gt;
+&lt;p&gt;You can </ns1:encoded>
+    </item>
+    <item>
+      <title>Bugbot Learned Rules and MCP Support</title>
+      <link>https://cursor.com/changelog/04-08-26</link>
+      <guid isPermaLink="true">https://cursor.com/changelog/04-08-26</guid>
+      <pubDate>Wed, 08 Apr 2026 00:00:00 GMT</pubDate>
+      <description>This release introduces updates to Bugbot including the ability to self-improve in real time, MCP support, improvements to Bugbot Autofix, and the highest resolution rate to date.</description>
+
+      <ns1:encoded>&lt;p&gt;This release introduces updates to Bugbot including the ability to self-improve in real time, MCP support, improvements to Bugbot Autofix, and the highest resolution rate to date.&lt;/p&gt;
+&lt;h2&gt;Bugbot Learned Rules&lt;/h2&gt;
+&lt;p&gt;Bugbot can now learn from feedback on pull requests and turn those signals into &lt;a href="https://cursor.com/docs/bugbot#learned-rules"&gt;learned rules&lt;/a&gt; that improve future reviews.&lt;/p&gt;
+&lt;p&gt;It looks at reactions and replies to Bugbot comments and comments from human reviewers to create candidate rules. Bugbot automatically promotes the ones that accumulate signal and disables the ones that stop being useful.&lt;/p&gt;
+&lt;p&gt;&amp;lt;figure&amp;gt;&amp;lt;img src=&amp;quot;https://ptht05hbb1ssoooe.publi</ns1:encoded>
+    </item>
+    <item>
+      <title>New Cursor Interface</title>
+      <link>https://cursor.com/changelog/3-0</link>
+      <guid isPermaLink="true">https://cursor.com/changelog/3-0</guid>
+      <pubDate>Thu, 02 Apr 2026 00:00:00 GMT</pubDate>
+      <description>Cursor 3 is now available.</description>
+
+      <ns1:encoded>&lt;p&gt;Cursor 3 is now available.&lt;/p&gt;
+&lt;h2&gt;Agents Window&lt;/h2&gt;
+&lt;p&gt;The new Cursor interface allows you to run many agents in parallel across repos and environments: locally, in worktrees, in the cloud, and on remote SSH.&lt;/p&gt;
+&lt;p&gt;It&amp;#39;s simpler, more powerful, and centered around agents, while keeping the depth of a development environment.&lt;/p&gt;
+&lt;p&gt;To try the &lt;a href="https://cursor.com/docs/agent/agents-window"&gt;Agents Window&lt;/a&gt;, upgrade Cursor and type `Cmd+Shift+P -&amp;gt; Agents Window`.&lt;/p&gt;
+&lt;p&gt;You can switch back to the IDE anytime, or have both open simultaneously.&lt;/p&gt;
+&lt;p&gt;Read more in our &lt;a href="https://cursor.com/blog/cursor-3"&gt;announcement&lt;/a&gt;.&lt;/p&gt;
+&lt;h2&gt;Design Mode&lt;/h2&gt;
+&lt;p&gt;In the Agents Window</ns1:encoded>
+    </item>
+    <item>
+      <title>Self-hosted Cloud Agents</title>
+      <link>https://cursor.com/changelog/03-25-26</link>
+      <guid isPermaLink="true">https://cursor.com/changelog/03-25-26</guid>
+      <pubDate>Wed, 25 Mar 2026 00:00:00 GMT</pubDate>
+      <description>Cursor now supports self-hosted cloud agents that keep your code and tool execution entirely in your own network.</description>
+
+      <ns1:encoded>&lt;p&gt;Cursor now supports &lt;a href="https://cursor.com/docs/cloud-agent/self-hosted"&gt;self-hosted cloud agents&lt;/a&gt; that keep your code and tool execution entirely in your own network.&lt;/p&gt;
+&lt;p&gt;Your codebase, build outputs, and secrets all stay on internal machines running in your infrastructure, while the agent handles tool calls locally.&lt;/p&gt;
+&lt;p&gt;&amp;lt;figure&amp;gt;&amp;lt;img src=&amp;quot;https://ptht05hbb1ssoooe.public.blob.vercel-storage.com/assets/blog/og/self-hosted-og-image.png&amp;quot; loading=&amp;quot;lazy&amp;quot; alt=&amp;quot;Use Cursor&amp;#39;s agent experience with workers that run inisde your own infrastructure&amp;quot; /&amp;gt;&amp;lt;figcaption&amp;gt;Use Cursor&amp;amp;#39;s agent experience with workers that run inisde your ow</ns1:encoded>
+    </item>
+    <item>
+      <title>Composer 2</title>
+      <link>https://cursor.com/changelog/composer-2</link>
+      <guid isPermaLink="true">https://cursor.com/changelog/composer-2</guid>
+      <pubDate>Thu, 19 Mar 2026 00:00:00 GMT</pubDate>
+      <description>Composer 2 is now available in Cursor: frontier-level coding performance with strong results on challenging coding tasks.</description>
+
+      <ns1:encoded>&lt;p&gt;&lt;a href="https://cursor.com/blog/composer-2"&gt;Composer 2&lt;/a&gt; is now available in Cursor: frontier-level coding performance with &lt;a href="https://cursor.com/blog/cursorbench"&gt;strong results&lt;/a&gt; on challenging coding tasks.&lt;/p&gt;
+&lt;p&gt;&amp;lt;figure&amp;gt;&amp;lt;img src=&amp;quot;https://ptht05hbb1ssoooe.public.blob.vercel-storage.com/assets/blog/composer-2-scatter-r4.png&amp;quot; loading=&amp;quot;lazy&amp;quot; alt=&amp;quot;Composer 2 efficiency and quality on CursorBench&amp;quot; /&amp;gt;&amp;lt;figcaption&amp;gt;Composer 2 efficiency and quality on CursorBench&amp;lt;/figcaption&amp;gt;&amp;lt;/figure&amp;gt;&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;**Standard:** \$0.50/M input, \$2.50/M output tokens&lt;/li&gt;
+&lt;li&gt;**Fast** (default): \$1.50/M input, \$7.50/M output tokens&lt;/li&gt;
+&lt;/</ns1:encoded>
+    </item>
+    <item>
+      <title>New Plugins on the Cursor Marketplace</title>
+      <link>https://cursor.com/changelog/03-11-26</link>
+      <guid isPermaLink="true">https://cursor.com/changelog/03-11-26</guid>
+      <pubDate>Wed, 11 Mar 2026 00:00:00 GMT</pubDate>
+      <description>We've added more than 30 new plugins from partners such as Atlassian, Datadog, GitLab, Glean, Hugging Face, monday.com, and PlanetScale. Cursor can now read from, write to, and take actions across more of your stack.</description>
+
+      <ns1:encoded>&lt;p&gt;We&amp;#39;ve added more than 30 new &lt;a href="https://cursor.com/docs/plugins"&gt;plugins&lt;/a&gt; from partners such as Atlassian, Datadog, GitLab, Glean, Hugging Face, monday.com, and PlanetScale. Cursor can now read from, write to, and take actions across more of your stack.&lt;/p&gt;
+&lt;p&gt;Most plugins contain MCPs that cloud agents can use when kicked off manually or triggered automatically through &lt;a href="https://cursor.com/docs/cloud-agent/automations"&gt;automations&lt;/a&gt;.&lt;/p&gt;
+&lt;p&gt;Try out the new plugins at &lt;a href="https://cursor.com/marketplace"&gt;cursor.com/marketplace&lt;/a&gt;, or read more in our &lt;a href="https://cursor.com/blog/new-plugins"&gt;announcement&lt;/a&gt;.&lt;/p&gt;</ns1:encoded>
+    </item>
+    <item>
+      <title>Automations</title>
+      <link>https://cursor.com/changelog/03-05-26</link>
+      <guid isPermaLink="true">https://cursor.com/changelog/03-05-26</guid>
+      <pubDate>Thu, 05 Mar 2026 00:00:00 GMT</pubDate>
+      <description>Cursor now supports automations for building always-on agents that run based on triggers and instructions you define.</description>
+
+      <ns1:encoded>&lt;p&gt;Cursor now supports &lt;a href="https://cursor.com/docs/cloud-agent/automations"&gt;automations&lt;/a&gt; for building always-on agents that run based on triggers and instructions you define.&lt;/p&gt;
+&lt;p&gt;Automations run on schedules or are triggered by events from Slack, Linear, GitHub, PagerDuty, and webhooks.&lt;/p&gt;
+&lt;p&gt;When invoked, the agent spins up a cloud sandbox and follows your instructions using the MCPs and models you&amp;#39;ve configured. Agents also have access to a memory tool that lets them learn from past runs and improve with repetition.&lt;/p&gt;
+&lt;p&gt;Create automations at &lt;a href="https://cursor.com/automations"&gt;cursor.com/automations&lt;/a&gt;, or start from a &lt;a href="https://cursor.com/marketplace#automa</ns1:encoded>
+    </item>
+    <item>
+      <title>Cursor in JetBrains IDEs</title>
+      <link>https://cursor.com/changelog/03-04-26</link>
+      <guid isPermaLink="true">https://cursor.com/changelog/03-04-26</guid>
+      <pubDate>Wed, 04 Mar 2026 00:00:00 GMT</pubDate>
+      <description>Cursor is now available in IntelliJ IDEA, PyCharm, WebStorm, and other JetBrains IDEs through the Agent Client Protocol (ACP).</description>
+
+      <ns1:encoded>&lt;p&gt;Cursor is now available in IntelliJ IDEA, PyCharm, WebStorm, and other JetBrains IDEs through the Agent Client Protocol (ACP).&lt;/p&gt;
+&lt;p&gt;With Cursor ACP, developers who rely on JetBrains for Java and multilanguage support can use any frontier model from OpenAI, Anthropic, Google, and Cursor for agent-driven development.&lt;/p&gt;
+&lt;p&gt;Install the Cursor ACP directly in your JetBrains IDE from the ACP Registry, and authenticate with your existing Cursor account.&lt;/p&gt;
+&lt;p&gt;Read more in our &lt;a href="https://cursor.com/blog/jetbrains-acp"&gt;announcement&lt;/a&gt;.&lt;/p&gt;</ns1:encoded>
+    </item>
+    <item>
+      <title>MCP Apps and Team Marketplaces for Plugins</title>
+      <link>https://cursor.com/changelog/2-6</link>
+      <guid isPermaLink="true">https://cursor.com/changelog/2-6</guid>
+      <pubDate>Tue, 03 Mar 2026 00:00:00 GMT</pubDate>
+      <description>This release introduces interactive UIs in agent chats, a way for teams to share private plugins, and improvements to core capabilities like Debug mode.</description>
+
+      <ns1:encoded>&lt;p&gt;This release introduces interactive UIs in agent chats, a way for teams to share private plugins, and improvements to core capabilities like Debug mode.&lt;/p&gt;
+&lt;h3&gt;MCP Apps&lt;/h3&gt;
+&lt;p&gt;&lt;a href="https://cursor.com/docs/mcp#mcp-apps"&gt;MCP Apps&lt;/a&gt; support interactive user interfaces like charts from &lt;a href="https://cursor.com/marketplace/amplitude"&gt;Amplitude&lt;/a&gt;, diagrams from &lt;a href="https://cursor.com/marketplace/figma"&gt;Figma&lt;/a&gt;, and whiteboards from &lt;a href="https://cursor.com/marketplace/tldraw"&gt;tldraw&lt;/a&gt; directly inside Cursor.&lt;/p&gt;
+&lt;p&gt;&amp;lt;figure&amp;gt;&amp;lt;video src=&amp;quot;https://ptht05hbb1ssoooe.public.blob.vercel-storage.com/assets/changelog/amplitude-mcp-app.mp4&amp;quot; controls preload=&amp;quot</ns1:encoded>
+    </item>
+  </channel>
+</rss>
