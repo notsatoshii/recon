@@ -193,13 +193,59 @@ def source_records(date: str, finished: str | None = None) -> tuple[list[dict], 
     return recs, "export"
 
 
+# Package section title -> the data sources it is built from, for sections with no "# <Source> Intelligence"
+# block inside (and as the fallback when a block is missing). Names match run["sources"][].name.
+TITLE_SOURCES = [("cross-source", ["news", "reddit", "twitter"]), ("sentiment", ["bettafish"]),
+                 ("geopolitical", ["worldmonitor"]), ("on-chain", ["onchain"]), ("news", ["news"]),
+                 ("social", ["reddit", "twitter"]), ("ai", ["ai_tools"]), ("fundraising", ["fundraising"])]
+LAYER_SOURCE = {v: k for k, v in LAYER.items()}
+
+
+def _line_source(line: str) -> str | None:
+    if "reddit.com" in line or re.search(r"\br/\w+", line):
+        return "reddit"
+    if re.search(r"https?://(x|twitter)\.com/", line):
+        return "twitter"
+    if re.search(r"https?://", line):
+        return "news"
+    return None
+
+
+def section_sources(title: str, body: str) -> list[tuple[str, int]]:
+    """(source name, bytes) pairs, largest first, for one package section. Sources come from the
+    "# <Source> Intelligence" blocks the collector writes into the section; the cross-source block has
+    none, so its items are attributed by URL (reddit / x.com / other links = news)."""
+    blocks = list(re.finditer(r"^# (.+?) Intelligence.*$", body, re.M))
+    sizes: dict[str, int] = {}
+    for i, h in enumerate(blocks):
+        layer = next((l for k, l in SECTION_LAYER if k in h.group(1).lower()), None)
+        if layer:
+            end = blocks[i + 1].start() if i + 1 < len(blocks) else len(body)
+            src = LAYER_SOURCE.get(layer, layer)
+            sizes[src] = sizes.get(src, 0) + len(body[h.start():end].encode("utf-8"))
+    if not sizes and "cross-source" in title:
+        for line in body.splitlines():
+            src = _line_source(line)
+            if src:
+                sizes[src] = sizes.get(src, 0) + len(line.encode("utf-8")) + 1
+    if not sizes:
+        fallback = next((v for k, v in TITLE_SOURCES if title.startswith(k)), [])
+        return [(s, 0) for s in fallback]
+    return sorted(sizes.items(), key=lambda kv: -kv[1])
+
+
 def package_sections(pkg: str) -> list[dict]:
+    """One entry per "# SECTION n:" block. "source" is the data source most of the section came from (the
+    name used in run["sources"], so the page can link them); "sources" lists every source in it."""
     parts = re.split(r"^# SECTION \d+: ", pkg, flags=re.M)
     out = []
     for part in parts[1:]:
         title, _, body = part.partition("\n")
         name = title.strip().lower().replace(" & ", "_").replace(" ", "_")
-        out.append({"name": name[:40], "source": name.split("_")[0], "bytes": len(body.encode("utf-8")),
+        srcs = section_sources(name, body)
+        out.append({"name": name[:40], "source": srcs[0][0] if srcs else None,
+                    "sources": [{"name": n, "bytes": b} for n, b in srcs],
+                    "bytes": len(body.encode("utf-8")),
                     "items": len(re.findall(r"^- ", body, re.M)), "freshness": None})
     return out
 
