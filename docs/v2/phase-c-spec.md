@@ -9,6 +9,7 @@ Eric's standing instruction for this work: decide, do not ask. Every product cho
 open is decided here and listed in §19 so it can be reversed in one place.
 
 Revised 2026-10-04 after review: 23 findings applied; §20 lists each change and where it landed.
+A second review measured the lens extras on the real packages: 2 findings, §20.1.
 The templates in §13 are committed as `config/prompts/debate/*.md` and the call schemas in §12 as
 `schemas/debate/*.json` (generated from this spec; `recon/schemas.py` must produce the same JSON,
 a test in §17.2 compares them).
@@ -51,7 +52,12 @@ Phase B dry run). So Phase C is built in this order:
 
 1. **Inputs first** (small, no pairing code): `take.md` and the TAKE field order (§3, §13.8),
    `LENS_RAW` and `evidence.locate` (§3), `00_raw_data.md` in the `--skip-collect` assembly
-   (§3, phase-e §4.1a), `norm_p` (§7.2).
+   (§3, phase-e §4.1a), `norm_p` (§7.2). Before the probe, `tests/lens_extras_probe.py
+   --rebuild-view` is run on `briefs/2026-09-11` and `briefs/2026-10-04` and must still give
+   every agent more than 0 bytes and at least 7 of 9 agents 2 KB or more (§3 records 9/9 on both,
+   measured 2026-10-04), so the probe never runs with lenses that read only the shared block.
+   phase-e §4.1a is not a prerequisite of the probe: the probe packages were collected before the
+   Phase E files existed and are copied as collected (§3 item 3).
 2. **Spread probe** (§15.0, ~32 calls on the droplet). It sets `GAP_MIN` and decides per-lens
    model or effort. If fewer than one question per package clears `GAP_MIN`, the inputs are fixed
    and the probe rerun **before** any pairing, challenge or response code is written.
@@ -251,46 +257,127 @@ Four changes:
    page). Readers access fields by key, so Phase B readers keep working. The take prompt's reply
    list follows the same order.
 3. **Lens extras.** After the shared block (so the cached prefix stays byte-identical), each agent
-   gets up to 6 KB of its own lens's raw material under the heading `YOUR LENS DATA`, chosen by a
-   static map `LENS_RAW` in `recon/debate.py`. Phase A's raw file holds only the reddit, twitter,
-   onchain, news, ai_tools and fundraising files (`collect_data.sh` line ~883); World Monitor, the
-   economic calendar and BettaFish exist only in the package, `## RECENT HACKS` exists nowhere, and
-   `## STABLECOINS` is not a prefix of the real `## STABLECOIN SUPPLY`. The first version of this
-   table gave macro_strategist and skeptic 0 bytes. The corrected table and rules are the same as
-   phase-e §4.5b (which also adds the Phase E entries); the two must stay identical:
-   - **Search order**: `00_raw_data.md`, then `00_data_package.md`; first match per heading prefix.
-     A `# ` heading takes its block up to the next `# ` line; a `## ` heading up to the next `#`
-     or `## ` line.
-   - **Subtract the view**: every line (stripped) already present in `01_filtered.md` is removed,
-     and so is every line an earlier entry of the same agent already added. Headings are kept only
-     when a body line under them survives. The extras are then only material the shared block does
-     not carry.
-   - **Line filters**: `news~<regex>` takes matching `- ` lines from the `# News Intelligence` and
-     `# Twitter/X Intelligence` blocks of the raw file (case-insensitive).
-   - Each entry capped at 3 KB, 6 KB per agent, in table order.
+   gets up to 6 KB of raw material that the shared block does not carry, under the heading
+   `YOUR LENS DATA`, chosen by a static map `LENS_RAW` in `recon/debate.py`. The rules, table and
+   measurements below are the same text as phase-e §4.5b; the two must stay identical.
+   Phase A's raw file holds only the reddit, twitter, onchain, news, ai_tools and fundraising
+   files (`collect_data.sh` line ~883); World Monitor, the economic calendar and BettaFish exist
+   only in the package. Two earlier tables failed when measured. The first named headings that do
+   not exist (`## RECENT HACKS`; `## STABLECOINS` is not a prefix of `## STABLECOIN SUPPLY`), so
+   macro_strategist and skeptic got 0 bytes. The second (first 2026-10-04 review) gave trader,
+   builder and analyst 0 bytes on the real 10-04 package: every on-chain, AI & Tools and World
+   Monitor line is already in the ~60 KB view (on 09-10, 09-11 and 10-04 the view caps cut nothing
+   from those sections), so `## DEX VOLUMES`, `## FEE REVENUE`, `## CHAIN TVLs`, `## STABLECOIN
+   SUPPLY`, `## DERIVATIVES PROTOCOLS`, `## GITHUB TRENDING`, `## HACKER NEWS` and the like add
+   nothing, and with the phase-e §4.4 caps the changelogs and Polymarket's `## BOOK DEPTH` and
+   `## RESOLVING` are entirely in the view too. The table below is picked from what the views
+   really leave out (fundraising, the news sub-blocks, X and Reddit lines, the KOREA and AI
+   EDUCATION blocks) and measured per agent. The reference implementation is
+   `tests/lens_extras_probe.py` (no LLM, no network); `debate.lens_extras` implements the same
+   rules and table, and the unit test compares the two.
+   - **Search order**: `00_raw_data.md`, then `00_data_package.md`; the first heading line that
+     starts with the entry. A `# ` heading takes its block up to the next `# ` line; a `## `
+     heading up to the next `# ` or `## ` line. The Phase E files are named by their `# ` heading
+     only, because their `## ` subheadings collide (`## TOP EVENTS BY 24H VOLUME` is in both
+     Polymarket and Kalshi; Kalshi's `## MACRO` is a prefix of X's `## MACRO ECONOMICS`).
+   - **Subtract the view**: a body line is dropped when `01_filtered.md` already carries it: its
+     stripped text is a view line; or it is an X line whose text after the engagement bracket
+     (first 120 characters) occurs in the view (the view re-renders X lines as
+     `- @who [Mon DD HH:MM] (…) text`, so a text match alone never removes a tweet, and most of
+     narrator's X bytes under the old rule were tweets already in the view); or its last URL
+     (over 24 characters) occurs in the view. An indented continuation line (a snippet under an
+     item) is kept only when its item line is kept.
+   - **One lens per line**: a line already given by an earlier entry of the same agent, or to an
+     earlier agent in table order, is dropped, so "the other lenses were not given it" in
+     `take.md` holds. The table runs from the narrow lenses to the broad ones (whole Reddit and X
+     blocks last); macro_strategist precedes trader so Kalshi goes to macro and Polymarket to
+     trader. All nine agents are computed in table order whether or not they are active that day,
+     so a lens's block never depends on who else runs.
+   - **Headings** are kept only when a body line under them survives.
+   - **Line filters**: `news~<regex>` takes the matching `- ` lines (case-insensitive) of the raw
+     file's `# News Intelligence` and `# Twitter/X Intelligence` blocks, under the heading
+     `## News and X lines matching /<regex>/`.
+   - **Caps**: whole lines, in order; each entry at most 3,000 B and each agent at most 6,000 B,
+     headings and blank separators included.
 
-   | agent | entries (in order) |
-   |---|---|
-   | trader | `# Polymarket Intelligence`, `# Kalshi Intelligence`, `## DEX VOLUMES`, `## FEE REVENUE` |
-   | narrator | `# Reddit Intelligence`, `# Twitter/X Intelligence` |
-   | builder | `# Changelogs Intelligence`, `## GITHUB TRENDING`, `## HACKER NEWS` |
-   | analyst | `## CHAIN TVLs`, `## PREDICTION MARKET PROTOCOLS`, `## STABLECOIN SUPPLY`, `## TOP STABLECOIN YIELDS`, `## DERIVATIVES PROTOCOLS` |
-   | skeptic | `news~hack\|exploit\|depeg\|breach\|drain`, `## STABLECOIN SUPPLY`, `## DERIVATIVES PROTOCOLS`, `## 5. Controversy & Risk Flags` (package, BettaFish), `# BettaFish` (package) |
-   | policy_analyst | `## KOREA — CRYPTO & MARKETS`, `news~regulat\|SEC\|CFTC\|ESMA\|CLARITY\|금융위`, `## REGULATORY ACTIONS` (package, World Monitor), `# ZDNet Korea Intelligence` |
-   | user_agent | `# Reddit Intelligence`, `## KOREA — AI`, `# ZDNet Korea Intelligence` |
-   | macro_strategist | `# World Monitor Intelligence` (package), `## ECONOMIC CALENDAR` (package), `## AI FORECASTS` (package), `# Kalshi Intelligence`, `news~Fed\|FOMC\|CPI\|inflation\|payroll\|tariff\|treasury\|yield` |
-   | ai_engineer | `## AI NEWSLETTER SOURCES`, `# Changelogs Intelligence`, `## GITHUB TRENDING` |
+   | # | agent | entries (in order) |
+   |---|---|---|
+   | 1 | macro_strategist | `# World Monitor Intelligence` (package), `# Kalshi Intelligence`, `news~` MACRO, `## ECONOMICS` and `## POLITICS` (Reddit) |
+   | 2 | trader | `# Polymarket Intelligence`, `# Kalshi Intelligence`, `news~` TRADER |
+   | 3 | analyst | `## CRYPTO / WEB3 ROUNDS`, `## AI ROUNDS` (fundraising), `## CROSS-SOURCE SIGNALS` (package), `news~` ANALYST |
+   | 4 | skeptic | `news~` SKEPTIC, `## 5. Controversy & Risk Flags`, `## 2. Narrative Analysis`, `## 3. Divergences` (package, BettaFish) |
+   | 5 | policy_analyst | `## KOREA — CRYPTO & MARKETS`, `news~` POLICY, `# ZDNet Korea Intelligence` |
+   | 6 | ai_engineer | `## AI NEWSLETTER SOURCES`, `news~` AI, `# Changelogs Intelligence`, `## GITHUB TRENDING` |
+   | 7 | builder | `## AI & TECH NEWS`, `news~` BUILD, `# Changelogs Intelligence`, `## GITHUB TRENDING`, `## HACKER NEWS` |
+   | 8 | user_agent | `## KOREA — AI`, `## AI EDUCATION & WORKFORCE`, `# ZDNet Korea Intelligence`, `# Reddit Intelligence` |
+   | 9 | narrator | `# Reddit Intelligence`, `# Twitter/X Intelligence` |
 
-   Phase E entries (`# Polymarket`, `# Kalshi`, `# Changelogs`, `# ZDNet Korea Intelligence`) are
-   inert until phase-e §4.1a puts those files into `00_raw_data.md`. Entries that do not exist in a
-   package are skipped silently (09-10 has no `## KOREA` or `## AI NEWSLETTER` blocks); the bytes
-   actually added are recorded in `takes/<agent>.json → fed.lens_extra_bytes` and per entry in
-   `fed.lens_extra_headings`, and the takes phase logs a warning when an active agent gets less
-   than 2 KB. When an agent's extras are empty the block reads "(no lens data today: cite the
-   package)" and the lens-data rule in `take.md` does not apply. Unit test: every agent gets more
-   than 0 bytes on the 09-11 and 10-04 fixtures, and none of the added lines occurs in that day's
-   `01_filtered.md` (§17.1). The point (F1, F6) is that lenses stop starting from the identical
-   text; `citation_overlap` before/after and `lens_extra_bytes` are replay metrics (§15.5).
+   ```
+   MACRO    \bFed\b|FOMC|\bCPI\b|inflation|payroll|jobs report|tariff|treasur|\byields?\b|\bdollar|\bDXY\b|recession|\bGDP\b|rate cut|rate hike|\bECB\b|\bBOJ\b|Powell|\boil\b|sanction|shutdown|election|midterm|geopolit|China|Iran|Russia|Ukraine|Israel
+   TRADER   liquidat|funding rate|open interest|short squeeze|whale|leverag|\boptions\b|\bperps?\b|ETF.{0,12}(in|out)flow|\bsupport\b|\bresistance\b|\bshorts?\b|\blongs?\b
+   ANALYST  \bTVL\b|stablecoin|market share|revenue|earnings|valuation|inflows?\b|outflows?\b|\bETFs?\b
+   SKEPTIC  \bhack|exploit|depeg|breach|drain|\brug|scam|fraud|lawsuit|outage|insolven|bankrupt|delist|vulnerab
+   POLICY   regulat|\bSEC\b|\bCFTC\b|\bESMA\b|CLARITY|\bMiCA\b|lawmaker|Congress|\bsenat|금융위|금감원
+   AI       OpenAI|Anthropic|Claude|Gemini|\bGPT|\bLLM|Llama|DeepSeek|Qwen|Mistral|inference|benchmark|\bGPU|Nvidia
+   BUILD    launch|\bships?\b|shipped|\breleas|open.?source|\bSDK|\bAPI\b|mainnet|testnet|upgrade|github|developer|\bprotocol
+   ```
+
+   Entries that do not exist in a package are skipped silently. Kept although they add 0 B on
+   10-04 and 09-11, because they fill when a view cap cuts them: `# Changelogs Intelligence`,
+   `## GITHUB TRENDING` and `## HACKER NEWS` (1.4 KB each on 09-10). BettaFish is named by its
+   `## ` blocks because its `# ` headings differ by day (on 10-04 `# BettaFish Sentiment
+   Intelligence` holds only the market signals, all in the view; the report has its own `# `
+   heading); its narrative analysis adds 1.7 KB to skeptic on 09-10.
+
+   **Measured** with `tests/lens_extras_probe.py --rebuild-view` on the droplet's real packages
+   (2026-10-04): the view is rebuilt by the current `scripts/build_agent_package.py`, as a
+   `--replay` does (for 10-04 it is byte-identical to the run's own view). Bytes of the YOUR LENS
+   DATA block:
+
+   | agent | 09-10 | 09-11 | 10-04 | 10-04 + Phase E (simulated) | fixture 09-11 | fixture 10-04 |
+   |---|---|---|---|---|---|---|
+   | macro_strategist | 1,842 | 5,320 | 3,123 | 4,090 | 3,788 | 3,259 |
+   | trader | 1,216 | 3,008 | 2,036 | 3,991 | 3,008 | 1,547 |
+   | analyst | 915 | 5,701 | 5,542 | 5,542 | 5,701 | 5,924 |
+   | skeptic | 2,589 | 2,394 | 3,688 | 3,688 | 2,138 | 3,682 |
+   | policy_analyst | 878 | 4,008 | 5,548 | 5,875 | 4,008 | 5,827 |
+   | ai_engineer | 4,288 | 4,757 | 5,842 | 5,842 | 4,757 | 5,758 |
+   | builder | 2,699 | 3,468 | 3,481 | 3,481 | 3,403 | 3,542 |
+   | user_agent | 2,807 | 5,909 | 5,877 | 5,877 | 5,909 | 5,877 |
+   | narrator | 3,694 | 5,845 | 5,819 | 5,819 | 5,792 | 4,235 |
+   | **agents ≥ 2 KB** | 5/9 | **9/9** | **9/9** | 9/9 | 9/9 | 8/9 |
+
+   For comparison, the previous table on the real 10-04 package: narrator 6,000, policy_analyst
+   6,000, user_agent 6,000, skeptic 3,432, macro_strategist 3,074, ai_engineer 3,000, trader,
+   builder and analyst 0 (narrator's and user_agent's were the same Reddit lines). 09-10
+   predates the KOREA, AI EDUCATION and fundraising blocks (its view is 38 KB), so four lenses get
+   under 2 KB there. The fixture columns are lower where the trimmed fixture raw file (40 lines a
+   block) cuts the lines the view leaves out. "10-04 + Phase E" appends the four Phase E files of
+   the same morning (stamped 2026-10-03 20:55 UTC; the 10-04 collection ran at 20:00 UTC) to the
+   raw file and the package as phase-e §4.1a and §4.2 do, and rebuilds the view with the §4.4 caps
+   (87.7 KB): Polymarket adds 1,953 B to trader (the TOP EVENTS and BY TOPIC lines the 20,000 cap
+   cuts), Kalshi 965 B to macro_strategist, ZDNet 325 B to policy_analyst; the changelogs are all
+   in the view.
+
+   **phase-e §4.1a does not change the probe or the replays.** `--replay` and `--package-from`
+   copy each day's `00_*.md` as collected, and 09-10, 09-11 and 10-04 were collected before the
+   Phase E files existed, so the Phase E entries are inert on them and columns 09-10 to 10-04 are
+   what the spread probe (§15.0 of Phase C) and the replays see; trader's bytes there come from
+   its `news~` line. The wiring (Phase B's commit, phase-e §4) matters from the first package
+   collected after it, and the "10-04 + Phase E" column is the measured expectation for such a day.
+
+   The bytes added per agent are recorded in `takes/<agent>.json → fed.lens_extra_bytes` and per
+   entry in `fed.lens_extra_headings`, and the takes phase logs a warning when an active agent
+   gets less than 2 KB. When an agent's extras are empty the block reads "(no lens data today:
+   cite the package)" and the lens-data rule in `take.md` does not apply. **Unit test**
+   (`tests/test_debate.py`, Phase C §17.1): on the committed 2026-09-11 and 2026-10-04 package
+   fixtures every `LENS_RAW` agent gets more than 0 bytes and at most 6,000 B; `debate.lens_extras`
+   returns the same text as `tests/lens_extras_probe.py`; no added line is in that day's
+   `01_filtered.md` by the view rule above, and no line goes to two agents (the same checks run
+   today in `tests/collectors/test_package_fixtures.py` against the probe). **Replay pass-bar
+   item** (Phase C §15.5): `lens_extra_bytes ≥ 2 KB` for at least 7 of 9 agents on 09-11 and on
+   10-04, every agent above 0 on 09-10, and `citation_overlap` lower than the old run's. The point
+   (F1, F6) is that lenses stop starting from the identical text.
 
    The `--skip-collect` assembly in the orchestrator writes `00_raw_data.md` from the same source
    list as `collect_data.sh` (phase-e §4.1a), so a run built without collection still has a raw
@@ -332,7 +419,8 @@ shows retest-adjusted spread rises.
 - An agent is **eligible** on `q` when it has a probability on `q` and at least one evidence
   quote on `q` with status `verified`/`partial`, of any class. A position whose verified quotes are
   all `social` is eligible only on `judgment` questions; on the other kinds it needs at least one
-  `data` quote. This lets narrator and user_agent, whose lens data is Reddit and X, open debates on
+  `data` quote. This lets narrator (Reddit and X lens data) and user_agent (Korean and AI-workforce news, then
+  Reddit) open debates on
   judgment questions, and still keeps F13-type claims from opening a debate on a measurable
   question. The move cap (§7.2) applies to social-only endpoints as to everyone. Ineligible agents
   still count in the median and the final stats; they just cannot be a debate endpoint.
@@ -1298,6 +1386,7 @@ Reply with one JSON object matching the schema, writing the fields in this order
 | `.gitignore` | `config/questions/`, `config/agent_scores/`. |
 | `tests/` (new) | §17, with the fixtures of §17.1 committed under `tests/fixtures/`. |
 | `scripts/spread_probe.py`, `scripts/replay_report.py` (new) | §15.0 and §15.3; read run folders only, no LLM. |
+| `tests/lens_extras_probe.py` (exists) | Reference implementation and measuring tool for `LENS_RAW` (§3 item 3); `debate.lens_extras` must return the same text; rerun before the spread probe (§0.1). |
 
 Effort: 2 days of Claude time, as the plan says; `debate.py` and its tests are about half of it.
 The spread probe (§15.0) runs between the input changes and the rest.
@@ -1472,8 +1561,10 @@ The three replays (09-10, 09-11, 10-04) together:
   `2026-10-04-c1`;
 - (f) **hindsight**: the minority-debater Brier vs the median is reported for every resolved
   question (a number, not a threshold; with few questions it is a signal, not a verdict);
-- lens extras: `lens_extra_bytes ≥ 2 KB` for at least 7 of 9 agents, and `citation_overlap` lower
-  than the old run's (phase-e §4.5b);
+- lens extras: `lens_extra_bytes ≥ 2 KB` for at least 7 of 9 agents in the 09-11 and in the 10-04
+  replay, every agent above 0 in the 09-10 replay (its package predates the KOREA, AI EDUCATION
+  and fundraising blocks; measured 5/9 at 2 KB), and `citation_overlap` lower than the old run's
+  (§3 item 3, phase-e §4.5b);
 - evidence verification rate (verified + partial) ≥ 80 % on debate evidence;
 - persona leakage flags ≤ 1 per run;
 - calls never exceed `RECON_CALL_CEILING`, every budget skip is logged, and ≤ 0.6 M input tokens
@@ -1566,7 +1657,7 @@ responses) are hand-written in `tests/fixtures/debate/`.
 | gate | 1 survivor / 2 survivors | `needs_reask` true / false |
 | gate | weight 0, 9, 2.6 | clamped to 1, 3, 3 with a `weight clamped` note |
 | gate | baseline quote present only in `01_filtered.md` (re-rendered X line) | verifies |
-| lens extras | every agent in `LENS_RAW` on the 09-11 and 10-04 fixtures | > 0 bytes each; ≤ 6 KB; macro_strategist's and skeptic's include package blocks; no added line occurs in `01_filtered.md` |
+| lens extras | every agent in `LENS_RAW` on the 09-11 and 10-04 fixtures | > 0 bytes each; ≤ 6,000 B; same text as `tests/lens_extras_probe.py`; no added line is in `01_filtered.md` by the §3 view rule; no line goes to two agents; macro_strategist's includes the package's World Monitor block on both days |
 | locate | quote in the view only, in `# SECTION: SOCIAL`; partial match | `cls: social`; partial anchored to the best 4-gram line |
 | norm_p | 0.65 with take values up to 80; 0.65 with take values all ≤ 1; 104 | 65 `fraction rescaled`; 1 (no rescale); 100 `clamped` |
 | pairing | values 20/30/70/80 on q1, 45–55 on q2 | one pair on q1 (20 vs 80), none on q2 |
@@ -1756,5 +1847,12 @@ schema before any replay spends calls on it.
 | 21 | low | Fixtures only on the droplet | Committed package fixtures | §17 |
 | 22 | low | Name and process-word checks hit real news | Name check limited to two sections with lookaheads; narrowed process regex | §11.5 |
 | 23 | low | Cache claim overstated | Cache restated per model; lead take only if measured | §16 |
+
+### 20.1 Second review (2026-10-04, measured lens bytes)
+
+| # | Severity | Finding | Change | Where |
+|---|---|---|---|---|
+| 24 | medium | The corrected `LENS_RAW` still gave trader, builder and analyst 0 bytes on the real 10-04 package (every pick already in the view); §17.1's test and the 7-of-9 bar could not pass, and the spread probe would have run with three lenses reading only the shared block | Table re-picked from what the views leave out (fundraising, news sub-blocks, `news~` filters per lens, KOREA, AI EDUCATION); view subtraction also matches re-rendered X lines and URLs; one lens per line in table order; continuation lines follow their item; per-agent bytes measured on 09-10, 09-11, 10-04 and 10-04 + Phase E and recorded; reference implementation `tests/lens_extras_probe.py`; probe precondition in §0.1; phase-e §4.1a shown not to affect the probe packages | §0.1, §3, §15.5, §17.1, phase-e §4.5b |
+| 25 | medium | The committed 09-11 fixture view was the old uncapped v1 view (169,516 B, every raw line in it), so lens extras were 0 for all nine agents and the test said nothing about a replay | Both fixture views replaced by the full view `build_agent_package.py` builds from the day's full package, as a replay does (09-11 regenerated on the droplet: 63,240 B; 10-04: the run's own 60,260 B, identical to a rebuild), untrimmed; a fixture test checks that the views are capped and that every agent gets lens bytes | §3, §17.1, phase-e §5 |
 
 Path: `docs/v2/phase-c-spec.md`.

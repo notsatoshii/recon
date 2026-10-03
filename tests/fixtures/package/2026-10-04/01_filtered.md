@@ -56,6 +56,11 @@ AGENT VIEW: every section below is capped separately so all of them fit; the ful
 - Aerodrome Slipstream: 24h $359,477,020 | 7d $3,954,668,520 (-28.5% 7d)
   *Also in: Top 10 DEXs by 24h Volume, Prediction & Derivatives DEX Volume (3 sources)*
 - Hyperliquid Spot Orderbook: 24h $171,834,644 | 7d $890,577,713 (+39.6% 7d)
+  *Also in: Prediction & Derivatives Fees, Prediction & Derivatives DEX Volume (2 sources)*
+[... 22 more lines cut for length]
+
+---
+
 # SECTION 1: SENTIMENT & MARKET MOOD
 
 ## MARKET SIGNALS (Quantitative)
