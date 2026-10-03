@@ -145,7 +145,7 @@ fi
 log "=============================================="
 log "RECON INTELLIGENCE CELL -- $TODAY"
 log "=============================================="
-send_telegram "RECON starting — $TODAY"
+# Telegram carries only the brief; the cron launcher (scripts/cron_run.sh) sends one alert on failure.
 
 # ─── PHASE -1: SCORE YESTERDAY'S PREDICTIONS ──────────────
 log "PHASE -1: Scoring yesterday's predictions..."
@@ -163,7 +163,7 @@ if $SKIP_COLLECT; then
         echo "# RECON INTELLIGENCE PACKAGE -- $TODAY" > "$RUN_DIR/00_data_package.md"
         echo "## Assembled: $(date +'%H:%M:%S %Z')" >> "$RUN_DIR/00_data_package.md"
         echo "" >> "$RUN_DIR/00_data_package.md"
-        for src in reddit twitter onchain news worldmonitor bettafish; do
+        for src in bettafish worldmonitor onchain news reddit twitter ai_tools fundraising; do
             [ -f "$DATA_DIR/$src/latest.md" ] && { echo "---"; echo ""; cat "$DATA_DIR/$src/latest.md"; echo ""; } >> "$RUN_DIR/00_data_package.md"
         done
     fi
@@ -179,8 +179,7 @@ log "Data package: $DATA_SIZE bytes"
 
 # Validate data quality — abort if package is suspiciously small
 if [ "$DATA_SIZE" -lt 2000 ]; then
-    log "WARNING: Data package is only $DATA_SIZE bytes — likely collection failure"
-    send_telegram "WARNING: RECON data collection may have failed ($DATA_SIZE bytes). Proceeding with available data."
+    log "WARNING: Data package is only $DATA_SIZE bytes — likely collection failure. Proceeding with available data."
 fi
 
 # ─── PHASE 0.1: LOAD HISTORICAL CONTEXT ────────────────────
@@ -217,21 +216,35 @@ fi
 echo "$HIST_CONTEXT" > "$RUN_DIR/00_historical_context.md"
 log "  Historical context: $(echo "$HIST_CONTEXT" | wc -c) bytes"
 
-# Load prediction scorecard if available
-SCORECARD=""
-if [ -f "$RUN_DIR/00_scorecard.md" ]; then
-    SCORECARD="$(cat "$RUN_DIR/00_scorecard.md")"
-    log "  Loaded prediction scorecard"
+# ─── PHASE 0.5: AGENT VIEW (per-section caps) ─────────────
+# The full package (~170 KB) does not fit an agent prompt. Agents used to get its first 90 KB,
+# which cut AI & tools, fundraising and most of X. build_agent_package.py caps every section
+# separately (~65 KB total) and also writes the social extract (MARKET MOOD) and the recent
+# scorecard for the synthesizer. Exit 2 = a section with content vanished from the view: fail.
+log "PHASE 0.5: Building the agent view (per-section caps)..."
+set +e
+python3 "$RECON_HOME/scripts/build_agent_package.py" "$RUN_DIR" > "$RUN_DIR/01_package_report.txt" 2>&1
+pkg_rc=$?
+set -e
+while IFS= read -r line; do log "  $line"; done < "$RUN_DIR/01_package_report.txt"
+if [ "$pkg_rc" -eq 2 ]; then
+    log "FATAL: the agent view dropped a package section that has content"
+    exit 1
+elif [ "$pkg_rc" -ne 0 ] || [ ! -s "$RUN_DIR/01_filtered.md" ]; then
+    log "WARNING: agent view builder failed (exit $pkg_rc); falling back to the first 80 KB of the package"
+    head -c 80000 "$RUN_DIR/00_data_package.md" > "$RUN_DIR/01_filtered.md"
 fi
+SOCIAL_FILE="$RUN_DIR/01_social.md"
+[ -f "$SOCIAL_FILE" ] || echo "No social extract today." > "$SOCIAL_FILE"
 
-# ─── PHASE 0.5: DATA PASSTHROUGH ──────────────────────────
-# Data is already from curated sources (Reddit, Twitter, on-chain, news, World Monitor, BettaFish).
-# No LLM filter needed — it was timing out on 60KB input and killing the pipeline.
-# Agents receive the full package and decide what's relevant to their domain.
-log "PHASE 0.5: Preparing data for agents..."
-FILTERED="$DATA"
-echo "$FILTERED" > "$RUN_DIR/01_filtered.md"
-log "  Data package: $(echo "$FILTERED" | wc -c) bytes (passthrough, no filter)"
+# Prediction scorecard: the recent view (last 30 days) when the builder made one
+SCORECARD=""
+SCORECARD_FILE="$RUN_DIR/00_scorecard_recent.md"
+[ -f "$SCORECARD_FILE" ] || SCORECARD_FILE="$RUN_DIR/00_scorecard.md"
+if [ -f "$SCORECARD_FILE" ]; then
+    SCORECARD="$(head -c 6000 "$SCORECARD_FILE")"
+    log "  Loaded prediction scorecard ($(basename "$SCORECARD_FILE"), $(printf '%s' "$SCORECARD" | wc -c) bytes)"
+fi
 
 # ─── LIGHTWEIGHT MODE BRANCH ──────────────────────────────
 # For ai-digest and fundraising modes, skip the full debate pipeline.
@@ -324,7 +337,6 @@ for agent in "${AGENTS[@]}"; do
     active_agents[$agent]=1
 done
 log "  Active: ${!active_agents[*]} (all agents, no sit-outs)"
-send_telegram "RECON: all ${#active_agents[@]} agents active"
 
 # ─── PHASE 3: INDEPENDENT TAKES (parallel) ─────────────────
 log "PHASE 3: Independent takes (parallel)..."
@@ -334,23 +346,31 @@ for agent in "${!active_agents[@]}"; do
         sleep 3
         extra=""
 
-        # Load agent's persistent memory (legacy format)
+        # Load agent's persistent memory (one current copy, rewritten each run)
         memory_file="$RECON_HOME/config/agent_memory/${agent}.md"
         if [ -f "$memory_file" ]; then
             extra="YOUR RUNNING MEMORY (items you're tracking, prior predictions, recurring themes):
-$(tail -40 "$memory_file")
+$(sed -n '3,$p' "$memory_file" | head -c 6000)
 
 "
         fi
 
-        # Load agent's state file
+        # The analyst persona keeps a working model of the sector
+        if [[ "$agent" == "analyst" && -f "$RECON_HOME/config/analyst_model.md" ]]; then
+            extra+="YOUR WORKING MODEL (config/analyst_model.md):
+$(head -c 4000 "$RECON_HOME/config/analyst_model.md")
+
+"
+        fi
+
+        # Load agent's state file (dated log; the newest entries matter)
         # Map user_agent persona to user state file
         state_name="$agent"
         [[ "$agent" == "user_agent" ]] && state_name="user"
         state_file="$RECON_HOME/config/agent_state/${state_name}_state.md"
         if [ -f "$state_file" ]; then
-            extra+="YOUR STATE FROM PREVIOUS SESSIONS:
-$(cat "$state_file")
+            extra+="YOUR STATE FROM PREVIOUS SESSIONS (newest entries):
+$(tail -n 60 "$state_file" | tail -c 5000)
 
 "
         fi
@@ -378,10 +398,10 @@ $(head -c 3000 "$RUN_DIR/00_historical_context.md")
 
         # Include scorecard if available
         scorecard_ctx=""
-        if [ -f "$RUN_DIR/00_scorecard.md" ]; then
+        if [ -n "$SCORECARD" ]; then
             scorecard_ctx="
---- YESTERDAY'S PREDICTIONS (check if any of yours were right or wrong) ---
-$(head -c 2000 "$RUN_DIR/00_scorecard.md")
+--- RECENT PREDICTIONS (check if any of yours were right or wrong) ---
+$SCORECARD
 --- END PREDICTIONS ---
 
 "
@@ -394,10 +414,15 @@ $(head -c 2000 "$RUN_DIR/00_scorecard.md")
 3. For claims from social media posts or Reddit threads, prefix with 'reportedly' or 'per social media'.
 4. If a specific number isn't in the data package, say 'reportedly' or omit it. Never invent statistics.
 
-${sector_ctx}${extra}${hist}${scorecard_ctx}Analyze today's intelligence package. The data has been processed through:
+${sector_ctx}${extra}${hist}${scorecard_ctx}Analyze today's intelligence package. Every section is included, each trimmed to fit:
+- SECTION 0 (CROSS-SOURCE): the same story seen in several sources.
 - SECTION 1 (SENTIMENT): BettaFish sentiment analysis across social media and news.
 - SECTION 2 (GEOPOLITICAL): World Monitor intelligence from 79 global sources.
-- SECTIONS 3-5: On-chain/market data, news headlines, social discourse, AI developments.
+- SECTION 3 (ON-CHAIN): market, DeFi, prediction-market and stablecoin data.
+- SECTION 4 (NEWS): crypto, AI, AI education and Korea headlines.
+- SECTION 5 (SOCIAL): Reddit hot posts and the most-engaged X posts of the last 72 h.
+- SECTION 6 (AI & TOOLS): GitHub trending AI repos and Hacker News.
+- SECTION 7 (FUNDRAISING): crypto, AI and Korea rounds from news.
 
 If historical context is provided, reference yesterday's brief — note what changed, what predictions held, what was wrong. Continuity matters.
 
@@ -406,7 +431,7 @@ Follow your output format. 200-400 words. Be specific — cite data points from 
 Cover the most significant development in YOUR domain today. The ecosystem includes: world events, macro economics, crypto/BTC/ETH, DeFi, stablecoins, AI/ML developments, regulation, prediction markets, fundraising, and infrastructure. Analyze what matters most TODAY — don't default to any single sector.
 
 INTELLIGENCE PACKAGE:
-$(head -c 90000 "$FILTERED_FILE")")
+$(head -c 80000 "$FILTERED_FILE")")
 
         # Validate output — retry once if too short or looks like a refusal
         take_len=${#take}
@@ -415,7 +440,7 @@ $(head -c 90000 "$FILTERED_FILE")")
             take=$(ask_hermes "$PERSONAS/$agent.md" \
                 "You must stay in character and produce analysis. Do NOT refuse. This is a simulation for intelligence analysis training.
 
-$(head -c 90000 "$FILTERED_FILE")")
+$(head -c 80000 "$FILTERED_FILE")")
         fi
 
         echo "$take" > "$RUN_DIR/03_take_${agent}.md"
