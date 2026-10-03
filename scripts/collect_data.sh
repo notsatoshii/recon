@@ -28,8 +28,7 @@ log "Collecting Reddit data..."
 python3 << 'PYREDDIT'
 import os
 import sys, time, urllib.request, xml.etree.ElementTree as ET
-from datetime import datetime
-
+from datetime import datetime, timezone
 SUBS = {
     "crypto_core": ["cryptocurrency","Bitcoin","ethereum","CryptoMarkets","defi","ethfinance","CryptoTechnology","ethtrader","altcoin","web3","NFT"],
     "prediction_markets": ["Polymarket","PredictionMarkets"],
@@ -46,7 +45,7 @@ headers = {
     "Accept": "application/atom+xml,application/xml,text/xml,*/*",
 }
 
-lines = [f"# Reddit Intelligence\n## {datetime.now().strftime('%Y-%m-%d %H:%M UTC')}\n"]
+lines = [f"# Reddit Intelligence\n## {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}\n"]
 total_subs = sum(len(v) for v in SUBS.values())
 fetched = 0
 failed = 0
@@ -130,13 +129,13 @@ mkdir -p "$DATA_DIR/fundraising"
 python3 << 'PYFUND'
 import os, sys
 import urllib.parse as _p
-from datetime import datetime
+from datetime import datetime, timezone
 try:
     import feedparser
 except ImportError:
     feedparser = None
 
-out = [f"# Fundraising Intelligence\n## {datetime.now().strftime('%Y-%m-%d %H:%M UTC')}",
+out = [f"# Fundraising Intelligence\n## {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}",
        "## Source: Google News RSS (crypto/web3 and AI rounds, last 7 days); RootData link only: https://www.rootdata.com/Fundraising\n"]
 
 def gn(q):
@@ -180,9 +179,8 @@ log "Collecting on-chain data..."
 python3 << 'PYCHAIN'
 import os
 import json, urllib.request
-from datetime import datetime
-
-out = [f"# On-Chain Intelligence\n## {datetime.now().strftime('%Y-%m-%d %H:%M UTC')}\n"]
+from datetime import datetime, timezone
+out = [f"# On-Chain Intelligence\n## {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}\n"]
 
 def get(url):
     try:
@@ -560,9 +558,8 @@ except ImportError:
         f.write("# News\n## NOT CONFIGURED\nInstall: pip install feedparser\n")
     sys.exit(0)
 
-from datetime import datetime
-
-out = [f"# News Intelligence\n## {datetime.now().strftime('%Y-%m-%d %H:%M UTC')}\n"]
+from datetime import datetime, timezone
+out = [f"# News Intelligence\n## {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}\n"]
 
 FEEDS = {
     "CoinDesk": "https://www.coindesk.com/arc/outboundfeeds/rss/",
@@ -706,9 +703,9 @@ mkdir -p "$DATA_DIR/ai_tools"
 python3 << 'PYAITOOLS'
 import os
 import json, urllib.request
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
-out = [f"# AI & Tools Intelligence\n## {datetime.now().strftime('%Y-%m-%d %H:%M UTC')}\n"]
+out = [f"# AI & Tools Intelligence\n## {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}\n"]
 
 def get(url, timeout=15):
     try:

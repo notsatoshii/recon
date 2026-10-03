@@ -120,29 +120,67 @@ def assign_phases(calls: list[dict], agent: str, n_challenges: int, has_resp: bo
     return out
 
 
-def source_records(date: str) -> list[dict]:
-    """One record per data-sources/<name>/latest.md (freshness from its header)."""
+SECTION_LAYER = [("reddit", "reddit"), ("twitter", "twitter"), ("on-chain", "onchain"), ("onchain", "onchain"),
+                 ("news", "news"), ("ai & tools", "ai_tools"), ("fundraising", "fundraising"),
+                 ("bettafish", "bettafish"), ("world monitor", "worldmonitor")]
+
+
+def header_time(stamp: str, finished: datetime | None) -> str:
+    """'YYYY-MM-DD HH:MM' from a '## ... UTC' header, as KST ISO. Until 2026-10-04 five collectors wrote Seoul time
+    under a UTC label; data is collected before a run ends, so a 'UTC' stamp later than the run's end is read as KST."""
+    t = datetime.strptime(stamp, "%Y-%m-%d %H:%M").replace(tzinfo=timezone.utc)
+    if finished and t > finished + timedelta(minutes=5):
+        t = t.replace(tzinfo=KST)
+    return t.astimezone(KST).isoformat(timespec="seconds")
+
+
+def source_record(name: str, layer: str, txt: str, finished: datetime | None) -> dict:
+    m = re.search(r"^## (\d{4}-\d\d-\d\d \d\d:\d\d) UTC", txt, re.M)
+    fetched = header_time(m.group(1), finished) if m else None
+    bad = re.search(r"SOURCE UNAVAILABLE|NOT CONFIGURED|FEED ERROR", txt[:400] if txt else "")
+    items = len(re.findall(r"^- ", txt, re.M))
+    ok = bool(txt) and len(txt) > 300 and not bad and items > 0
+    err = None
+    if not txt:
+        err = "not in this run"
+    elif bad:
+        err = bad.group(0).lower()
+    elif items == 0:
+        err = "no items"
+    return {"name": name, "layer": layer, "ok": ok, "items": items, "fetched_at": fetched,
+            "bytes": len(txt.encode("utf-8")), "error": err}
+
+
+def run_sections(rd: Path) -> dict:
+    """layer -> section text from this run's own files (00_raw_data.md first, then 00_data_package.md)."""
+    found = {}
+    for fname in ("00_raw_data.md", "00_data_package.md"):
+        text = read(rd / fname)
+        heads = list(re.finditer(r"^# (.+?) Intelligence.*$", text, re.M))
+        for i, h in enumerate(heads):
+            layer = next((l for k, l in SECTION_LAYER if k in h.group(1).lower()), None)
+            if layer and layer not in found:
+                end = heads[i + 1].start() if i + 1 < len(heads) else len(text)
+                found[layer] = text[h.start():end]
+    return found
+
+
+def source_records(date: str, finished: str | None = None) -> tuple[list[dict], str]:
+    """One record per source layer, plus the scope: "run" when read from this run's own raw data / package (what the
+    run actually read; later exports cannot change it), else "export" (data-sources/<name>/latest.md as of the
+    export, the old behaviour, for runs without those files)."""
+    fin = datetime.fromisoformat(finished) if finished else None
+    found = run_sections(RECON_HOME / "briefs" / date)
+    if found:
+        return [source_record(n, l, found.get(l, ""), fin) for n, l in LAYER.items()], "run"
     recs = []
-    for name, layer in LAYER.items():
-        p = RECON_HOME / "data-sources" / name / "latest.md"
-        txt = read(p)
-        m = re.search(r"^## (\d{4}-\d\d-\d\d \d\d:\d\d) UTC", txt, re.M)
-        fetched = None
-        if m:
-            fetched = datetime.strptime(m.group(1), "%Y-%m-%d %H:%M").replace(tzinfo=timezone.utc).astimezone(KST).isoformat(timespec="seconds")
-        bad = re.search(r"SOURCE UNAVAILABLE|NOT CONFIGURED|FEED ERROR", txt[:400] if txt else "")
-        items = len(re.findall(r"^- ", txt, re.M))
-        ok = bool(txt) and len(txt) > 300 and not bad and items > 0
-        err = None
-        if not txt:
-            err = "no file"
-        elif bad:
-            err = bad.group(0).lower()
-        elif items == 0:
-            err = "no items"
-        recs.append({"name": name, "layer": layer, "ok": ok, "items": items, "fetched_at": fetched,
-                     "bytes": len(txt.encode("utf-8")), "error": err})
-    return recs
+    for n, l in LAYER.items():
+        p = RECON_HOME / "data-sources" / n / "latest.md"
+        r = source_record(n, l, read(p), None)
+        if p.exists():  # the file's own write time; its header may be Seoul time labelled UTC
+            r["fetched_at"] = datetime.fromtimestamp(p.stat().st_mtime, KST).isoformat(timespec="seconds")
+        recs.append(r)
+    return recs, "export"
 
 
 def package_sections(pkg: str) -> list[dict]:
@@ -251,6 +289,7 @@ def build_run(date: str) -> dict | None:
             weights.append({"desk": w, "weight": 1.0})
     status = "ok" if (final and log.get("complete")) else ("partial" if takes else "failed")
     wall = secs(date, start, end) if log else 0
+    srcs, scope = source_records(date, ts(date, end))
     return {
         "date": date, "mode": "daily", "status": status,
         "started": ts(date, start), "finished": ts(date, end), "wall_seconds": wall,
@@ -258,7 +297,7 @@ def build_run(date: str) -> dict | None:
         "triage": {"environment": log.get("environment") or (m.group(1) if m else None), "weights": weights,
                    "active_agents": {"shared": list(takes)}, "depth": "full",
                    "reason": "v1 pipeline: all agents active every run", "calls": []},
-        "sources": source_records(date),
+        "sources": srcs, "sources_scope": scope, "sources_from": "exporter" if scope == "run" else "export",
         "package": {"compact_bytes": len(pkg.encode("utf-8")), "sections": sections},
         "agents": agents, "edges": edges,
         "synthesis": {"draft": draft, "claims": [], "final": final, "calls": synth_calls},

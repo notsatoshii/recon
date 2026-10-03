@@ -10,7 +10,7 @@ import os
 import asyncio
 import json
 import re
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 RECON_HOME = Path(os.environ.get("RECON_HOME") or Path(__file__).resolve().parent.parent)
@@ -27,7 +27,7 @@ async def main():
 
     lines = [
         f"# Fundraising Intelligence (RootData)",
-        f"## {datetime.now().strftime('%Y-%m-%d %H:%M UTC')}",
+        f"## {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}",
         f"## Source: https://www.rootdata.com/Fundraising",
         "",
     ]
