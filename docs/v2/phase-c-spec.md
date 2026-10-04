@@ -543,7 +543,10 @@ sets it (§15.0: `max(20, 2 × median retest |Δp|)`); the value used is written
   eligibility. No debate and no red team are staged. The widest such questions (up to 3) go to the
   split sheet as **undebated** blocks (§11.1 item 2), and the brief does not say "no real split".
 - **consensus**: no question has a range ≥ `GAP_MIN`. No debate is staged. Instead:
-  - the **top question** is the one with the highest `weight`, then the widest range;
+  - the **top question** is the one with the highest `weight`, then the widest range; when
+    `lone_outliers` is not empty (§4.2) it is the widest-range one-lens question instead, then the
+    highest `weight`, so the day's only split is argued and not dropped from the brief (review
+    2026-10-04: a weight-2 question at 60-70 took the red team from a weight-1 one-lens range of 27);
   - the **red-team agent** is the eligible agent furthest from that question's median, if that
     distance is ≥ 10 points; otherwise `skeptic` if active; otherwise the agent with the most
     verified data evidence on that question;

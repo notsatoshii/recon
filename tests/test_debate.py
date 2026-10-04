@@ -284,6 +284,25 @@ class PairingTests(unittest.TestCase):
         off = debate.pair(qs, p, e, AG, "normal", 3, off_reason="debate off")
         self.assertEqual([u["question_id"] for u in off["unpaired"]], ["q1"])
 
+    def test_one_lens_question_takes_the_red_team_over_a_heavier_consensus_question(self):
+        # consensus day: q2 (weight 2) is tight at 60-70, q1 (weight 1) is the C11 one-lens range. The red team
+        # argues q1, the only split of the day, not the top-weight q2 (§4.2/§4.3); q1 would otherwise leave no
+        # pair, no block and no red-team call, and be gone from the brief.
+        qs, p, e = setup({"q1": dict(zip(AG, [31, 32, 33, 35, 36, 38, 40, 42, 58])),
+                          "q2": dict(zip(AG, [60, 61, 62, 63, 65, 66, 67, 68, 70]))}, weights={"q1": 1, "q2": 2})
+        r = debate.pair(qs, p, e, AG, "normal", 3)
+        self.assertEqual(r["day_type"], "consensus")
+        self.assertEqual([x["question_id"] for x in r["lone_outliers"]], ["q1"])
+        self.assertEqual((r["red_team"]["question_id"], r["red_team"]["agent"]), ("q1", AG[8]))
+        # two lone questions: the widest range first, then weight
+        qs, p, e = setup({"q1": dict(zip(AG, [31, 32, 33, 35, 36, 38, 40, 42, 58])),
+                          "q3": dict(zip(AG, [31, 32, 33, 35, 36, 38, 40, 42, 62])),
+                          "q2": dict(zip(AG, [60, 61, 62, 63, 65, 66, 67, 68, 70]))},
+                         weights={"q1": 3, "q2": 3, "q3": 1})
+        r = debate.pair(qs, p, e, AG, "normal", 3)
+        self.assertEqual(sorted(x["question_id"] for x in r["lone_outliers"]), ["q1", "q3"])
+        self.assertEqual(r["red_team"]["question_id"], "q3")
+
     def test_two_lens_minority_still_paired(self):
         # a minority of two (58, 60) survives dropping either lens: still a split with a slot
         vals = [31, 33, 35, 36, 38, 39, 40, 58, 60]

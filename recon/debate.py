@@ -739,8 +739,12 @@ def pair(questions: list[dict], p: dict, evq: dict, active: list[str], depth: st
             why = "the call budget leaves no pair" if cands else UNPAIRED_NO_ELIGIBLE
             unp.append({"question_id": qid, "range": int(r), "reason": why})
         return {"day_type": "split_unpaired", "pairs": [], "unpaired": unp, "red_team": None, **base}
-    qs = [q for q in questions if q["id"] in ranges] or list(questions)
-    top = sorted(qs, key=lambda q: (-int(q.get("weight", 1) or 1), -ranges.get(q["id"], 0), q["id"]))[0]
+    # A one-lens question is the day's only split: the red team argues it (widest range, then weight) rather than
+    # the top-weight question, or it leaves no pair, no block and no red-team call and drops out of the brief
+    # (§4.2/§4.3, review 2026-10-04).
+    qs = [q for q in questions if q["id"] in lone_q] or [q for q in questions if q["id"] in ranges] or list(questions)
+    top = sorted(qs, key=lambda q: ((-ranges.get(q["id"], 0), -int(q.get("weight", 1) or 1)) if lone_q else
+                                    (-int(q.get("weight", 1) or 1), -ranges.get(q["id"], 0)), q["id"]))[0]
     rt = pick_red_team(top, p, evq, active)
     return {"day_type": "consensus", "pairs": [], "unpaired": [], "red_team": rt, **base}
 
