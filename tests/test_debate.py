@@ -1651,6 +1651,42 @@ class DroppedPairTests(unittest.TestCase):
         self.assertEqual([(u["question_id"], u["reason"]) for u in r["unpaired"]], [("q3", debate.UNPAIRED_LOAD_CAP)])
         self.assertEqual([u["question_id"] for u in debate.dropped_unpaired(r, r, "budget")], ["q3"])
 
+    def test_no_candidate_split_is_unpaired_on_a_debate_day(self):
+        # q2's only dissenter (builder at 40) is social-only on a threshold question: no candidate pair. Alone it
+        # is a split_unpaired day with a block; beside a debated q1 it must keep that block (review 2026-10-04).
+        v1 = dict(zip(AG, [10, 20, 30, 70, 80, 90, 85, 15, 75]))
+        v2 = dict(zip(AG, [66, 70, 40, 62, 75, 68, 64, 72, 60]))        # builder at 40, median 66, range 35
+        qrec = [{"id": qid, "text": f"Will {qid} happen by 10-11?", "weight": 2, "resolves_on": "2026-10-11",
+                 "settles_with": "a print", "ledger_id": f"x-{qid}"} for qid in ("q1", "q2")]
+
+        def sheet(vals):
+            qs, p, e = setup(vals)
+            if "q2" in vals:
+                e["builder"]["q2"] = ev(cls="social")
+            res = debate.pair(qs, p, e, list(AG), "normal", 3)
+            tp = {a: {qid: vals[qid][a] for qid in vals} for a in AG}
+            takes = {a: {"positions": [{"question_id": qid, "probability": tp[a][qid], "reason": f"r {qid}",
+                                        "evidence": [{"section": "", "quote": "- Current: $86,610,000,000"}]}
+                                       for qid in vals], "summary": "", "claims": []} for a in AG}
+            debates = [{"question_id": x["question_id"], "high": x["high"], "low": x["low"], "gap_before": x["gap"],
+                        "gap_after": x["gap"], "in_split": True, "live_split": True, "held_split": False,
+                        "crux_agreed": False, "narrowed_on_data": False} for x in res["pairs"]]
+            sh = debate.split_sheet("2026-10-04", "r", res["day_type"], [q for q in qrec if q["id"] in vals], tp, tp,
+                                    debates, {}, {}, takes, locator(), 20,
+                                    unpaired=[u["question_id"] for u in res["unpaired"]])
+            return res, sorted(b["question_id"] for b in sh["blocks"])
+
+        res, blocks = sheet({"q2": v2})
+        self.assertEqual((res["day_type"], [u["question_id"] for u in res["unpaired"]], blocks),
+                         ("split_unpaired", ["q2"], ["q2"]))
+        alone_reason = res["unpaired"][0]["reason"]
+        res, blocks = sheet({"q1": v1, "q2": v2})
+        self.assertEqual(res["day_type"], "debate")
+        self.assertEqual([x["question_id"] for x in res["pairs"]], ["q1"])
+        self.assertEqual([(u["question_id"], u["range"], u["reason"]) for u in res["unpaired"]],
+                         [("q2", 35, alone_reason)])
+        self.assertEqual(blocks, ["q1", "q2"])
+
 
 COLLECTORS = REPO / "tests" / "fixtures" / "collectors"
 STARSHIP = ('- [Science and Technology] SpaceX Starship 15th launch? (SpaceX Starship (15th launch)): "Before Oct 30, '

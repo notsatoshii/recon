@@ -660,11 +660,18 @@ def pair(questions: list[dict], p: dict, evq: dict, active: list[str], depth: st
     if out_pairs:
         # A question with a candidate pair that the load cap left out while slots remained (its debaters already
         # argue two pairs) is unpaired, not 'more splits than slots': §11.1 gives it the split_unpaired bar.
-        paired = {c[3] for c in pairs}
+        # A question whose take range is >= gap_min but has no candidate pair at all (its dissenters fail
+        # eligibility) is unpaired for the same reason it would be on a split_unpaired day: it must not lose its
+        # block only because another question formed a pair (review 2026-10-04).
+        paired, cand_q = {c[3] for c in pairs}, {c[3] for c in cands}
         unp = []
         if len(pairs) < target:
-            for qid in sorted({c[3] for c in cands} - paired, key=lambda x: (-ranges[x], x)):
+            for qid in sorted(cand_q - paired, key=lambda x: (-ranges[x], x)):
                 unp.append({"question_id": qid, "range": int(ranges[qid]), "reason": UNPAIRED_LOAD_CAP})
+        for qid in sorted((q for q, r in ranges.items() if r >= gap_min and q not in cand_q),
+                          key=lambda x: (-ranges[x], x)):
+            unp.append({"question_id": qid, "range": int(ranges[qid]), "reason": UNPAIRED_NO_ELIGIBLE})
+        unp.sort(key=lambda u: (-u["range"], u["question_id"]))
         return {"day_type": "debate", "pairs": out_pairs, "unpaired": unp, "red_team": None, **base}
     wide = sorted(((qid, r) for qid, r in ranges.items() if r >= gap_min), key=lambda x: (-x[1], x[0]))
     if off_reason:
@@ -676,8 +683,7 @@ def pair(questions: list[dict], p: dict, evq: dict, active: list[str], depth: st
     if cands or wide:
         unp = []
         for qid, r in wide[:3]:
-            why = ("the call budget leaves no pair" if cands else
-                   "no eligible pair straddles the median with the gap (evidence missing or social-only)")
+            why = "the call budget leaves no pair" if cands else UNPAIRED_NO_ELIGIBLE
             unp.append({"question_id": qid, "range": int(r), "reason": why})
         return {"day_type": "split_unpaired", "pairs": [], "unpaired": unp, "red_team": None, **base}
     qs = [q for q in questions if q["id"] in ranges] or list(questions)
@@ -687,6 +693,7 @@ def pair(questions: list[dict], p: dict, evq: dict, active: list[str], depth: st
 
 
 UNPAIRED_LOAD_CAP = "load cap: its debaters already argue two pairs"
+UNPAIRED_NO_ELIGIBLE = "no eligible pair straddles the median with the gap (evidence missing or social-only)"
 
 
 def dropped_unpaired(res: dict, full: dict, why: str, p: dict | None = None) -> list[dict]:
@@ -2171,7 +2178,8 @@ def split_sheet(day: str, run_id: str, day_type: str, questions: list[dict], tak
                 red_team: dict | None = None, red_team_agent: str | None = None, crux_check: dict | None = None,
                 ledger: list[dict] | None = None, unpaired: list[str] | None = None) -> dict:
     """§11.1-11.2. unpaired: question ids pairing.json lists as unpaired (no pair formed although a candidate
-    pair existed: budget, ceiling or load cap); they get the split_unpaired bar on any day type. challenges: {(challenger, qid): record}; responses: {(agent, qid): record};
+    pair existed: budget, ceiling or load cap; or a split with no eligible pair at all); they get the
+    split_unpaired bar on any day type. challenges: {(challenger, qid): record}; responses: {(agent, qid): record};
     takes: {agent: TAKE}; crux_check: {question_id, data, quote_status} when §8 ran (shown only when
     crux_check_usable(); otherwise the block falls back to the question's resolves_on and settles_with)."""
     ledger = ledger or []
