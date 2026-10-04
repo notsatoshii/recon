@@ -1394,9 +1394,9 @@ class EighthReviewCruxKeywordTests(unittest.TestCase):
         t = self.terms("event")
         self.assertIn("troop", debate.crux_keywords(["no troop role"], self.Q))
         kw = set(t["keywords"])
-        self.assertTrue({"optio", "deplo", "discu"} <= kw)
+        self.assertTrue({"option", "deploy", "discussion"} <= kw)
         # question words, boilerplate and capitalised names are never keywords
-        self.assertFalse({"contr", "secur", "annou", "offic", "repor", "ormuz", "eoul"} & kw)
+        self.assertFalse({"contribution", "security", "announc", "official", "report", "hormuz", "seoul"} & kw)
         both_quoted = [self.DISCUSS, self.TEAM]          # what the 09-11 pair quoted
         res = debate.crux_search(t, self.docs, both_quoted)
         self.assertEqual([h["text"] for h in res["hits"]], [self.CONCERN])
@@ -1405,6 +1405,33 @@ class EighthReviewCruxKeywordTests(unittest.TestCase):
         # the subject plus one keyword is not enough, and keywords without the subject never qualify
         self.assertFalse(debate.shares_specific(self.WEIGHS, t, "event"))
         self.assertFalse(debate.shares_specific("- Insurers price troop deployment options for the Gulf", t, "event"))
+
+    def test_unrelated_korea_headlines_never_qualify(self):
+        """Eighth review follow-up: keywords matched as 5-letter prefixes ('missi' from 'mission' on 'missile',
+        'commi' from 'commits' on 'commission', 'appro' from 'approval' on 'approves') and the subject pinned as
+        the single token 'Korea' ('South' is a common word) let unrelated Korea headlines qualify on an event
+        question. Keywords match as whole words up to an inflection; 'South Korea' stays one subject."""
+        q = "Will South Korea announce a naval deployment to the Strait of Hormuz?"
+        cruxes = ["Seoul commits a destroyer to an escort mission once the defensive posture review ends.",
+                  "A ministerial approval naming the vessels, crew and escort mission for the strait."]
+        stub_docs = {"raw": "", "social": "", "package": read(FIX / "2026-10-04" / "00_data_package.md")}
+        from types import SimpleNamespace
+        from recon.orchestrator import Run
+        t = Run.search_terms(SimpleNamespace(corpus_docs=lambda: stub_docs), cruxes, q, "event")
+        self.assertIn("South Korea", t["pinned"])
+        self.assertNotIn("Korea", t["pinned"])
+        north = "- North Korea test-fires ballistic missile toward the sea, defense ministry says"
+        won = "- South Korea's financial commission approves won stablecoin pilot"
+        for line in (north, won):
+            with self.subTest(line=line):
+                self.assertFalse(debate.shares_specific(line, t, "event"))
+                self.assertLess(len(debate.term_hits(line, t)["keywords"]), debate.KEYWORD_PAIR)
+        self.assertEqual(debate.term_hits(north, t)["pinned"], [])
+        # inflections still match: 'commits' / 'committed', 'mission' / 'missions', 'approval' / 'approvals'
+        good = "- South Korea committed two destroyers to escort missions after cabinet approvals"
+        self.assertTrue(debate.shares_specific(good, t, "event"))
+        self.assertEqual(debate.entities("North Korea fires a missile; South Korea and Korea Exchange respond"),
+                         ["North Korea", "South Korea", "Korea"])
 
     def test_threshold_questions_get_no_keywords(self):
         t = self.terms("threshold")

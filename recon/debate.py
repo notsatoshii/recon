@@ -936,6 +936,13 @@ def _token_parts(tok: str) -> list[str]:
     return [tok]
 
 
+# A compass word is a common word, but before a name it makes a different place: 'South Korea' is not 'North
+# Korea', 'South China' is not 'China'. entities() keeps such a compound whole instead of dropping the qualifier
+# and pinning the bare name (eighth review follow-up, 2026-10-04: the subject 'Korea' of 'Will South Korea
+# announce a naval deployment ...?' pinned 'North Korea test-fires ballistic missile ...').
+COMPASS = {"North", "South", "East", "West", "Northern", "Southern", "Eastern", "Western"}
+
+
 def entities(text: str, vocab: set[str] | None = None, mid_common: bool = True) -> list[str]:
     """Named things in a text: tokens with a capital or a digit, minus stop words, dates and numbers. A Title-case
     token (capital, then lower case, no digit) that is a common English word is not an entity anywhere in the
@@ -943,13 +950,17 @@ def entities(text: str, vocab: set[str] | None = None, mid_common: bool = True) 
     passes defense appropriations bill' qualify on an unrelated event question); one that the corpus also uses
     in lower case is dropped only at a sentence start. All-caps tokens and tokens with digits always stay.
     `mid_common=False` keeps the older rule (common words dropped only at a sentence start), for recall where a
-    missed name costs more than a generic one (market_match)."""
+    missed name costs more than a generic one (market_match). A dropped COMPASS word directly before a name
+    (one space) stays on it: 'South Korea', never the bare 'Korea' that also names 'North Korea'."""
     vocab = vocab or set()
     common_words()          # fail loudly when the list is missing
     out = []
+    qual = None             # (qualifier, end offset) of a dropped 'South' / 'North' right before this token
     for m in _TOKEN.finditer(text or ""):
         before = (text[:m.start()]).rstrip()
         initial = not before or before[-1] in ".!?:;\n\"'(" or before.endswith("—")
+        prev, qual = qual, None
+        joined = bool(prev and text[prev[1]:m.start()] == " ")
         for k, tok in enumerate(_token_parts(m.group(0).strip(".-/"))):
             tok = tok.strip(".-/")
             if len(tok) < 3 or _is_number_token(tok):
@@ -961,8 +972,10 @@ def entities(text: str, vocab: set[str] | None = None, mid_common: bool = True) 
             title = tok[0].isupper() and tok[1:].islower() and not re.search(r"\d", tok)
             start = bool(initial or k)
             if title and ((is_common(tok) and (start or mid_common)) or (start and tok.lower() in vocab)):
+                if tok in COMPASS and tok == m.group(0):
+                    qual = (tok, m.end())
                 continue
-            out.append(tok)
+            out.append(f"{prev[0]} {tok}" if joined and k == 0 else tok)
     out += _HANGUL.findall(text or "")
     return list(dict.fromkeys(out))
 
@@ -1011,9 +1024,28 @@ CRUX_BOILERPLATE = {
 }
 
 
-def _kw_stem(w: str) -> str:
-    """A keyword's stem: its first five letters ('discussions' / 'discussing', 'deployment' / 'deploy')."""
-    return w[:5] if len(w) >= 5 else w
+# Inflections a crux keyword may carry and still be the same word (eighth review follow-up, 2026-10-04): a
+# 5-letter prefix let 'mission' match 'missile', 'commits' match 'commission' and 'approval' match 'approves'.
+_KW_SUFFIXES = (("ments", ""), ("ment", ""), ("ings", ""), ("ing", ""), ("ies", "y"), ("ied", "y"), ("es", ""),
+                ("ed", ""), ("s", ""))
+
+
+def _kw_base(w: str) -> str:
+    """A keyword's base: the word minus one inflection (-s, -es, -ies, -ed, -ing, -ment) and a final silent 'e',
+    with a doubled final consonant undone ('deployment' / 'deployed' / 'deploys' -> 'deploy'; 'approve' /
+    'approves' / 'approved' -> 'approv'; 'commits' / 'committed' -> 'commit'). Derivations stay apart:
+    'approval' is not 'approves', 'commission' is not 'commits', 'missile' is not 'mission'."""
+    w = (w or "").lower()
+    for suf, rep in _KW_SUFFIXES:
+        if w.endswith(suf) and len(w) - len(suf) >= 4 and not (suf == "s" and w.endswith(("ss", "us", "is"))):
+            b = w[: len(w) - len(suf)] + rep
+            if not rep and suf != "s" and len(b) >= 5 and b[-1] == b[-2] and b[-1] in "bdgmnprt":
+                b = b[:-1]                                   # 'committed' -> 'commit', 'planning' -> 'plan'
+            w = b
+            break
+    if w.endswith("e") and len(w) >= 5 and not w.endswith(("ee", "ie")):
+        w = w[:-1]                                           # 'approve' -> 'approv', 'escape' -> 'escap'
+    return w
 
 
 def _lower_words(text: str) -> list[str]:
@@ -1025,30 +1057,31 @@ def _lower_words(text: str) -> list[str]:
 def crux_keywords(texts: list[str], question: str = "") -> list[str]:
     """The crux's own content words on an event or judgment question (eighth review, 2026-10-04): lower-case words
     of four letters or more in the crux texts ('troop', 'deployment', 'options', 'capacity'), minus stop words,
-    metric words, any word that shares a stem with CRUX_BOILERPLATE or with a word of the question ('contribution'
-    on 'Will South Korea announce a concrete Hormuz security contribution?'). Returned as stems (_kw_stem).
+    metric words, any word that shares a base with CRUX_BOILERPLATE or with a word of the question ('contribution'
+    on 'Will South Korea announce a concrete Hormuz security contribution?'). Returned as bases (_kw_base): a
+    keyword matches a line word only as the same word up to an inflection, never as a shared prefix.
     Capitalised words are entities and stay out: only words the cruxes write in lower case count."""
-    skip = {_kw_stem(w) for w in _lower_words((question or "").lower())} | _BOILER_STEMS
+    skip = {_kw_base(w) for w in _lower_words((question or "").lower())} | _BOILER_BASES
     out = []
     for t in texts or []:
         for w in _lower_words(t):
             if w in STOP or w in METRIC_SET:
                 continue
-            st = _kw_stem(w)
+            st = _kw_base(w)
             if st in skip:
                 continue
             out.append(st)
     return list(dict.fromkeys(out))
 
 
-_BOILER_STEMS = {_kw_stem(w) for w in CRUX_BOILERPLATE}
+_BOILER_BASES = {_kw_base(w) for w in CRUX_BOILERPLATE}
 
 
 def keyword_hits(line: str, keywords) -> list[str]:
-    """The crux keyword stems a line carries (any case)."""
+    """The crux keywords (bases, _kw_base) a line carries (any case)."""
     if not keywords:
         return []
-    have = {_kw_stem(w) for w in _lower_words((line or "").lower())}
+    have = {_kw_base(w) for w in _lower_words((line or "").lower())}
     return [k for k in keywords if k in have]
 
 
@@ -1193,10 +1226,10 @@ def drop_frequent_entities(terms: dict, docs: dict[str, str], max_share: float =
         for y in terms["numbers"]:
             n = sum(1 for xs in line_nums if any(same_number(x, y) for x in xs))
             (ndropped if n > limit else nkeep).append(y)
-    # Crux keywords too (eighth review): a stem on more than max_share of the lines ('market', 'price') is generic.
+    # Crux keywords too (eighth review): a keyword on more than max_share of the lines ('market', 'price') is generic.
     kkeep, kdropped = [], []
     if terms.get("keywords"):
-        line_kw = [{_kw_stem(w) for w in _lower_words(l.lower())} for l in lines]
+        line_kw = [{_kw_base(w) for w in _lower_words(l.lower())} for l in lines]
         for k in terms["keywords"]:
             (kdropped if sum(1 for ws in line_kw if k in ws) > limit else kkeep).append(k)
     out = {**terms, "entities": keep, "numbers": nkeep, "pinned": pinned, "subject": subj,

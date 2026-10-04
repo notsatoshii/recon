@@ -644,9 +644,13 @@ lines and their terms are kept in `cruxsearch.json → pairs[].hits[]` because t
 Eighth review (2026-10-04): event cruxes are written in words, not names or numbers ('a defined Hormuz
 troop, escort or logistics role'), so on the c6 Hormuz pairs the only passing line was quoted by both sides
 and no debate could move on data. On an event or judgment question the cruxes' **keywords** are terms too
-(`debate.crux_keywords`): lower-case words of ≥ 4 letters in the crux texts, as 5-letter stems, minus stop
-words, metric words, crux boilerplate (`CRUX_BOILERPLATE`: official, announcement, report, wire, cutoff…)
-and any stem of a question word; stems on > 2 % of the corpus lines are dropped like frequent entities.
+(`debate.crux_keywords`): lower-case words of ≥ 4 letters in the crux texts, as bases (`_kw_base`: the word
+minus one inflection, -s, -es, -ies, -ed, -ing or -ment, so 'deployment' / 'deployed' / 'deploys' match), minus
+stop words, metric words, crux boilerplate (`CRUX_BOILERPLATE`: official, announcement, report, wire, cutoff…)
+and any base of a question word; keywords on > 2 % of the corpus lines are dropped like frequent entities.
+A keyword matches a line word only as the same base, never as a shared prefix: 'mission' is not 'missile',
+'commits' is not 'commission', 'approval' is not 'approves'. The pinned subject keeps a compass qualifier
+(`COMPASS`): 'Will South Korea …' pins 'South Korea', so a 'North Korea …' line is not about the subject.
 A keyword scores 1 like a metric word, and the pinned subject plus two distinct keywords
 (`KEYWORD_PAIR`) stands in for a crux entity: such a line is a hit and, on the same kinds, a qualifying
 quote (§7.2). The subject plus one keyword, or keywords without the subject, never are. Threshold and
@@ -2143,3 +2147,4 @@ Path: `docs/v2/phase-c-spec.md`.
 | # | Severity | Finding | Change | Where |
 |---|---|---|---|---|
 | 71 | medium | No debate moved on data in either c6 replay; the 09-11 crux check did not run and the 09-10 one ran on the settled school-privacy pair. After 69 the pool was measured but the rule left it unchanged: event cruxes name no entity beyond the subject, so the Hormuz pairs passed 1 line (quoted by both) | Event and judgment questions get crux keywords (lower-case crux words, boilerplate and question words out, frequency-filtered); the pinned subject plus two keywords is a hit and a qualifying quote. Re-measured on the c6 run folders: Hormuz 1 → 3 passing, 1 hit after the quote exclusion on both days, so 09-11 now has a crux-check candidate (gap 23) and 09-10 picks Hormuz (gap 32) over school privacy (27); OpenAI Pro still 0 after exclusion (only line quoted by both). Not yet replayed live | `debate.crux_keywords`, `term_hits`, `shares_specific`, `crux_search`, `orchestrator.search_terms` |
+| 72 | medium | Eighth-review regression of the sixth review's #55 class: crux keywords matched as 5-letter prefixes and 'South Korea' pinned as the bare 'Korea' ('South' is a common word). On 'Will South Korea announce a naval deployment to the Strait of Hormuz?' 'North Korea test-fires ballistic missile …, defense ministry says' qualified through missi / defen / minis, and 'South Korea's financial commission approves won stablecoin pilot' through commi / appro: +10 on a move, crux_data, a referee quote | Keywords are bases (`_kw_base`, one inflection off: -s, -es, -ies, -ed, -ing, -ment) and match only the same base; `entities()` keeps a compass qualifier on the name it precedes ('South Korea', 'North Korea', 'South China'). Both lines are negative tests beside the c6 Hormuz positive, which is unchanged (3 passing, 1 hit after the exclusion). Not yet replayed live | `debate._kw_base`, `crux_keywords`, `keyword_hits`, `drop_frequent_entities`, `entities`, `COMPASS` |
