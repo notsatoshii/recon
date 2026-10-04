@@ -1691,6 +1691,7 @@ droplet worktree is at `a585ef1` today, behind Phase B).
 | `2026-09-11-c1` | full new flow, FAST triage | ≤ 24 |
 | `2026-10-04-c1` | full new flow, FAST triage | ≤ 24 |
 | `2026-10-04-c1s` | stability: takes rerun once on `c1`'s `triage.json` (`--from-phase takes` on a copy), stopped after `pairing` (`RECON_STOP_AFTER=pairing`) | 9 |
+| `2026-09-11-c1t1`, `-c1t2` | take spread: takes rerun twice on `c1`'s `triage.json` (`--from-phase takes` on a copy, `RECON_STOP_AFTER=takes`), samples for pass-bar item (g) | 18 |
 | `2026-09-11-c2` | triage only, on ANALYST (`RECON_TRIAGE_TIER=analyst RECON_STOP_AFTER=triage`, same `--replay`/`--as-of`), to compare the questions (§2.1) | 1 |
 
 `RECON_STOP_AFTER=<phase>` is a small new switch: the driver returns after that phase. The
@@ -1756,6 +1757,13 @@ The three replays (09-10, 09-11, 10-04) together:
   `2026-10-04-c1`;
 - (f) **hindsight**: the minority-debater Brier vs the median is reported for every resolved
   question (a number, not a threshold; with few questions it is a signal, not a verdict);
+- (g) **take-spread stability** (reported, not a threshold; §20.7 #73): every run of a day — the
+  replays, the stability rerun, the take-only `c1t1`/`c1t2` reruns and the probe runs
+  (`replay_report.py --spread`) — is one sample of that day's take spread. The summary gives the
+  day's pair count as the range over its samples that reached pairing, and per topic (questions
+  sharing a subject entity across the triage wordings) the take range in each sample and how often
+  it reached `GAP_MIN`; a topic that clears in some samples and not in others is marked UNSTABLE.
+  Debate depth is read off that range, never off one replay's pair count;
 - lens extras: `lens_extra_bytes ≥ 2 KB` for at least 7 of 9 agents in the 09-11 and in the 10-04
   replay, every agent above 0 in the 09-10 replay (its package predates the KOREA, AI EDUCATION
   and fundraising blocks; measured 5/9 at 2 KB), and a **lens-quote share** of at least 0.5 (the share
@@ -2148,3 +2156,9 @@ Path: `docs/v2/phase-c-spec.md`.
 |---|---|---|---|---|
 | 71 | medium | No debate moved on data in either c6 replay; the 09-11 crux check did not run and the 09-10 one ran on the settled school-privacy pair. After 69 the pool was measured but the rule left it unchanged: event cruxes name no entity beyond the subject, so the Hormuz pairs passed 1 line (quoted by both) | Event and judgment questions get crux keywords (lower-case crux words, boilerplate and question words out, frequency-filtered); the pinned subject plus two keywords is a hit and a qualifying quote. Re-measured on the c6 run folders: Hormuz 1 → 3 passing, 1 hit after the quote exclusion on both days, so 09-11 now has a crux-check candidate (gap 23) and 09-10 picks Hormuz (gap 32) over school privacy (27); OpenAI Pro still 0 after exclusion (only line quoted by both). Not yet replayed live | `debate.crux_keywords`, `term_hits`, `shares_specific`, `crux_search`, `orchestrator.search_terms` |
 | 72 | medium | Eighth-review regression of the sixth review's #55 class: crux keywords matched as 5-letter prefixes and 'South Korea' pinned as the bare 'Korea' ('South' is a common word). On 'Will South Korea announce a naval deployment to the Strait of Hormuz?' 'North Korea test-fires ballistic missile …, defense ministry says' qualified through missi / defen / minis, and 'South Korea's financial commission approves won stablecoin pilot' through commi / appro: +10 on a move, crux_data, a referee quote | Keywords are bases (`_kw_base`, one inflection off: -s, -es, -ies, -ed, -ing, -ment) and match only the same base; `entities()` keeps a compass qualifier on the name it precedes ('South Korea', 'North Korea', 'South China'). Both lines are negative tests beside the c6 Hormuz positive, which is unchanged (3 passing, 1 hit after the exclusion). Not yet replayed live | `debate._kw_base`, `crux_keywords`, `keyword_hits`, `drop_frequent_entities`, `entities`, `COMPASS` |
+
+### 20.7 Take-spread stability (2026-10-04, the c8 replay)
+
+| # | Severity | Finding | Change | Where |
+|---|---|---|---|---|
+| 73 | medium | The 09-11 c8 replay staged 1 pair of a target of 2 (16 of 24 calls) where c6 staged 2, read as take sampling noise. Measured over nine 09-11 samples (c1, c1-r0, c1-r1, c6, c8, p1, p1-r1 and two take-only reruns of c8's triage, c8t1/c8t2, 18 calls): OpenAI Pro reopening cleared `GAP_MIN` 20 in 9 of 9 (range 22-40; on c8's triage 35, 28, 40); Hormuz was asked in 5 of 9 and cleared in 3 (11-12 on the troop-deployment wording, 23-38 on the contribution wording); c8's triage asked neither Hormuz wording but Anthropic Cowork (range 15, 10, 12 over the three c8 samples, minority 0 each). c6's q4 and c8's q4 are different questions: c8's second pair was missing because its triage asked no second contested question, not because a take draw fell short. A second-pair rule (gap >= 15, minority >= 1) would not have fired on c8 and would debate gaps under twice the retest noise, so none is added | Pass-bar item (g): `replay_report.py --spread` takes more runs (take-only reruns included) and reports per day the pair count as a range over its samples and per topic the take ranges and how often each reached `GAP_MIN` (UNSTABLE when only sometimes); `phase_c_validate.sh` step 5 adds two take-only reruns of 09-11-c1 and passes them, the probe runs and c1s as samples. `tests/test_replay_report.py` on the measured 09-11 values | `scripts/replay_report.py` `run_sample`, `same_topic`, `spread_stability`, `render_spread_stability`; §15.2, §15.5 |

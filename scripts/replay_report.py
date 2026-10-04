@@ -3,11 +3,17 @@
 the old exports.
 
     python3 scripts/replay_report.py 2026-09-10-c1 2026-09-11-c1 2026-10-04-c1 --old-dir <exports>/runs \
-        [--stability 2026-10-04-c1 2026-10-04-c1s] [--probe briefs/spread_probe.md]
+        [--stability 2026-10-04-c1 2026-10-04-c1s] [--probe briefs/spread_probe.md] \
+        [--spread 2026-09-11-p1 2026-09-11-c8t1 ...]
 
 Writes briefs/<run_id>/replay_report.md per run, briefs/replay_summary.md with the §15.5 pass bar across
 the runs, and prints one model-log row per run. The old run is the export of the same day
 (<old-dir>/<day>.json). Hindsight Brier (§15.4) needs the question resolver (Phase D): reported as pending.
+
+Item (g), take-spread stability (§15.5, ninth review #73): every run of a day (the replays plus the --spread
+runs, take-only reruns included) is one sample of that day's take spread. A day's pair count is reported as
+the range over its samples, and each topic (questions sharing a subject across the runs' differing triage
+wordings) as the take ranges it got and how often it cleared GAP_MIN: one replay's pair count is one sample.
 """
 from __future__ import annotations
 
@@ -213,6 +219,96 @@ def report(root: Path, run_id: str, old: dict | None, gap_min_probe: int | None)
     return "\n".join(lines), m
 
 
+# ── (g) take-spread stability across same-day runs ─────────────────────────────────────
+
+def run_sample(root: Path, run_id: str) -> dict | None:
+    """One run's take spread: {run_id, day, questions [{id, text}], take_p {agent: {qid: int}}, pairs, target,
+    gap_min}. A full replay reads positions.json; a take-only rerun (RECON_STOP_AFTER=takes) its takes/*.json
+    and triage.json. pairs/target are None when the run stopped before pairing."""
+    d = root / run_id
+    pos = jload(d / "phases" / "positions.json", {}) or {}
+    tri = jload(d / "phases" / "triage.json", {}) or {}
+    pairing = jload(d / "phases" / "pairing.json", None)
+    take_p = pos.get("take_p") or {}
+    qs = [{"id": q["id"], "text": q.get("text") or ""} for q in pos.get("questions") or [] if q.get("id")]
+    if not take_p:
+        take_p = {a: debate.take_values(t.get("data") or {}) for a, t in items(d, "takes").items()}
+        take_p = {a: v for a, v in take_p.items() if v}
+    if not qs:
+        qs = [{"id": q["id"], "text": q.get("text") or q.get("question") or ""}
+              for q in (tri.get("data") or {}).get("questions") or [] if q.get("id")]
+    if not take_p or not qs:
+        return None
+    return {"run_id": run_id, "day": run_id[:10], "questions": qs, "take_p": take_p,
+            "pairs": len(pairing.get("pairs") or []) if isinstance(pairing, dict) else None,
+            "target": pairing.get("target") if isinstance(pairing, dict) else None,
+            "gap_min": pairing.get("gap_min") if isinstance(pairing, dict) else None}
+
+
+def _subject(text: str) -> set[str]:
+    return {e for e in debate.entities(text) if not any(c.isdigit() for c in e)}
+
+
+def same_topic(a: str, b: str) -> bool:
+    """Two triage wordings of one question: a shared subject entity ('OpenAI', 'South Korea'), or, when
+    either names none, most of their words (Jaccard >= 0.5)."""
+    sa, sb = _subject(a), _subject(b)
+    if sa and sb:
+        return bool(sa & sb)
+    return debate.jaccard(a, b) >= 0.5
+
+
+def spread_stability(samples: list[dict], gap_min: int = debate.GAP_MIN_DEFAULT) -> list[dict]:
+    """Per day: the pair counts of its runs that reached pairing, and per topic the take range in every run
+    that asked it, how many of those ranges reach gap_min, and whether that is unstable (cleared in some
+    samples, not in others). Runs of one day are grouped by run id prefix (YYYY-MM-DD)."""
+    out = []
+    for day in sorted({s["day"] for s in samples}):
+        runs = [s for s in samples if s["day"] == day]
+        topics: list[dict] = []
+        for s in runs:
+            for q in s["questions"]:
+                vals = [v[q["id"]] for v in s["take_p"].values() if q["id"] in v]
+                if len(vals) < 3:
+                    continue
+                rng = int(max(vals) - min(vals))
+                t = next((t for t in topics if s["run_id"] not in t["runs"]
+                          and any(same_topic(q["text"], x) for x in t["texts"])), None)
+                if t is None:
+                    t = {"label": ", ".join(sorted(_subject(q["text"]))) or q["text"][:40], "texts": [], "runs": [],
+                         "ranges": []}
+                    topics.append(t)
+                t["texts"].append(q["text"])
+                t["runs"].append(s["run_id"])
+                t["ranges"].append(rng)
+        for t in topics:
+            t["asked"] = len(t["runs"])
+            t["clears"] = sum(1 for r in t["ranges"] if r >= gap_min)
+            t["unstable"] = 0 < t["clears"] < t["asked"]
+        topics.sort(key=lambda t: (-t["clears"], -max(t["ranges"]), t["label"]))
+        pairs = [s["pairs"] for s in runs if s["pairs"] is not None]
+        targets = sorted({s["target"] for s in runs if s["target"] is not None})
+        out.append({"day": day, "runs": [s["run_id"] for s in runs], "pairs": pairs, "targets": targets,
+                    "gap_min": gap_min, "topics": topics})
+    return out
+
+
+def render_spread_stability(days: list[dict]) -> list[str]:
+    lines = []
+    for d in days:
+        p = d["pairs"]
+        pr = (f"pairs {min(p)}-{max(p)} over {len(p)} runs to pairing (target {'/'.join(map(str, d['targets']))})"
+              if p else "no run reached pairing")
+        lines.append(f"- (g) take-spread stability {d['day']}, {len(d['runs'])} samples ({', '.join(d['runs'])}): {pr}"
+                     + ("; one replay's pair count is one sample" if p and min(p) != max(p) else ""))
+        for t in d["topics"]:
+            lines.append(f"  - {t['label']}: asked {t['asked']}/{len(d['runs'])}, take range "
+                         f"{min(t['ranges'])}-{max(t['ranges'])} ({', '.join(map(str, t['ranges']))}), "
+                         f"range >= GAP_MIN {d['gap_min']} in {t['clears']}/{t['asked']}"
+                         + (" (UNSTABLE: the pair depends on the sample)" if t["unstable"] else ""))
+    return lines
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description="Phase C replay report")
     ap.add_argument("runs", nargs="+")
@@ -220,6 +316,8 @@ def main(argv=None) -> int:
     ap.add_argument("--old-dir", default=str(Path.home() / "innovlabs" / "recon-exports" / "runs"))
     ap.add_argument("--stability", nargs=2, metavar=("RUN", "RERUN"))
     ap.add_argument("--probe", default=None, help="briefs/spread_probe.md, for GAP_MIN")
+    ap.add_argument("--spread", nargs="+", default=[], metavar="RUN",
+                    help="more runs (take-only reruns included) sampling the same days, for item (g)")
     a = ap.parse_args(argv)
     root = Path(a.root)
     gp = None
@@ -239,7 +337,7 @@ def main(argv=None) -> int:
               f"evidence {m['evidence_rate']}, overlap {m['citation_overlap']}, brief {m['words']} words, status {m['status']} "
               f"| {m['calls']} | {(m['in_tok'] or 0) / 1e6:.2f} M ({(m['cached_tok'] or 0) / 1e6:.2f} M cached) | "
               f"{(m['out_tok'] or 0) / 1e3:.1f} K | {m['wall']} s |")
-    if len(allm) > 1 or a.stability:
+    if len(allm) > 1 or a.stability or a.spread:
         s = ["# Phase C replays — pass bar (§15.5)", ""]
         s.append(f"- (b) a held split across the runs: {'PASS' if any(m['held_splits'] for m in allm) else 'FAIL'}")
         ratios = [m["gap_ratio_no_crux"] for m in allm if m["gap_ratio_no_crux"] is not None]
@@ -261,6 +359,10 @@ def main(argv=None) -> int:
             q2 = (r2.get("pairs") or [{}])[0].get("question_id")
             s.append(f"- (e) stability: top pair on {q1} vs {q2}: {'PASS' if q1 and q1 == q2 else 'FAIL'}")
         s.append("- (f) hindsight Brier: pending (Phase D resolver)")
+        ids = list(dict.fromkeys(list(a.runs) + list(a.spread) + list(a.stability or [])))
+        samples = [x for x in (run_sample(root, rid) for rid in ids) if x]
+        gm = next((x["gap_min"] for x in samples if x["gap_min"]), None) or gp or debate.GAP_MIN_DEFAULT
+        s += render_spread_stability(spread_stability(samples, int(gm)))
         for m in allm:
             fails = [k for k, v in m["bar"].items() if not v]
             s.append(f"- {m['run_id']}: {'all run items pass' if not fails else 'fails: ' + '; '.join(fails)}")

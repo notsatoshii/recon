@@ -11,7 +11,8 @@
 #   4. spread probe (§15.0): 09-11-p1, 10-04-p1, -p2, -p3, -p3h ~33 calls, then spread_probe.py
 #      -> GAP_MIN; stops here when the gate fails (the inputs get fixed before any debate runs)
 #   5. replays (§15.2) with RECON_PAIR_GAP=GAP_MIN: 09-10-c1, 09-11-c1, 10-04-c1, the 10-04-c1s
-#      stability rerun (to pairing) and the 09-11-c2 ANALYST triage; replay_report.py
+#      stability rerun (to pairing), two take-only reruns of 09-11-c1 (c1t1, c1t2: take-spread
+#      stability, pass-bar item g) and the 09-11-c2 ANALYST triage; replay_report.py
 #   6. one live collection into a tagged run folder (phase-e §4: the wired collectors), its view
 #      and lens measurement                                    1 FAST call (BettaFish)
 #
@@ -117,9 +118,14 @@ if ! skip 5; then
     replay 2026-10-04 2026-10-04-c1
     copy_run 2026-10-04-c1 2026-10-04-c1s
     RECON_STOP_AFTER=pairing replay 2026-10-04 2026-10-04-c1s --from-phase takes
+    for t in t1 t2; do   # item (g): the same triage, takes resampled, so a pair count is not read off one sample
+        copy_run 2026-09-11-c1 "2026-09-11-c1$t"
+        RECON_STOP_AFTER=takes replay 2026-09-11 "2026-09-11-c1$t" --from-phase takes
+    done
     RECON_TRIAGE_TIER=analyst RECON_STOP_AFTER=triage replay 2026-09-11 2026-09-11-c2
     python3 scripts/replay_report.py 2026-09-10-c1 2026-09-11-c1 2026-10-04-c1 --old-dir briefs/_old_exports \
-        --stability 2026-10-04-c1 2026-10-04-c1s --probe briefs/spread_probe.md >> "$LOG" 2>&1
+        --stability 2026-10-04-c1 2026-10-04-c1s --probe briefs/spread_probe.md \
+        --spread 2026-09-11-c1t1 2026-09-11-c1t2 2026-09-11-p1 2026-10-04-p1 2026-10-04-p2 >> "$LOG" 2>&1
 fi
 
 if ! skip 6; then
