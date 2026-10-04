@@ -18,7 +18,8 @@
 #
 # Never runs between 04:30 and 06:30 KST (the 05:00 cron run): it stops before a step that would start
 # in that window. Progress: logs/phase_c_validate.log; current step: logs/phase_c_validate.status.
-# Steps can be skipped with SKIP="1 2 6" (step numbers).
+# Steps can be skipped with SKIP="1 2 6" (step numbers). It first pulls origin/v2 and stops (exit 5) unless
+# HEAD equals it (scripts/launch_run.py --check). One-off replays: scripts/launch_run.py <day> (§15.2a).
 #
 set -uo pipefail
 RECON_HOME="${RECON_HOME:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"; export RECON_HOME
@@ -59,6 +60,8 @@ replay() {     # replay DAY RUN_ID [extra args]: logs the exit code, never abort
     return $rc
 }
 
+# current code only (§15.2a): pull as root on the recon-owned checkout, stop unless HEAD == origin/v2
+python3 scripts/launch_run.py --check >> "$LOG" 2>&1 || { step "FAILED: checkout is not origin/v2 (see $LOG)"; exit 5; }
 say "phase_c_validate start at $(git log --oneline -1)"
 
 if ! skip 1; then

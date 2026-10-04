@@ -1759,6 +1759,24 @@ and `--from-phase` at or before `memory` (or a fresh rerun of the same run id) r
 before running: a copy of `c1` rerun from the takes reads the pre-run memory, not c1's own finals,
 moves and lessons, so pass-bar item (e) is not biased towards stability (fourth review).
 
+### 15.2a Launching a replay on the droplet
+
+The checkout `/home/recon/recon-v2` is owned by `recon` and runs are started as root, so a plain
+`git pull --ff-only` dies with "dubious ownership" and the run goes ahead on stale code (2026-09-11-c3
+ran on 8b08a95 that way and was killed). Every one-off replay is started with
+`python3 scripts/launch_run.py <day> [-- <orchestrator args>]`, which:
+
+1. pulls with `git -c safe.directory=<repo> pull --ff-only origin v2` (command-line config is trusted
+   for root);
+2. refuses to launch (exit 2) unless `HEAD` equals `origin/v2` afterwards;
+3. names the run `<day>-c<N+1>`, N the highest `c<N>` among `briefs/<day>-c<N>*` folders and
+   `logs/<day>-c<N>*` files, never the first gap (a gap is a deleted run);
+4. starts `--replay briefs/<day> --as-of <day> --run-id <id> --no-telegram` detached and prints
+   `<id> <pid> <HEAD>`.
+
+`--print-only` prints the id without launching; `--check` only syncs and verifies (the first thing
+`phase_c_validate.sh` does). Tests: `tests/test_launch_run.py`.
+
 ### 15.3 Report
 
 `scripts/replay_report.py <run_id> [--old-dir <exports>/runs]` (runs anywhere; reads the run
