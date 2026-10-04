@@ -1267,7 +1267,8 @@ class SeventhReviewTermTests(unittest.TestCase):
                                           keep_always=["Hormuz"], subject=["Hormuz"])
         res = debate.crux_search(t, docs, [])
         self.assertEqual([h["text"] for h in res["hits"]], ["- Hormuz escort talks: UAE hosts the Korean team"])
-        self.assertEqual(res["pool"], {"term_lines": 3, "pass_with_subject": 1, "pass": 1, "after_quote_exclusion": 1})
+        self.assertEqual(res["pool"], {"term_lines": 3, "pass_with_subject": 1, "pass": 1, "after_quote_exclusion": 1,
+                                       "shared": 0})
         self.assertFalse(debate.shares_specific("- Hormuz traffic disrupted again", t, "event"))
         quoted = debate.crux_search(t, docs, ["- Hormuz escort talks: UAE hosts the Korean team"])
         self.assertEqual(quoted["pool"]["after_quote_exclusion"], 0)
@@ -1438,6 +1439,110 @@ class EighthReviewCruxKeywordTests(unittest.TestCase):
         self.assertNotIn("keywords", t)
         self.assertEqual(debate.crux_search(t, self.docs, [self.DISCUSS, self.TEAM])["hits"], [])
         self.assertFalse(debate.shares_specific(self.CONCERN, t, "threshold"))
+
+
+class SharedCruxPoolTests(unittest.TestCase):
+    """09-11 c8 q3 (OpenAI Pro): the crux search found 0 hits because the one story about the subject was quoted
+    by both sides, so no crux check ran and the held split (35 -> 32) had no data path to closure. The lines both
+    sides quote, with the rest of their list item, are the shared pool the referee reads when the split held.
+    Lines, quotes and cruxes are the real c8 ones."""
+
+    Q = "Will OpenAI resume new Pro subscription sign-ups by 2026-09-18?"
+    CRUXES = [
+        "OpenAI can add or reallocate sufficient serving capacity to reopen new Pro sign-ups by 2026-09-18.",
+        "OpenAI's subscription availability page or an official announcement showing that new Pro subscriptions "
+        "are available.",
+        "OpenAI's subscription availability page continues to show new Pro sign-ups on hold.",
+        "OpenAI can add or free enough Astra serving capacity to reopen new Pro sign-ups within one week.",
+    ]
+    HEAD = "- [Thu, 10 Sep 2026] OpenAI puts Pro subscriptions on hold due to Astra demand"
+    BODY = ("  The company said Pro subscriptions put the most strain on its systems, so it's pausing sign-ups "
+            "while adding more capaci")
+    LAUNCH = "- [Fri, 11 Sep 2026] GPT-6 Astra: The next generation in intelligence for work - OpenAI"
+    HI = ["OpenAI puts Pro subscriptions on hold due to Astra demand",
+          "The company said Pro subscriptions put the most strain on its systems,"]
+    LO = HI + ["[Fri, 11 Sep 2026] GPT-6 Astra: The next generation in intelligence for work - OpenAI"]
+
+    def setUp(self):
+        from types import SimpleNamespace
+        from recon.orchestrator import Run
+        filler = [f"- [wire] Unrelated headline number {i} about markets and weather" for i in range(150)]
+        pkg = "\n".join(["# SECTION 4: NEWS INTELLIGENCE"] + filler[:75] + [self.HEAD, self.BODY, self.LAUNCH]
+                        + filler[75:])
+        self.docs = {"raw": "", "social": "", "package": pkg}
+        self.loc = evidence.Locator({"package": pkg})
+        self.terms = Run.search_terms(SimpleNamespace(corpus_docs=lambda: self.docs), self.CRUXES, self.Q, "event")
+
+    def search(self, sides=True, extra=()):
+        excl = self.HI + self.LO + list(extra)
+        return debate.crux_search(self.terms, self.docs, excl, self.loc,
+                                  exclude_positions=debate.quote_positions(excl, self.loc),
+                                  sides=(self.HI + list(extra), self.LO + list(extra)) if sides else None)
+
+    def test_the_story_both_sides_quote_is_the_shared_pool(self):
+        res = self.search()
+        self.assertEqual(res["hits"], [])
+        self.assertEqual(res["pool"]["after_quote_exclusion"], 0)
+        # the headline both quote and its body (same list item); the launch line only the low side quoted stays out
+        self.assertEqual([h["text"] for h in res["shared"]], [self.HEAD, self.BODY.strip()])
+        self.assertEqual([h["quoted_by_both"] for h in res["shared"]], [True, False])
+        self.assertIn(self.HEAD, res["shared_block"])
+        self.assertNotIn("Next generation", res["shared_block"])
+        self.assertEqual(res["pool"]["shared"], 2)
+        # never a hit: the responders' block and the gate are unchanged
+        self.assertEqual(res["block"], "(nothing found on disk for this crux)")
+        # without the two sides' quotes (threshold questions, the red team) there is no shared pool
+        self.assertEqual(self.search(sides=False)["shared"], [])
+
+    def test_no_shared_pool_when_a_line_neither_side_quoted_is_a_hit(self):
+        fresh = "- OpenAI says Pro sign-ups reopen next week as Astra serving capacity is reallocated"
+        self.docs["package"] += "\n" + fresh
+        self.loc = evidence.Locator({"package": self.docs["package"]})
+        res = self.search()
+        self.assertEqual([h["text"] for h in res["hits"]], [fresh])
+        self.assertEqual(res["shared"], [])
+
+    def _cruxcheck(self, gap_after_low):
+        """Run.ph_cruxcheck on the c8 pair (70 / 35 takes, low side moved to `gap_after_low`) with a canned referee."""
+        from types import SimpleNamespace
+        from recon.orchestrator import Run
+        res = self.search()
+        cs = {"pairs": [{"question_id": "q3", "high": "policy_analyst", "low": "ai_engineer",
+                         "crux_terms": self.terms, **res}]}
+        prompts = []
+
+        def call(phase, qid, tier, prompt, schema=None, agent=None):
+            prompts.append(prompt)
+            return ({"resolved": "partly", "what_the_data_says": "Sign-ups paused while capacity is added.",
+                     "quote": "OpenAI puts Pro subscriptions on hold due to Astra demand", "section": "NEWS",
+                     "remaining_uncertainty": "When capacity lands.",
+                     "settles_on": {"observable": "Pro sign-up page", "by_date": "2026-09-18"}, "leans": "lower"},
+                    {"tier": "analyst"})
+        take = lambda p: {"positions": [{"question_id": "q3", "probability": p, "reason": "r", "evidence": []}]}
+        stub = SimpleNamespace(log=lambda m: None, art=lambda n: SimpleNamespace(exists=lambda: True),
+                               load=lambda n: cs, locator=lambda: self.loc, call=call, ncalls=16, budget=24,
+                               skip=lambda *a: None, qmap=lambda tri: Run.qmap(None, tri))
+        tri = {"questions": [{"id": "q3", "text": self.Q, "kind": "event"}]}
+        takes = {"policy_analyst": take(70), "ai_engineer": take(35)}
+        pairing = {"gap_min": 20, "pairs": [{"question_id": "q3", "high": "policy_analyst", "low": "ai_engineer",
+                                             "p_high": 70, "p_low": 35, "gap": 35}]}
+        resps = {"policy_analyst__q3": {"move": {"gated": 70}, "data": {}},
+                 "ai_engineer__q3": {"move": {"gated": gap_after_low}, "data": {}}}
+        return Run.ph_cruxcheck(stub, tri, takes, pairing, {}, resps), prompts
+
+    def test_crux_check_runs_on_the_held_split_from_the_shared_pool(self):
+        cc, prompts = self._cruxcheck(38)            # held at 32 >= GAP_MIN, as on c8
+        self.assertTrue(cc["ran"])
+        self.assertEqual((cc["question_id"], cc["pool"], cc["gap_before"], cc["gap_after"]), ("q3", "shared", 35, 32))
+        self.assertIn(self.HEAD, prompts[0])
+        self.assertEqual(cc["quote_status"], "verified")
+        self.assertTrue(cc["data"]["quote_qualifies"])
+        self.assertTrue(debate.crux_check_usable(cc))
+
+    def test_no_shared_crux_check_once_the_split_closed(self):
+        cc, prompts = self._cruxcheck(60)            # gap 10 < GAP_MIN: nothing held for the referee to read
+        self.assertFalse(cc["ran"])
+        self.assertEqual(prompts, [])
 
 
 class MarketQuestionLineTests(unittest.TestCase):

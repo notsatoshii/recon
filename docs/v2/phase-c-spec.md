@@ -659,6 +659,12 @@ direction questions get no keywords. Measured on the c6 pairs (pass / after the 
 which neither side of the pair quoted); OpenAI Pro 0 / 0 → 1 / 0 (its one capacity line is quoted by both
 challenges, so it stays excluded by design).
 
+Shared pool (2026-10-04, 09-11 c8 q3, §20.7 #74): on an event or judgment question with no hit after the quote
+exclusion, the passing lines **both** sides quoted (the takes plus that side's challenge), with the rest of their
+list item (headline and indented body), come back as `pairs[].shared` with a 5 KB `shared_block`. A line only one
+side quoted stays out. They are never hits: the responders' block and the gate's `crux_data` are unchanged, so a
+shared line cannot move a side or confirm a closure (§9.1). `pool.shared` counts them.
+
 Zero hits is a normal outcome and is recorded as such.
 
 ---
@@ -789,7 +795,9 @@ pairs; the decision is made from the calls actually used, after the responses (�
   points (`RECON_CRUX_GAP`) and its crux search has ≥ 1 hit. Picking on `gap_before` means a
   split that closed during the debate without data can still be checked. On a consensus day the
   red team's crux is the candidate (crux search under `redteam`, §6), with gap = |red team
-  probability − median|. Otherwise no call; `cruxcheck.json` says why.
+  probability − median|. A pair with no hit but a shared pool (§6) is a candidate when its split held
+  (`gap_after ≥ GAP_MIN`); it ranks after every pair with a hit, and the referee reads `shared_block` in place
+  of the hit block (`cruxcheck.json → pool: shared`). Otherwise no call; `cruxcheck.json` says why.
 - **Input**: the question, both cruxes (or the agreed one), both gated positions with reasons, the
   5 KB hit block, the excerpts from §5.2.
 - **Output**: `resolved` (`yes|no|partly`), `what_the_data_says` (≤ 60 words), `quote` + `section`
@@ -2162,3 +2170,4 @@ Path: `docs/v2/phase-c-spec.md`.
 | # | Severity | Finding | Change | Where |
 |---|---|---|---|---|
 | 73 | medium | The 09-11 c8 replay staged 1 pair of a target of 2 (16 of 24 calls) where c6 staged 2, read as take sampling noise. Measured over nine 09-11 samples (c1, c1-r0, c1-r1, c6, c8, p1, p1-r1 and two take-only reruns of c8's triage, c8t1/c8t2, 18 calls): OpenAI Pro reopening cleared `GAP_MIN` 20 in 9 of 9 (range 22-40; on c8's triage 35, 28, 40); Hormuz was asked in 5 of 9 and cleared in 3 (11-12 on the troop-deployment wording, 23-38 on the contribution wording); c8's triage asked neither Hormuz wording but Anthropic Cowork (range 15, 10, 12 over the three c8 samples, minority 0 each). c6's q4 and c8's q4 are different questions: c8's second pair was missing because its triage asked no second contested question, not because a take draw fell short. A second-pair rule (gap >= 15, minority >= 1) would not have fired on c8 and would debate gaps under twice the retest noise, so none is added | Pass-bar item (g): `replay_report.py --spread` takes more runs (take-only reruns included) and reports per day the pair count as a range over its samples and per topic the take ranges and how often each reached `GAP_MIN` (UNSTABLE when only sometimes); `phase_c_validate.sh` step 5 adds two take-only reruns of 09-11-c1 and passes them, the probe runs and c1s as samples. `tests/test_replay_report.py` on the measured 09-11 values | `scripts/replay_report.py` `run_sample`, `same_topic`, `spread_stability`, `render_spread_stability`; §15.2, §15.5 |
+| 74 | medium | The 09-11 c8 OpenAI Pro split held 35 -> 32 with 0 crux hits (terms Astra + capacity/reopen/availability keywords, OpenAI/Pro pinned): the 2 passing lines were the Pro-hold headline, quoted by both sides, and the GPT-6 Astra launch line, quoted by the low side. No crux check ran, so the held split had no data path and useful=False | The lines both sides quote plus their list item (headline + body) are the shared pool (§6); a pair with a shared pool and `gap_after >= GAP_MIN` is a crux-check candidate after every hit candidate, the referee reading `shared_block` (§8). Shared lines are never hits, so the gate and closure confirmation are unchanged. Re-tested offline on c8's saved takes, challenges and responses: q3 0 hits, 2 shared lines (headline, body), crux check picks q3 (35 / 32, pool shared). `SharedCruxPoolTests` on the c8 lines | `debate.crux_search` (`sides`, `shared`, `_same_item`), `orchestrator.ph_responses`, `ph_cruxcheck` |

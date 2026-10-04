@@ -1240,7 +1240,7 @@ def drop_frequent_entities(terms: dict, docs: dict[str, str], max_share: float =
 
 
 def crux_search(terms: dict, docs: dict[str, str], exclude_quotes, locator=None, top: int = 12,
-                block_bytes: int = 3000, referee_bytes: int = 5000, exclude_positions=None) -> dict:
+                block_bytes: int = 3000, referee_bytes: int = 5000, exclude_positions=None, sides=None) -> dict:
     """Data lines in the run folder's raw file, package and social extract that score
     3 x entities + 2 x numbers + 1 x metric words >= 4, match two distinct terms, at least one a
     number or an entity, and are not already quoted by either side (by text, or by the line a quote
@@ -1260,9 +1260,20 @@ def crux_search(terms: dict, docs: dict[str, str], exclude_quotes, locator=None,
     subject plus KEYWORD_PAIR keywords is a hit: 'South Korea says Hormuz talks concern contribution options,
     not troop deployment' on a crux about a troop or escort role. Keywords also score with a crux entity, like
     metric words. On the c6 Hormuz pairs this takes the passing lines from 1 (quoted by both sides) to 3, with 1
-    hit left after the quote exclusion on each day; the OpenAI Pro pair passes 1 line, quoted by both."""
+    hit left after the quote exclusion on each day; the OpenAI Pro pair passes 1 line, quoted by both.
+
+    Shared pool (2026-10-04, 09-11 c8 q3): `sides` = (high side's quotes, low side's quotes). When no hit is left
+    after the quote exclusion, the passing lines that both sides quoted are the single source both views read
+    differently: those lines plus the other lines of the same list item (headline and its indented body) come
+    back as `shared`, with a `shared_block` for the referee (§8). A line only one side quoted stays out (it is
+    that side's evidence, shown to the referee as an excerpt). They are never `hits`: the
+    responders' block and the gate (crux_data) do not change, so a shared line cannot move a side or confirm a
+    closure; it only lets the crux check read the one fact the split turns on."""
     excl = [qnorm(q) for q in exclude_quotes if q and len(qnorm(q)) >= 12]
     excl_pos = set(exclude_positions or ())
+    side_norms = [[qnorm(q) for q in (sq or []) if q and len(qnorm(q)) >= 12] for sq in (sides or ())]
+    side_pos = [quote_positions(sq, locator) for sq in (sides or ())]
+    passed: list[tuple] = []   # (doc, n, ns) of every line that passed, quoted or not
     hits, seen = [], set()
     # The candidate pool at each step (seventh review, 2026-10-04: the 09-10 / 09-11 c6 Hormuz and OpenAI Pro
     # pairs had 0 hits; this says whether the corpus, the subject rule or the quote exclusion emptied it).
@@ -1301,6 +1312,7 @@ def crux_search(terms: dict, docs: dict[str, str], exclude_quotes, locator=None,
             if score < 4 or distinct < 2 or not (h["entities"] or h["numbers"] or subject_keyword_pair(h)):
                 continue
             pool["pass"].add(ns)
+            passed.append((doc, n, ns))
             if ns in seen or (doc, n) in excl_pos:
                 continue
             if any(q in ns or (len(ns) >= 12 and ns in q) for q in excl):
@@ -1324,11 +1336,69 @@ def crux_search(terms: dict, docs: dict[str, str], exclude_quotes, locator=None,
             out.append(piece)
             used += nbytes(piece) + 1
         return "\n".join(out) or "(nothing found on disk for this crux)"
+
+    def quoted_by(i, doc, n, ns):
+        return (doc, n) in side_pos[i] or any(q in ns or (len(ns) >= 12 and ns in q) for q in side_norms[i])
+
+    shared: list[dict] = []
+    both = [(d, n) for d, n, ns in passed if quoted_by(0, d, n, ns) and quoted_by(1, d, n, ns)] \
+        if len(side_norms) == 2 and not hits else []
+    if both:
+        sseen: set[str] = set()
+        passed_at = set(both)
+        for doc, n in both:
+            for m in _same_item(all_lines[doc], n):
+                s = all_lines[doc][m - 1].strip()
+                ns = evidence.norm(s)
+                if len(s) < 12 or s.startswith("#") or ns in sseen:
+                    continue
+                if locator is not None and doc in locator.lines:
+                    sec, cls = locator.label(doc, m)
+                else:
+                    sec, cls = "", ("social" if doc == "social" or evidence.social_line(s) else "data")
+                if cls == "social" or market_line_in(sec, all_lines[doc], m - 1, mkeys):
+                    continue
+                sseen.add(ns)
+                shared.append({"doc": doc, "line": m, "section": sec, "cls": cls, "text": s[:400],
+                               "quoted_by_both": (doc, m) in passed_at})
+    pool["shared"] = len(shared)
+
+    def shared_block(cap):
+        out, used = [], 0
+        for h in shared:
+            piece = f"- [{h['section'] or h['doc']}] {h['text']}"
+            if used + nbytes(piece) + 1 > cap:
+                break
+            out.append(piece)
+            used += nbytes(piece) + 1
+        if not out:
+            return ""
+        return "\n".join(["(no line on disk that neither view quoted: this is the one story both views cite; "
+                          "say what it shows about the crux)"] + out)
     return {"terms": {"numbers": [x["raw"] for x in terms.get("numbers", [])], "entities": terms.get("entities", []),
                       "metrics": terms.get("metrics", []), "keywords": terms.get("keywords", []),
                       "pinned": terms.get("pinned", []),
                       "subject": terms.get("subject", [])},
-            "hits": hits, "pool": pool, "block": block(block_bytes), "referee_block": block(referee_bytes)}
+            "hits": hits, "pool": pool, "block": block(block_bytes), "referee_block": block(referee_bytes),
+            "shared": shared, "shared_block": shared_block(referee_bytes)}
+
+
+def _same_item(lines: list[str], n: int, span: int = 3) -> list[int]:
+    """1-based line numbers of the list item line n belongs to: its head (the nearest line above, within
+    `span`, that is not indented) and the indented body lines under that head (up to `span`). A headline
+    '- [Thu, 10 Sep 2026] OpenAI puts Pro subscriptions on hold ...' and its '  The company said ...' body."""
+    def indented(i):
+        raw = lines[i - 1] if 0 < i <= len(lines) else ""
+        return bool(raw.strip()) and raw[:1] in (" ", "\t")
+    head = n
+    while indented(head) and head > 1 and n - head < span:
+        head -= 1
+    out = [head]
+    m = head + 1
+    while m <= len(lines) and indented(m) and m - head <= span:
+        out.append(m)
+        m += 1
+    return sorted(set(out) | {n})
 
 
 # ── prediction-market lines (phase-e SECTION 8) ────────────────────────────────────────

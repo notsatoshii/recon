@@ -1175,11 +1175,18 @@ SECTOR CONTEXT (crypto and macro landscape; background, not today's data):
                 texts += [(dd.get("crux") or {}).get("claim", ""), (dd.get("crux") or {}).get("observable", ""),
                           (dd.get("would_change_my_mind") or {}).get("observable", "")]
             terms = self.search_terms(texts, (qm.get(qid) or {}).get("text", ""), (qm.get(qid) or {}).get("kind", ""))
-            excl = take_quotes(takes[hi]) + take_quotes(takes[lo]) + rec_quotes(by_hi) + rec_quotes(by_lo)
+            q_hi, q_lo = take_quotes(takes[hi]) + rec_quotes(by_hi), take_quotes(takes[lo]) + rec_quotes(by_lo)
+            excl = q_hi + q_lo
+            # On an event or judgment question with no hit, the passing lines both sides quoted come back as the
+            # shared pool (§6), which the crux check may read when the split held (§8)
+            ev_kind = (qm.get(qid) or {}).get("kind", "") in ("event", "judgment")
             res = debate.crux_search(terms, self.corpus_docs(), excl, self.locator(),
-                                     exclude_positions=debate.quote_positions(excl, self.locator()))
+                                     exclude_positions=debate.quote_positions(excl, self.locator()),
+                                     sides=(q_hi, q_lo) if ev_kind else None)
             cs["pairs"].append({"question_id": qid, "high": hi, "low": lo, "crux_terms": terms, **res})
-            self.log(f"  Crux search [{qid}] {hi}/{lo}: {len(res['hits'])} hits; terms {res['terms']}")
+            self.log(f"  Crux search [{qid}] {hi}/{lo}: {len(res['hits'])} hits"
+                     + (f", {len(res['shared'])} shared lines (quoted by both)" if res.get("shared") else "")
+                     + f"; terms {res['terms']}")
         self.save("cruxsearch", cs)   # written first, so --from-phase responses reruns it (§6)
         csq = {e["question_id"]: e for e in cs["pairs"]}
         d = self.pdir / "responses"
@@ -1281,6 +1288,7 @@ SECTOR CONTEXT (crypto and macro landscape; background, not today's data):
         qm = self.qmap(triage)
         cs = self.load("cruxsearch") if self.art("cruxsearch").exists() else {}
         p = {a: debate.take_values(t) for a, t in takes.items()}
+        gap_min = int(pairing.get("gap_min") or debate.GAP_MIN_DEFAULT)
         cand = None
         for x in pairing.get("pairs") or []:
             hi, lo, qid = x["high"], x["low"], x["question_id"]
@@ -1290,12 +1298,21 @@ SECTOR CONTEXT (crypto and macro landscape; background, not today's data):
             fh = rh["move"]["gated"] if rh else x["p_high"]
             fl = rl["move"]["gated"] if rl else x["p_low"]
             ga = abs(fh - fl)
-            if gb < debate.CRUX_GAP or not entry or not entry.get("hits"):
+            if gb < debate.CRUX_GAP or not entry:
                 continue
-            key = (-gb, -ga, qid)
+            # No hit, but the split held (>= GAP_MIN) on a story both sides quote (09-11 c8 q3, OpenAI Pro: the
+            # one capacity line, quoted by both): the referee reads that shared pool. It ranks after any pair
+            # with a hit, and since a shared line is never a hit it cannot confirm a closure (§6, §8, §9.1).
+            if entry.get("hits"):
+                pool, rank = "hits", 0
+            elif entry.get("shared") and entry.get("shared_block") and ga >= gap_min:
+                pool, rank = "shared", 1
+            else:
+                continue
+            key = (rank, -gb, -ga, qid)
             if cand is None or key < cand[0]:
                 cand = (key, {"kind": "pair", "question_id": qid, "high": hi, "low": lo, "gap_before": gb,
-                              "gap_after": ga, "entry": entry})
+                              "gap_after": ga, "entry": entry, "pool": pool})
         rt = cs.get("redteam")
         if cand is None and pairing.get("day_type") == "consensus" and rt and rt.get("hits"):
             rec = next((r for r in chs.values() if r.get("type") == "redteam"), None)
@@ -1306,7 +1323,8 @@ SECTOR CONTEXT (crypto and macro landscape; background, not today's data):
                                    "gap_before": gap, "gap_after": gap, "entry": rt, "rec": rec})
         if cand is None:
             why = ("no debate or red-team crux with a gap of at least "
-                   f"{debate.CRUX_GAP} points and a crux-search hit")
+                   f"{debate.CRUX_GAP} points and a crux-search hit, and no split held at {gap_min}+ on a "
+                   "story both sides quote")
             self.log(f"  No crux check: {why}")
             return {"ran": False, "reason": why}
         c = cand[1]
@@ -1351,7 +1369,8 @@ SECTOR CONTEXT (crypto and macro landscape; background, not today's data):
             ev = [rec["data"].get("evidence") or [], []]
         prompt = prompts.render("crux_check", qid=qid, question=debate.anonymise(q["text"]), crux=debate.anonymise(crux),
                                 side_a=side_a, side_b=side_b, higher_label=higher_label, lower_label=lower_label,
-                                data_block=c["entry"].get("referee_block", ""),
+                                data_block=c["entry"].get("shared_block" if c.get("pool") == "shared" else
+                                                          "referee_block", ""),
                                 excerpts=debate.excerpts(ev, self.locator()))
         try:
             data, meta = self.call("cruxcheck", qid, "analyst", prompt, schema="crux_check", agent="referee")
@@ -1382,7 +1401,8 @@ SECTOR CONTEXT (crypto and macro landscape; background, not today's data):
                          + ": confirms nothing")
         self.log(f"  Crux check [{qid}]: resolved {data.get('resolved')}, leans {data.get('leans')}"
                  + (f" ({', '.join(flags)})" if flags else ""))
-        return {"ran": True, "kind": c["kind"], "question_id": qid, "high": c.get("high"), "low": c.get("low"),
+        return {"ran": True, "kind": c["kind"], "pool": c.get("pool", "hits"), "question_id": qid,
+                "high": c.get("high"), "low": c.get("low"),
                 "agent": c.get("agent"), "gap_before": c["gap_before"], "gap_after": c["gap_after"], "data": data,
                 "quote_status": loc.get("status"), "flags": flags, "calls": [meta]}
 
