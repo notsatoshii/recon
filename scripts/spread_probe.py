@@ -56,7 +56,7 @@ def load_run(root: Path, run_id: str) -> dict:
             for e in pos.get("evidence") or []:
                 qq = (e.get("quote") or "").strip()
                 r = loc.locate(qq) if qq else {"status": "empty", "cls": ""}
-                items.append({"quote": qq, "status": r["status"], "cls": r.get("cls") or ""})
+                items.append({"quote": qq, "status": r["status"], "cls": debate.ev_class(r, loc)})
             evq.setdefault(a, {})[pos.get("question_id", "")] = items
     calls = [json.loads(l) for l in read(d / "phases" / "calls.jsonl").splitlines() if l.strip()]
     return {"id": run_id, "questions": tri.get("questions") or [], "p": p, "evq": evq, "calls": calls,

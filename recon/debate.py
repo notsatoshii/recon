@@ -4,7 +4,7 @@
   lens_extras      §3 item 3 YOUR LENS DATA per agent (LENS_RAW; same rules as tests/lens_extras_probe.py)
   pair             §4 pairing by widest probability gap; day types debate / split_unpaired / consensus
   pick_red_team    §4.3 the consensus-day red-team agent
-  budget_pairs     §1.1 pairs and crux check that fit the call budget
+  budget_pairs     §1.1 pairs and crux check that fit the call budget (the last pair goes before the crux check)
   excerpts         §5.2 the lines around each verified quote, 4 KB shared between the sides
   challenge_checks §5.4 length, persona leakage, agreement opener
   crux_terms       §6 numbers, entities and metric words from the cruxes
@@ -61,16 +61,19 @@ ENTRY_CAP = 3000
 AGENT_CAP = 6000
 LENS_WARN_BELOW = 2000
 NEWS_BLOCKS = ("# News Intelligence", "# Twitter/X Intelligence")
+# The raw Polymarket and Kalshi blocks are no lens's data (sixth review, 2026-10-04): take.md asks for one
+# lens quote per position, so trader would cite a market odds line on every question, the anchoring the
+# first probe measured (9 of 9 at 60 %). They come back only if the e1 probe (§15.0) measures them. Odds
+# lines elsewhere (World Monitor's Polymarket feed, SECTION 8) are class 'market' (ev_class), never data.
 LENS_RAW: dict[str, list[str]] = {
     "macro_strategist": [
-        "# World Monitor Intelligence", "# Kalshi Intelligence",
+        "# World Monitor Intelligence",
         r"news~\bFed\b|FOMC|\bCPI\b|inflation|payroll|jobs report|tariff|treasur|\byields?\b|\bdollar"
         r"|\bDXY\b|recession|\bGDP\b|rate cut|rate hike|\bECB\b|\bBOJ\b|Powell|\boil\b|sanction|shutdown"
         r"|election|midterm|geopolit|China|Iran|Russia|Ukraine|Israel",
         "## ECONOMICS", "## POLITICS",
     ],
     "trader": [
-        "# Polymarket Intelligence", "# Kalshi Intelligence",
         r"news~liquidat|funding rate|open interest|short squeeze|whale|leverag|\boptions\b|\bperps?\b"
         r"|ETF.{0,12}(in|out)flow|\bsupport\b|\bresistance\b|\bshorts?\b|\blongs?\b",
     ],
@@ -315,7 +318,8 @@ def gate_questions(questions: list[dict], day: str, locator, open_ledger: list[d
     evidence.Locator over package, raw, view and social (rule 4). Kept questions get ids q1… in
     order, clamped weights and cleaned lenses. `market`: the run's prediction-market odds lines
     (market_lines()); a question one of them already prices is dropped (rule 7: the spread probe's
-    takes anchored on a quoted market price, 9 of 9 at 60 %)."""
+    takes anchored on a quoted market price, 9 of 9 at 60 %). A question whose settled_quote (the package
+    line that already reports what settles it) is found in the package is dropped too (rule 8)."""
     active = list(active or AGENTS)
     open_ledger = open_ledger or []
     dropped, notes = [], []
@@ -346,6 +350,18 @@ def gate_questions(questions: list[dict], day: str, locator, open_ledger: list[d
             hit = market_match(text, market)
             if hit:
                 reason = f"a prediction market already prices it: {hit[:100]!r}"
+        if reason is None and kind != "judgment":
+            # rule 8: the package already settles it (09-10 c1: 'Will a major AI provider announce school-specific
+            # privacy rules by 09-30?' beside 'Microsoft has new AI privacy rules for schools'; the widest debate
+            # of the day argued over whether that item already settled it). Triage names the line; a line that
+            # is found drops the question, one that is not found is a note.
+            sq = (q.get("settled_quote") or "").strip()
+            if sq:
+                st = evidence.locate(sq, locator)["status"]
+                if st in ("verified", "partial"):
+                    reason = f"the package already settles it: {sq[:100]!r}"
+                else:
+                    notes.append(f"settled_quote not found ({st}) on {text[:60]!r}")
         if reason:
             dropped.append({"text": text, "reason": reason, "order": n})
             continue
@@ -400,8 +416,8 @@ def gate_questions(questions: list[dict], day: str, locator, open_ledger: list[d
                 if a in active and a not in lenses:
                     lenses.append(a)
         q["lenses"] = lenses[:5]
-        for key in ("metric", "comparator", "threshold", "baseline_quote", "resolves_on", "settles_with", "carried_from",
-                    "domain"):
+        for key in ("metric", "comparator", "threshold", "baseline_quote", "settled_quote", "resolves_on",
+                    "settles_with", "carried_from", "domain"):
             q.setdefault(key, "")
         out.append(q)
     dropped.sort(key=lambda d: d["order"])
@@ -412,14 +428,16 @@ def gate_questions(questions: list[dict], day: str, locator, open_ledger: list[d
 # ── §1.1 budget ────────────────────────────────────────────────────────────────────────
 
 def budget_pairs(used: int, budget: int, synth_calls: int, depth_target: int) -> tuple[int, bool]:
-    """(pairs, crux_check) that fit: a pair costs 4 calls; the crux check is dropped first, then pairs."""
+    """(pairs, crux_check) that fit: a pair costs 4 calls, the crux check 1. The crux check is kept while at
+    least one pair fits with it: a day gives up its last pair before the crux check (decision 2026-10-04,
+    after the 09-10 c1 replay: 3 pairs left the crux check out at 22 of 24 calls, and no debate on 09-10 or
+    09-11 was useful; the crux check is the only way a closure on data is confirmed, §8). Only when no pair
+    fits with it is it dropped for a pair."""
     free = budget - used - synth_calls
     with_crux, without_crux = max(0, (free - 1) // 4), max(0, free // 4)
-    if with_crux >= depth_target:
-        return depth_target, True
-    if without_crux > with_crux:
-        return min(depth_target, without_crux), False
-    return with_crux, free - 4 * with_crux >= 1
+    if with_crux >= 1:
+        return min(depth_target, with_crux), True
+    return min(depth_target, without_crux), False
 
 
 # ── §4 pairing ─────────────────────────────────────────────────────────────────────────
@@ -429,6 +447,9 @@ def _ok(e: dict) -> bool:
 
 
 def eligible_agents(q: dict, p: dict, evq: dict, active: list[str]) -> list[str]:
+    """Agents that may be a debate endpoint on q: a verified or partial quote, and on any question but a
+    judgment one a data quote. A market odds line is class 'market' (ev_class), not data: an endpoint never
+    rests on a market price alone."""
     out = []
     for a in active:
         if q["id"] not in p.get(a, {}):
@@ -770,23 +791,37 @@ def _is_number_token(tok: str) -> bool:
     return bool(re.fullmatch(r"[$€£₩]?[\d.,]+[%kKmMbBtT]?n?", tok))
 
 
+def _token_parts(tok: str) -> list[str]:
+    """A token as the entity candidates it stands for. 'OIRA/White' -> 'OIRA', 'White' (alternatives);
+    a hyphenated compound with a lower-case part ('Astra-driven', 'Pro-signup', 'OpenAI-confirmed') -> its
+    capitalised parts, since the compound itself never occurs elsewhere (the 09-11 crux search found 0 hits
+    on 'Astra-driven'); a compound of proper parts ('GPT-5', 'US-China', 'Llama-3.1') stays whole."""
+    if "/" in tok:
+        return [p for piece in tok.split("/") if piece for p in _token_parts(piece.strip(".-"))]
+    parts = [p for p in tok.split("-") if p]
+    if len(parts) > 1 and any(p[0].islower() for p in parts):
+        return [p for p in parts if not p[0].islower()]
+    return [tok]
+
+
 def entities(text: str, vocab: set[str] | None = None) -> list[str]:
     vocab = vocab or set()
     common_words()          # fail loudly when the list is missing
     out = []
     for m in _TOKEN.finditer(text or ""):
-        tok = m.group(0).strip(".-/")
-        if len(tok) < 3 or _is_number_token(tok):
-            continue
-        if not (re.search(r"[A-Z]", tok) or re.search(r"\d", tok)):
-            continue
-        if tok.lower() in STOP or _DATE_TOKEN.match(tok):
-            continue
         before = (text[:m.start()]).rstrip()
         initial = not before or before[-1] in ".!?:;\n\"'(" or before.endswith("—")
-        if initial and tok[0].isupper() and tok[1:].islower() and (is_common(tok) or tok.lower() in vocab):
-            continue
-        out.append(tok)
+        for k, tok in enumerate(_token_parts(m.group(0).strip(".-/"))):
+            tok = tok.strip(".-/")
+            if len(tok) < 3 or _is_number_token(tok):
+                continue
+            if not (re.search(r"[A-Z]", tok) or re.search(r"\d", tok)):
+                continue
+            if tok.lower() in STOP or _DATE_TOKEN.match(tok):
+                continue
+            if (initial or k) and tok[0].isupper() and tok[1:].islower() and (is_common(tok) or tok.lower() in vocab):
+                continue
+            out.append(tok)
     out += _HANGUL.findall(text or "")
     return list(dict.fromkeys(out))
 
@@ -838,13 +873,24 @@ def _num_match(xs: list[dict], ys: list[dict]) -> list[str]:
     return hit
 
 
+def _ent_in(e: str, line: str) -> bool:
+    return e in line if _HANGUL.fullmatch(e) else bool(re.search(rf"(?<!\w){re.escape(e)}(?!\w)", line))
+
+
 def term_hits(line: str, terms: dict) -> dict:
-    ents = [e for e in terms.get("entities", []) if e.lower() not in METRIC_SET
-            and (re.search(rf"(?<!\w){re.escape(e)}(?!\w)", line) if not _HANGUL.fullmatch(e) else e in line)]
+    """The crux terms a line carries. `entities` never holds the question's own entities (`subject`, every
+    kind) or a pinned one (`pinned`, event and judgment questions; drop_frequent_entities): a line that only
+    names what the question is about says nothing about the crux. Pinned entities found on the line are
+    reported apart under `pinned` and only rank crux-search hits (§6); they never score a hit or qualify a
+    quote (§7.2)."""
+    out_low = {str(x).lower() for x in list(terms.get("pinned", [])) + list(terms.get("subject", []))}
+    ents = [e for e in terms.get("entities", []) if e.lower() not in METRIC_SET and e.lower() not in out_low
+            and _ent_in(e, line)]
+    pins = [e for e in terms.get("pinned", []) if _ent_in(e, line)]
     nums = _num_match(evidence.numbers(line), terms.get("numbers", [])) if terms.get("numbers") else []
     low = line.lower()
     mets = [w for w in terms.get("metrics", []) if re.search(rf"(?<!\w){re.escape(w)}(?!\w)", low)]
-    return {"entities": ents, "numbers": nums, "metrics": mets}
+    return {"entities": ents, "numbers": nums, "metrics": mets, "pinned": pins}
 
 
 def shares_term(quote: str, terms: dict) -> bool:
@@ -853,29 +899,51 @@ def shares_term(quote: str, terms: dict) -> bool:
     return bool(h["entities"] or h["numbers"] or h["metrics"])
 
 
-def shares_specific(quote: str, terms: dict) -> bool:
-    """What a qualifying quote needs (§7.2): a crux number, or a crux entity together with a number of
-    its own. An entity alone ('BTC', 'Fed') or a metric word alone does not count."""
+def shares_specific(quote: str, terms: dict, kind: str = "") -> bool:
+    """What a qualifying quote needs (§7.2): a crux number (same_number), or a crux entity together with a
+    number of its own. The entities are the cruxes' entities minus the frequent ones (> 2% of the corpus
+    lines: 'Fed', 'ETF') and minus the question's own entities (`subject`, every kind), so 'BTC dominance:
+    58.6%' does not qualify on a BTC price-threshold crux. On an event or judgment question (`kind`) a crux
+    entity alone is enough, since headlines about events carry no number, but it has to be an entity other
+    than the question's own: a headline that only names the subject says nothing about the crux.
+    An entity alone on a threshold or direction question, or a metric word alone, never counts."""
     h = term_hits(quote or "", terms)
     if h["numbers"]:
         return True
-    return bool(h["entities"]) and bool(evidence.numbers(quote or ""))
+    if not h["entities"]:
+        return False
+    return kind in ("event", "judgment") or bool(evidence.numbers(quote or ""))
 
 
-def drop_frequent_entities(terms: dict, docs: dict[str, str], max_share: float = 0.02, keep_always=()) -> dict:
+# A question's subject under its other common name: a crux that says 'Bitcoin' on a 'BTC' question is about
+# the same subject, so 'Bitcoin dominance: 58.6%' is no more about the crux than 'BTC dominance: 58.6%'.
+SUBJECT_ALIASES = {"btc": ("Bitcoin",), "bitcoin": ("BTC",), "eth": ("Ethereum", "Ether"), "ethereum": ("ETH",),
+                   "ether": ("ETH",), "sol": ("Solana",), "solana": ("SOL",), "xrp": ("Ripple",), "ripple": ("XRP",)}
+
+
+def drop_frequent_entities(terms: dict, docs: dict[str, str], max_share: float = 0.02, keep_always=(),
+                           subject=()) -> dict:
     """Entities that sit on more than `max_share` of the corpus's non-empty lines ('BTC', 'ETF', 'Fed',
     'DeFi' on hundreds of package lines) say nothing specific about a crux: drop them from the terms.
-    `keep_always`: entities of the question itself ('South Korea', 'Hormuz' on an event question) stay
-    however often they occur: on an event question they are what a line has to be about (§7.2)."""
+    `subject`: the question's own entities ('BTC' on 'Will BTC close above $90,000?'), on every kind of
+    question. They leave `entities` (stored under `subject`) however rare they are: a line that names the
+    question's subject plus any number of its own ('BTC dominance: 58.6%') is not about the crux.
+    `keep_always`: the question's entities again on an event or judgment question ('South Korea', 'Hormuz').
+    They go to `pinned`: they rank crux-search hits about the subject first but, like `subject`, never score
+    a hit or qualify a quote (§6, §7.2). Threshold and direction questions pin nothing
+    (orchestrator.search_terms)."""
+    pinned = list(dict.fromkeys(str(x) for x in keep_always or () if str(x).strip()))
+    subj = list(dict.fromkeys([str(x) for x in subject or () if str(x).strip()] + pinned))
+    subj += [a for x in subj for a in SUBJECT_ALIASES.get(x.lower(), ()) if a.lower() not in {y.lower() for y in subj}]
+    out_low = {x.lower() for x in subj}
     lines = [l for d in docs.values() for l in (d or "").split("\n") if l.strip()]
     if not lines or not terms.get("entities"):
-        return terms
-    pinned = {str(x).lower() for x in keep_always or ()}
+        return {**terms, "entities": [e for e in terms.get("entities", []) if e.lower() not in out_low],
+                "pinned": pinned, "subject": subj, "frequent_entities": []}
     limit = max(3, int(max_share * len(lines)))
     keep, dropped = [], []
     for e in terms["entities"]:
-        if e.lower() in pinned:
-            keep.append(e)
+        if e.lower() in out_low:
             continue
         if _HANGUL.fullmatch(e):
             n = sum(1 for l in lines if e in l)
@@ -883,7 +951,7 @@ def drop_frequent_entities(terms: dict, docs: dict[str, str], max_share: float =
             rx = re.compile(rf"(?<!\w){re.escape(e)}(?!\w)")
             n = sum(1 for l in lines if rx.search(l))
         (dropped if n > limit else keep).append(e)
-    return {**terms, "entities": keep, "frequent_entities": dropped}
+    return {**terms, "entities": keep, "pinned": pinned, "subject": subj, "frequent_entities": dropped}
 
 
 def crux_search(terms: dict, docs: dict[str, str], exclude_quotes, locator=None, top: int = 12,
@@ -892,7 +960,12 @@ def crux_search(terms: dict, docs: dict[str, str], exclude_quotes, locator=None,
     3 x entities + 2 x numbers + 1 x metric words >= 4, match two distinct terms, at least one a
     number or an entity, and are not already quoted by either side (by text, or by the line a quote
     sits on: `exclude_positions` = {(doc, line)}). Social lines (by section or content) are left out:
-    they cannot justify a move. Top `top` hits."""
+    they cannot justify a move. Top `top` hits.
+
+    The score uses the same terms as the evidence gate (term_hits: no frequent entity, no pinned question
+    subject), so the block each responder is shown, and told is worth +10 a line, is not filled with generic
+    lines about the subject ('BTC dominance: 58.6%' on a BTC price crux). A pinned subject only ranks: among
+    hits of equal score, lines that also name it come first."""
     excl = [qnorm(q) for q in exclude_quotes if q and len(qnorm(q)) >= 12]
     excl_pos = set(exclude_positions or ())
     hits, seen = [], set()
@@ -923,7 +996,8 @@ def crux_search(terms: dict, docs: dict[str, str], exclude_quotes, locator=None,
             ctx = [lines[i].strip()[:300] for i in (n - 2, n) if 0 <= i < len(lines) and lines[i].strip()]
             hits.append({"doc": doc, "line": n, "section": sec, "cls": cls, "score": score, "text": s[:400],
                          "terms": h, "context": ctx})
-    hits.sort(key=lambda h: (-h["score"], ("raw", "package", "social").index(h["doc"]), h["line"]))
+    hits.sort(key=lambda h: (-h["score"], -len(h["terms"].get("pinned") or []),
+                             ("raw", "package", "social").index(h["doc"]), h["line"]))
     hits = hits[:top]
 
     def block(cap):
@@ -936,7 +1010,8 @@ def crux_search(terms: dict, docs: dict[str, str], exclude_quotes, locator=None,
             used += nbytes(piece) + 1
         return "\n".join(out) or "(nothing found on disk for this crux)"
     return {"terms": {"numbers": [x["raw"] for x in terms.get("numbers", [])], "entities": terms.get("entities", []),
-                      "metrics": terms.get("metrics", [])},
+                      "metrics": terms.get("metrics", []), "pinned": terms.get("pinned", []),
+                      "subject": terms.get("subject", [])},
             "hits": hits, "block": block(block_bytes), "referee_block": block(referee_bytes)}
 
 
@@ -970,6 +1045,18 @@ def is_market_line(section: str, line: str) -> bool:
     Market odds are what traders believe, not data about the crux: they never qualify a move (§7.2), are not
     crux hits (§6) and cannot confirm a closure (§8)."""
     return ((section or "").upper().startswith(MARKET_SECTION) and bool(_PROB.search(line or ""))) or odds_line(line)
+
+
+def ev_class(loc: dict, locator) -> str:
+    """The evidence class of a located quote: 'social', 'data', '' (not found), or 'market' when the line it sits
+    on is a prediction-market odds line (is_market_line). Odds are what traders believe, not data about the
+    question: a 'market' item does not make an agent eligible as a debate endpoint (eligible_agents needs a
+    data quote), is not a data quote in the split sheet or the lens notes, and never qualifies a move (§7.2)."""
+    cls = (loc or {}).get("cls") or ""
+    if cls == "data" and locator is not None and loc.get("doc") and loc.get("line"):
+        if is_market_line(loc.get("section", ""), locator.line_text(loc["doc"], loc["line"])):
+            return "market"
+    return cls
 
 
 def market_lines(locator) -> list[str]:
@@ -1052,8 +1139,9 @@ def gate_move(agent: str, take_p: int, requested, own_take_values, other_take_p:
     An item qualifies when Locator.strict passes (single verbatim line, no '...', every number found,
     40+ characters or a number), its line is data (social by content counts as social), its source is
     crux_data or other, it is not a prediction-market odds line, and it carries a crux number, or a crux
-    entity together with a number (shares_specific); on an event or judgment question (`kind`) a crux
-    entity alone is enough, since headlines about events carry no number. Qualifying items only extend the
+    entity together with a number (shares_specific: frequent entities and the question's pinned subject do
+    not count); on an event or judgment question (`kind`) a crux entity other than the question's subject is
+    enough, since headlines about events carry no number. Qualifying items only extend the
     move beyond FREE_MOVE: +EVIDENCE_MOVE_PER_ITEM per distinct qualifying line, at most EVIDENCE_MOVE_MAX
     (5 + 10 per line, 25 in total; spec §7.2, response.md step 3).
 
@@ -1092,16 +1180,17 @@ def gate_move(agent: str, take_p: int, requested, own_take_values, other_take_p:
             src = "other"
         st = locator.strict(q) if q else {"ok": False, "reason": "empty", "cls": ""}
         market = bool(st.get("ok")) and is_market_line(st.get("section", ""), locator.line_text(st["doc"], st["line"]) or q)
-        specific = shares_specific(q, terms) or (kind in ("event", "judgment") and bool(term_hits(q, terms)["entities"]))
+        specific = shares_specific(q, terms, kind)
         qual = bool(st["ok"] and st.get("cls") == "data" and src in ("crux_data", "other") and not market and specific)
         why = "" if qual else (st.get("reason") or ("social line" if st.get("cls") == "social" else
                                f"cited before ({src})" if src in ("own", "challenger") else
                                "prediction-market odds line" if market else
-                               "no crux entity" if kind in ("event", "judgment") else "no crux number or entity"))
+                               "no crux entity beyond the question's subject" if kind in ("event", "judgment")
+                               else "no crux number or entity"))
         if qual:
             qual_lines.add(line_key(locator, st["doc"], st["line"]))
         items.append({"section": e.get("section", ""), "quote": q[:300], "status": loc["status"],
-                      "cls": loc.get("cls") or "", "new_evidence_source": src, "qualifies": qual,
+                      "cls": "market" if market else ev_class(loc, locator), "new_evidence_source": src, "qualifies": qual,
                       **({"why_not": why} if not qual else {})})
     qualifying = [x for x in items if x["qualifies"]]
     shared = qual_lines & set(shared_lines or ())
@@ -1247,13 +1336,16 @@ def score_debate(pr: dict, ch_by: dict, resp_of: dict, crux_check: dict | None, 
             closed = True
             movers.append("lower" if side == "high" else "higher")
     cc = crux_check or {}
-    # The referee confirms a closure only when its verdict points the way the mover moved ('yes' and 'partly'
-    # alike: a 'yes, leans higher' after the high side came down says the data favours the high view) and its
-    # quote would qualify a move: a strict single data line, not social, not a market odds line
-    # (ph_cruxcheck sets quote_qualifies; an artifact without it confirms nothing).
+    # The referee confirms a closure only when exactly one side moved on crux data and its verdict points the
+    # way that side moved ('yes' and 'partly' alike: a 'yes, leans higher' after the high side came down says
+    # the data favours the high view), and its quote would qualify a move: a strict single data line, not
+    # social, not a market odds line, about the pair's crux (ph_cruxcheck sets quote_qualifies; an artifact
+    # without it confirms nothing). When both sides moved towards each other on crux data, any lean but
+    # 'neither' matches one of them, and a lean towards one view says the other side was right to stay put:
+    # it cannot confirm both moves, so it confirms neither and the block stays.
     quote_ok = cc.get("quote_qualifies") is True
-    confirmed = bool(closed and crux_check and quote_ok and cc.get("resolved") in ("yes", "partly")
-                     and cc.get("leans") in movers)
+    confirmed = bool(closed and crux_check and quote_ok and len(movers) == 1
+                     and cc.get("resolved") in ("yes", "partly") and cc.get("leans") == movers[0])
     if closed and cc.get("resolved") == "no":
         closed = False
     ga = gap_after if gap_after is not None else gap_before
@@ -1422,7 +1514,7 @@ def question_overlap(takes: dict) -> dict:
 
 def lens_quote_share(takes: dict, lens: dict) -> dict:
     """Per agent, the share of its positions that cite at least one quote from its own YOUR LENS DATA
-    block (take.md asks for one per position). {per_agent: {agent: x}, mean: x}."""
+    block (take.md asks for one per position; a market odds line does not count). {per_agent: {agent: x}, mean: x}."""
     per = {}
     for a, t in takes.items():
         body = evidence.norm((lens.get(a) or {}).get("text") or "")
@@ -1430,6 +1522,7 @@ def lens_quote_share(takes: dict, lens: dict) -> dict:
         if not pos:
             continue
         hit = sum(1 for p in pos if body and any(len(qnorm(e.get("quote"))) >= 12 and qnorm(e.get("quote")) in body
+                                                 and not odds_line(e.get("quote") or "")
                                                  for e in p.get("evidence") or []))
         per[a] = round(hit / len(pos), 3)
     return {"per_agent": per, "mean": round(sum(per.values()) / len(per), 3) if per else None}
@@ -1488,9 +1581,27 @@ def _first_quote(items: list[dict], locator, data_only: bool = True) -> str:
         if not q:
             continue
         loc = locator.locate(q) if locator is not None else {"status": e.get("status"), "cls": e.get("cls")}
-        if loc.get("status") == "verified" and (loc.get("cls") == "data" or not data_only):
+        cls = ev_class(loc, locator)
+        if loc.get("status") == "verified" and (cls == "data" or (not data_only and cls != "market")):
             return q[:200]
     return ""
+
+
+def crux_check_usable(crux_check: dict | None) -> bool:
+    """A crux check whose words may reach the brief: its quote was found verbatim (quote_status 'verified')
+    and would qualify a move (quote_qualifies: strict, data, not an odds line, about the pair's crux).
+    A referee whose citation failed is not shown: its free text could carry an unverified figure into
+    WHERE THE VIEWS SPLIT and WHAT TO WATCH, and its settles_on does not replace the question's own."""
+    cc = crux_check or {}
+    return bool(cc.get("data") and cc.get("quote_status") == "verified" and cc["data"].get("quote_qualifies") is True)
+
+
+def _crux_block(crux_check: dict | None, qid: str) -> dict | None:
+    if not (crux_check and crux_check.get("question_id") == qid and crux_check_usable(crux_check)):
+        return None
+    c = crux_check["data"]
+    return {"resolved": c.get("resolved", ""), "what_the_data_says": clean_text(c.get("what_the_data_says", ""), 500),
+            "quote": (c.get("quote") or "")[:200]}
 
 
 def split_sheet(day: str, run_id: str, day_type: str, questions: list[dict], take_p: dict, finals: dict,
@@ -1498,7 +1609,8 @@ def split_sheet(day: str, run_id: str, day_type: str, questions: list[dict], tak
                 red_team: dict | None = None, red_team_agent: str | None = None, crux_check: dict | None = None,
                 ledger: list[dict] | None = None) -> dict:
     """§11.1-11.2. challenges: {(challenger, qid): record}; responses: {(agent, qid): record};
-    takes: {agent: TAKE}; crux_check: {question_id, data, ...} when §8 ran."""
+    takes: {agent: TAKE}; crux_check: {question_id, data, quote_status} when §8 ran (shown only when
+    crux_check_usable(); otherwise the block falls back to the question's resolves_on and settles_with)."""
     ledger = ledger or []
     qby = {q["id"]: q for q in questions}
     dby = {d["question_id"]: d for d in debates}
@@ -1641,12 +1753,8 @@ def split_sheet(day: str, run_id: str, day_type: str, questions: list[dict], tak
             if ma:
                 base_text, ev = reason_of(ma, qid)
                 base_quote = base_quote or _first_quote(ev, locator)
-        cc = None
-        if crux_check and crux_check.get("question_id") == qid and crux_check.get("data"):
-            c = crux_check["data"]
-            cc = {"resolved": c.get("resolved", ""), "what_the_data_says": clean_text(c.get("what_the_data_says", ""), 500),
-                  "quote": (c.get("quote") or "")[:200]}
-        if crux_check and crux_check.get("question_id") == qid and (crux_check.get("data") or {}).get("settles_on", {}).get("observable"):
+        cc = _crux_block(crux_check, qid)
+        if cc and (crux_check["data"].get("settles_on") or {}).get("observable"):
             so = crux_check["data"]["settles_on"]
             settles = {"observable": so.get("observable", ""), "by_date": so.get("by_date", "") if _DATE.match(so.get("by_date", "") or "") else ""}
         elif q.get("resolves_on") or q.get("settles_with"):
@@ -1674,11 +1782,7 @@ def split_sheet(day: str, run_id: str, day_type: str, questions: list[dict], tak
             st = question_stats(list(f.values()))
             close = sorted(f, key=lambda a: (abs(f[a] - st["median"]), -verified_data(a, qid), a))
             bt, ev = reason_of(close[0], qid) if close else ("", [])
-            cc = None
-            if crux_check and crux_check.get("question_id") == qid and crux_check.get("data"):
-                c = crux_check["data"]
-                cc = {"resolved": c.get("resolved", ""), "what_the_data_says": clean_text(c.get("what_the_data_says", ""), 500),
-                      "quote": (c.get("quote") or "")[:200]}
+            cc = _crux_block(crux_check, qid)
             wc = rt.get("would_change_my_mind") or {}
             so = (crux_check or {}).get("data", {}).get("settles_on") if cc else None
             settles = ({"observable": so.get("observable", ""), "by_date": so.get("by_date", "")} if so else
@@ -1781,7 +1885,7 @@ def lens_notes(takes: dict, active: list[str], locator, cap: int = LENS_NOTES_CA
             if not q:
                 continue
             loc = locator.locate(q)
-            if loc["status"] == "verified" and loc.get("cls") == "data":
+            if loc["status"] == "verified" and ev_class(loc, locator) == "data":
                 lines.append(f"- {clean_text(c.get('claim', ''), 300)} (\"{q[:200]}\")")
                 n += 1
             if n >= 2:

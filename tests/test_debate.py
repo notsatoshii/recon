@@ -50,10 +50,10 @@ def locator(extra_pkg: str = "") -> evidence.Locator:
 
 
 def q(text, kind="threshold", resolves="2026-10-11", bq="- Current: $86,610,000,000", weight=2, carried="",
-      domain="markets_crypto", lenses=None):
+      domain="markets_crypto", lenses=None, settled=""):
     return {"id": "", "text": text, "kind": kind, "domain": domain, "metric": "", "comparator": "", "threshold": "",
-            "baseline_quote": bq, "resolves_on": resolves, "settles_with": "DeFiLlama", "lenses": lenses or [],
-            "weight": weight, "carried_from": carried}
+            "baseline_quote": bq, "settled_quote": settled, "resolves_on": resolves, "settles_with": "DeFiLlama",
+            "lenses": lenses or [], "weight": weight, "carried_from": carried}
 
 
 class GateTests(unittest.TestCase):
@@ -190,9 +190,14 @@ class PairingTests(unittest.TestCase):
         self.assertEqual(len(set(ends)), 6)
 
     def test_budget_pairs(self):
-        self.assertEqual(debate.budget_pairs(10, 24, 2, 3), (3, False))   # 12 free
+        # the last pair goes before the crux check (decision 2026-10-04): a clean normal day is 2 pairs + crux check
+        self.assertEqual(debate.budget_pairs(10, 24, 2, 3), (2, True))    # 12 free
         self.assertEqual(debate.budget_pairs(11, 24, 2, 3), (2, True))    # 11 free
         self.assertEqual(debate.budget_pairs(9, 24, 2, 3), (3, True))     # 13 free
+        self.assertEqual(debate.budget_pairs(16, 24, 2, 3), (1, True))    # 6 free
+        self.assertEqual(debate.budget_pairs(18, 24, 2, 3), (1, False))   # 4 free: no pair fits with it
+        self.assertEqual(debate.budget_pairs(19, 24, 2, 3), (0, False))   # 3 free
+        self.assertEqual(debate.budget_pairs(10, 24, 2, 1), (1, True))    # quiet day
 
     def test_budget_target_two(self):
         vals = {qid: {a: v for a, v in zip(AG, [10, 20, 30, 40, 50, 60, 70, 80, 90 - i * 5])}
@@ -477,6 +482,24 @@ class ScoreTests(unittest.TestCase):
             with self.subTest(cc=cc):
                 self.assertTrue(debate.score_debate(PR, {}, resp, cc, 20)["in_split"])
 
+    def test_two_movers_never_confirmed(self):
+        # sixth review: 70 vs 40, both sides move to 55 on crux data; a crux check leaning either way said the
+        # other side was right to stay, so it confirms neither move and the block stays in the brief
+        resp = {"high": side_rec(70, 55, "crux_data"), "low": side_rec(40, 55, "crux_data")}
+        for resolved in ("yes", "partly"):
+            for lean in ("higher", "lower", "neither"):
+                with self.subTest(resolved=resolved, lean=lean):
+                    s = debate.score_debate(PR, {}, resp, {"resolved": resolved, "leans": lean, "quote_qualifies": True}, 20)
+                    self.assertTrue(s["closed_on_data"])
+                    self.assertTrue(s["in_split"])
+                    self.assertNotIn("confirmed", s["effect"])
+                    self.assertEqual(s["gap_after"], 0)
+        # one mover, lean the mover's way: confirmed (the block may go)
+        one = {"high": side_rec(70, 48, "crux_data"), "low": side_rec(40, 40)}
+        s = debate.score_debate(PR, {}, one, {"resolved": "partly", "leans": "lower", "quote_qualifies": True}, 20)
+        self.assertFalse(s["in_split"])
+        self.assertIn("confirmed", s["effect"])
+
     def test_useful_on_crux_check(self):
         pr = {**PR, "p_high": 58, "p_low": 40}
         resp = {"high": side_rec(58, 55), "low": side_rec(40, 42)}
@@ -556,11 +579,69 @@ class CruxSearchTests(unittest.TestCase):
         t = debate.drop_frequent_entities({"numbers": [], "entities": ["BTC", "Kalshi"], "metrics": []}, docs)
         self.assertEqual(t["entities"], ["Kalshi"])
 
-    def test_question_entities_stay(self):
+    def test_question_entities_pinned_not_scored(self):
+        # an event question's own entities are pinned: kept for ranking, never a scoring or qualifying entity
         docs = {"raw": "\n".join([f"- Hormuz line {i}" for i in range(200)] + ["- Kalshi lists a market"])}
         t = debate.drop_frequent_entities({"numbers": [], "entities": ["Hormuz", "Kalshi"], "metrics": []}, docs,
-                                          keep_always=["Hormuz"])
-        self.assertEqual(t["entities"], ["Hormuz", "Kalshi"])
+                                          keep_always=["Hormuz"], subject=["Hormuz"])
+        self.assertEqual((t["entities"], t["pinned"]), (["Kalshi"], ["Hormuz"]))
+        h = debate.term_hits("- Hormuz traffic resumes as Kalshi lists a market", t)
+        self.assertEqual((h["entities"], h["pinned"]), (["Kalshi"], ["Hormuz"]))
+
+    def test_btc_dominance_does_not_qualify_on_a_btc_price_crux(self):
+        # sixth review 2026-10-04: on the 10-04 fixture a BTC / $87,500 crux let 10 strict data lines qualify,
+        # 'BTC dominance: 58.6%' and 'BTC mined (24h): 403.12 BTC' among them
+        raw, pkg = read(FIX / "2026-10-04" / "00_raw_data.md"), read(FIX / "2026-10-04" / "00_data_package.md")
+        docs = {"raw": raw, "package": pkg, "social": ""}
+        loc = evidence.Locator({"package": pkg, "raw": raw})
+        vocab = debate.lowercase_vocab(docs.values())
+        question = "Will BTC close above $87,500 on 2026-10-11?"
+        crux = ["Bitcoin closes above $87,500 on CoinGecko by 2026-10-11", "BTC daily close above $87,500"]
+        subj = debate.entities(question, vocab)
+        for kind, keep in (("threshold", []), ("direction", []), ("event", subj), ("judgment", subj)):
+            with self.subTest(kind=kind):
+                t = debate.drop_frequent_entities(debate.crux_terms(crux, vocab), docs, keep_always=keep, subject=subj)
+                for line in ("- BTC dominance: 58.6%", "- BTC mined (24h): 403.12 BTC"):
+                    self.assertTrue(loc.strict(line)["ok"])
+                    self.assertFalse(debate.shares_specific(line, t, kind), line)
+                    m = debate.gate_move("trader", 40, 65, {"q1": 40}, 80, "narrow", [{"section": "", "quote": line}],
+                                         [], [], [], t, loc, kind=kind)
+                    self.assertFalse(m["new_evidence"][0]["qualifies"], line)
+                    self.assertEqual(m["gated"], 45)
+                self.assertTrue(debate.shares_specific("- BTC closed at $87,500 on Friday", t, kind))   # the crux number
+                res = debate.crux_search(t, docs, [], loc)
+                self.assertFalse([h for h in res["hits"] if "dominance" in h["text"] or "mined" in h["text"]])
+                for h in res["hits"]:
+                    self.assertTrue(h["terms"]["numbers"] or h["terms"]["entities"])
+                    self.assertFalse({"BTC", "Bitcoin"} & set(h["terms"]["entities"]))
+
+    def test_event_subject_alone_does_not_qualify(self):
+        # an event headline that only names the question's subject is not about the crux; one naming another
+        # crux entity is
+        line = "- South Korea weighs role in Hormuz security after Macron talks, contribution options under review"
+        loc = locator("# SECTION 4: NEWS INTELLIGENCE\n" + line + "\n")
+        subj = debate.entities("Will South Korea send naval forces to Hormuz by 2026-10-25?")
+        bare = debate.drop_frequent_entities(debate.crux_terms(["South Korea commits naval support to Hormuz security"]),
+                                             {"package": line}, keep_always=subj, subject=subj)
+        m = debate.gate_move("user_agent", 30, 50, {"q1": 30}, 60, "narrow", [{"section": "", "quote": line}], [], [], [],
+                             bare, loc, kind="event")
+        self.assertFalse(m["new_evidence"][0]["qualifies"])
+        self.assertEqual(m["new_evidence"][0]["why_not"], "no crux entity beyond the question's subject")
+        more = debate.drop_frequent_entities(
+            debate.crux_terms(["South Korea commits naval support to Hormuz security after Macron talks"]),
+            {"package": line}, keep_always=subj, subject=subj)
+        m = debate.gate_move("user_agent", 30, 50, {"q1": 30}, 60, "narrow", [{"section": "", "quote": line}], [], [], [],
+                             more, loc, kind="event")
+        self.assertTrue(m["new_evidence"][0]["qualifies"])
+
+    def test_hyphenated_entities_split(self):
+        ents = debate.entities("OpenAI can add capacity despite Astra-driven load; no OpenAI-confirmed Pro-signup reopening")
+        self.assertIn("Astra", ents)
+        self.assertNotIn("Astra-driven", ents)
+        self.assertNotIn("Pro-signup", ents)
+        whole = debate.entities("GPT-5 and Llama-3.1 versus US-China export rules")
+        for e in ("GPT-5", "Llama-3.1", "US-China"):
+            self.assertIn(e, whole)
 
     def test_market_lines_are_not_crux_hits(self):
         mk = ("# SECTION 8: PREDICTION MARKETS\n- Kalshi DEX volume above $11,121,712,895 market YES 62% (1d +3 pts)\n")
@@ -629,6 +710,37 @@ class MarketGateTests(unittest.TestCase):
         # ... and is never a crux hit shown to the responders
         res = debate.crux_search(terms, {"package": pkg, "raw": raw, "social": ""}, [], loc)
         self.assertFalse([h for h in res["hits"] if "59.5%" in h["text"] or debate.odds_line(h["text"])])
+
+    def test_odds_line_is_market_class_not_data(self):
+        odds = "- Total 24h DEX volume above $11,121,712,895 on Friday? YES 62% (1d +3 pts)"
+        loc = locator("# SECTION 8: PREDICTION MARKETS\n" + odds + "\n")
+        self.assertEqual(debate.ev_class(loc.locate(odds), loc), "market")
+        self.assertEqual(debate.ev_class(loc.locate("- Current: $86,610,000,000"), loc), "data")
+        qq = {"id": "q1", "kind": "threshold"}
+        p = {"trader": {"q1": 70}, "analyst": {"q1": 30}}
+        evq = {"trader": {"q1": [{"status": "verified", "cls": debate.ev_class(loc.locate(odds), loc)}]},
+               "analyst": {"q1": [{"status": "verified", "cls": "data"}]}}
+        self.assertEqual(debate.eligible_agents(qq, p, evq, ["trader", "analyst"]), ["analyst"])
+        # a market odds line is no lens quote
+        lens = {"trader": {"text": odds + "\n- Hyperliquid open interest reached $9.8B"}}
+        take = {"positions": [{"question_id": "q1", "evidence": [{"quote": odds}]}]}
+        self.assertEqual(debate.lens_quote_share({"trader": take}, lens)["per_agent"]["trader"], 0.0)
+        # the raw Polymarket and Kalshi blocks are no lens's data until the e1 probe measures them
+        for a, entries in debate.LENS_RAW.items():
+            self.assertFalse([e for e in entries if "Polymarket" in e or "Kalshi" in e], a)
+
+    def test_gate_drops_a_settled_question(self):
+        settled = "- [coindesk.com] SEC delays decision on spot SOL ETF to November 14 https://www.coindesk.com/a/123456789"
+        qs = [q("Will the SEC decide on a spot SOL ETF by 2026-10-20?", kind="event", bq="",
+                settled="SEC delays decision on spot SOL ETF to November 14"),
+              q("Will the SEC approve a spot XRP ETF by 2026-10-20?", kind="event", bq="", settled="SEC approves XRP fund"),
+              q("Will TVL stay above 86B by 10-11?")]
+        r = debate.gate_questions(qs, "2026-10-04", locator())
+        self.assertEqual([x["text"] for x in r["kept"]], ["Will the SEC approve a spot XRP ETF by 2026-10-20?",
+                                                          "Will TVL stay above 86B by 10-11?"])
+        self.assertTrue(r["dropped"][0]["reason"].startswith("the package already settles it"))
+        self.assertTrue(any("settled_quote not found" in n for n in r["notes"]))
+        self.assertIn(settled[2:40], locator().raw_docs["package"])
 
     def test_gate_drops_a_priced_question(self):
         qs = [q("Will Bitcoin trade above $84,000 on October 11?", lenses=["trader", "analyst"]),
@@ -747,6 +859,36 @@ class SplitSheetTests(unittest.TestCase):
         mc = sh["blocks"][0]["minority_case"]
         self.assertEqual(mc["source"], "reason")
         self.assertIn(mc["text"], ("Outflows break the floor.", "Users are leaving."))
+
+    def test_crux_check_shown_only_when_its_quote_held(self):
+        vals = dict(zip(AG, [60, 65, 70, 75, 80, 85, 62, 25, 40]))
+        qs = [{"id": "q1", "text": "Will TVL stay above 86B by 10-11?", "weight": 2, "resolves_on": "2026-10-11",
+               "settles_with": "DeFiLlama total TVL", "ledger_id": "2026-10-04-q1"}]
+        d = {"question_id": "q1", "high": "policy_analyst", "low": "user_agent", "gap_before": 60, "in_split": True,
+             "live_split": True, "crux_agreed": False, "narrowed_on_data": False}
+        tp = {a: {"q1": v} for a, v in vals.items()}
+
+        def cc(status, qualifies):
+            return {"question_id": "q1", "quote_status": status,
+                    "data": {"resolved": "no" if status != "verified" else "partly", "leans": "higher",
+                             "what_the_data_says": "TVL printed 91.4B on Friday.", "quote": "- Current: $86,610,000,000",
+                             "quote_qualifies": qualifies,
+                             "settles_on": {"observable": "the referee's own series", "by_date": "2026-10-20"}}}
+        for status, qual, shown in (("verified", True, True), ("unverified", False, False), ("partial", True, False),
+                                    ("verified", False, False)):
+            with self.subTest(status=status, qualifies=qual):
+                sh = debate.split_sheet("2026-10-04", "2026-10-04", "debate", qs, tp, tp, [d], {}, {}, mk_takes(vals),
+                                        locator(), 20, crux_check=cc(status, qual))
+                bl = sh["blocks"][0]
+                text = debate.render_split_sheet(sh)
+                if shown:
+                    self.assertEqual(bl["crux_check"]["resolved"], "partly")
+                    self.assertEqual(bl["settles_on"], {"observable": "the referee's own series", "by_date": "2026-10-20"})
+                    self.assertIn("Data check:", text)
+                else:
+                    self.assertIsNone(bl["crux_check"])
+                    self.assertNotIn("91.4B", text)
+                    self.assertEqual(bl["settles_on"], {"observable": "DeFiLlama total TVL", "by_date": "2026-10-11"})
 
     def test_debated_down_on_argument_still_a_block(self):
         vals = dict(zip(AG, [55, 58, 60, 62, 57, 59, 61, 56, 50]))

@@ -299,7 +299,7 @@ def _dry_questions(prompt: str, item_schema: dict, gen) -> list[dict]:
         kind = kinds[k]
         o.update({"id": f"q{k + 1}", "kind": kind, "domain": domains[k],
                   "text": f"Will {(bq or 'the package figure')[2:62].strip()} hold through day+7 (item {k + 1})?",
-                  "baseline_quote": bq if kind in ("threshold", "direction") else "",
+                  "baseline_quote": bq if kind in ("threshold", "direction") else "", "settled_quote": "",
                   "resolves_on": "" if kind == "judgment" else _plus_days(day, 7),
                   "settles_with": "the same package line on the resolution day",
                   "metric": "the figure in the baseline line" if kind in ("threshold", "direction") else "",

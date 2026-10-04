@@ -22,7 +22,9 @@ WHAT THE LENSES SAID OTHERS WOULD MISS (last run):
      (macro, flows, regulation, adoption, product or risk pulling different ways). Drop any question
      you expect every lens to answer below 15% or above 85%, and any question that a market price or a
      prediction-market probability quoted in the package already answers (every lens would copy that
-     number). At most one question is a pure price-level threshold;
+     number), or that an item already in the package settles (the event in settles_with is already
+     reported, the level already crossed): every lens would argue over whether that item counts. Ask
+     about the next step instead. At most one question is a pure price-level threshold;
    - kind: threshold (a number above or below a level on a date), event (a dated event happens or not),
      direction (a measured series up or down over a stated window), or judgment (no clean data; at most one);
    - resolves_on: a date 1 to 30 days after {{day}} (empty only for judgment); settles_with: the exact
@@ -30,6 +32,8 @@ WHAT THE LENSES SAID OTHERS WOULD MISS (last run):
    - for threshold and direction: metric, comparator and threshold, and baseline_quote — the package line
      that gives today's value, copied character for character (a program checks it; a question whose
      baseline is not in the package is dropped);
+   - settled_quote: if a package line already reports what settles_with names, copy that line character
+     for character (a program checks it and drops the question); otherwise empty;
    - domain; together the questions cover markets_crypto, macro_policy and ai_product;
    - lenses: the 2-5 lenses best placed to answer; weight: 3 if the answer changes what a reader in
      crypto, prediction markets or AI education does this week, 2 if it matters this month, else 1;

@@ -9,8 +9,8 @@
 # This launcher loads the env file itself, takes a lock so two runs never overlap, logs to
 # logs/cron.log, and sends ONE Telegram message when the run fails or no brief lands.
 # Pipeline: the Python orchestrator (recon/orchestrator.py, Phase B) since 2026-10-04, after two
-# live validation runs. If it fails and no brief landed, it is retried once with --resume (only the
-# failed phase and the ones after it run again). The bash pipeline (run_recon.sh) runs on the same
+# live validation runs. If it does not finish (no fresh run.json: record, the last phase, writes it after
+# deliver), it is retried once with --resume (only the failed phase and the ones after it run again). The bash pipeline (run_recon.sh) runs on the same
 # day's package only when the orchestrator produced no takes, and only after the orchestrator's memory
 # snapshot is put back (orchestrator.py --restore-state), so bash never writes a second memory and state
 # entry for the day. Tagged runs (--run-id) never fall back to bash: run_recon.sh writes briefs/<today>.
@@ -98,38 +98,54 @@ echo "[$(stamp)] cron_run: start $PIPELINE (run $RUN, debate ${RECON_DEBATE:-tag
 brief_landed() {
     [ -f "$BRIEF" ] && [ "$(stat -c %Y "$BRIEF")" -ge "$started" ] && head -c 400 "$BRIEF" | grep -q '^# RECON DAILY BRIEF'
 }
+# The orchestrator writes 07_daily_brief.md inside its synthesis phase, before checks, deliver (Telegram,
+# archive, knowledge DB) and record. A run that dies after synthesis has a fresh brief that was never sent,
+# so for the orchestrator success is run.json (written by record, the last phase, after deliver) newer than
+# the start; --resume then redoes only checks / deliver / record. The bash pipeline keeps brief_landed.
+RUN_JSON="$RECON_HOME/briefs/$RUN/run.json"
+orch_done() {
+    brief_landed && [ -f "$RUN_JSON" ] && [ "$(stat -c %Y "$RUN_JSON")" -ge "$started" ]
+}
 
 if [ "$PIPELINE" = "bash" ]; then
     timeout --kill-after=120 3h /bin/bash "$RECON_HOME/scripts/run_recon.sh" "$@"; rc=$?
 else
     timeout --kill-after=120 2h python3 "$RECON_HOME/recon/orchestrator.py" "$@"; rc=$?
     # First fallback: one --resume of the orchestrator, which redoes only the failed phase and those after it
-    if ! brief_landed; then
-        echo "[$(stamp)] orchestrator exit $rc, no brief: retrying once with --resume"
+    # (a brief written by synthesis but never delivered or recorded counts as not done: orch_done)
+    if ! orch_done; then
+        if brief_landed; then why_retry="brief written but run not finished (deliver or record missing)"; else why_retry="no brief"; fi
+        echo "[$(stamp)] orchestrator exit $rc, $why_retry: retrying once with --resume"
         timeout --kill-after=120 1h python3 "$RECON_HOME/recon/orchestrator.py" "${RESUME_ARGS[@]}" --resume; rc=$?
     fi
     # Last fallback: the bash pipeline, only when the orchestrator produced no takes (a v1 run is ~61 calls),
     # never for a tagged run, and only after the orchestrator's memory snapshot is put back
-    if ! brief_landed; then
+    if ! orch_done; then
         if [ -n "$RUN_ID" ]; then
-            echo "[$(stamp)] orchestrator --resume exit $rc, no brief for tagged run $RUN_ID: no bash fallback"
+            echo "[$(stamp)] orchestrator --resume exit $rc, run not finished for tagged run $RUN_ID: no bash fallback"
         elif [ -f "$RECON_HOME/briefs/$RUN/phases/takes.json" ]; then
-            echo "[$(stamp)] orchestrator --resume exit $rc, no brief, but takes exist: no bash fallback (it would redo ~61 calls)"
+            echo "[$(stamp)] orchestrator --resume exit $rc, run not finished, but takes exist: no bash fallback (it would redo ~61 calls)"
         else
             echo "[$(stamp)] orchestrator --resume exit $rc, no takes: restoring memory, then run_recon.sh --skip-collect"
             python3 "$RECON_HOME/recon/orchestrator.py" "${RESUME_ARGS[@]}" --restore-state || echo "[$(stamp)] --restore-state failed (exit $?)"
             timeout --kill-after=120 2h /bin/bash "$RECON_HOME/scripts/run_recon.sh" --skip-collect "$@"; rc=$?
+            used_bash=1
         fi
     fi
 fi
 
 landed=0
-brief_landed && landed=1
+if [ "$PIPELINE" = "bash" ] || [ "${used_bash:-0}" = 1 ]; then
+    brief_landed && landed=1
+else
+    orch_done && landed=1
+fi
 
 mins=$(( ($(date +%s) - started) / 60 ))
 if [ "$rc" -ne 0 ] || [ "$landed" -ne 1 ]; then
     why="exit $rc"; [ "$rc" -eq 124 ] && why="timed out"
     [ "$rc" -eq 0 ] && why="no brief was written"
+    [ "$landed" -ne 1 ] && brief_landed && why="$why; a brief was written but the run did not finish (deliver or record), so it may not have been sent"
     last=$(grep -v '^\s*$' "$DAY_LOG" 2>/dev/null | tail -n 4 | cut -c1-200)
     alert "RECON daily brief failed on $TODAY ($why, ${mins} min). Last log lines:
 $last

@@ -957,7 +957,7 @@ SECTOR CONTEXT (crypto and macro landscape; background, not today's data):
             q = (e.get("quote") or "").strip()
             loc = self.locator().locate(q) if q else {"status": "empty", "cls": "", "doc": None, "line": None}
             out.append({"section": e.get("section", "") or "", "quote": q[:300], "status": loc["status"],
-                        "cls": loc.get("cls") or "", "doc": loc.get("doc"), "line": loc.get("line")})
+                        "cls": debate.ev_class(loc, self.locator()), "doc": loc.get("doc"), "line": loc.get("line")})
         return out
 
     def take_evidence(self, takes: dict) -> dict:
@@ -1119,11 +1119,16 @@ SECTOR CONTEXT (crypto and macro landscape; background, not today's data):
         d = self.docs()
         return {"raw": d["raw"], "package": d["package"], "social": d["social"]}
 
-    def search_terms(self, texts: list[str], question: str = "") -> dict:
+    def search_terms(self, texts: list[str], question: str = "", kind: str = "") -> dict:
+        """The crux terms of a pair or the red team (§6). The question's own entities never score a hit or
+        qualify a quote, on any kind of question ('BTC' on a BTC price question: debate.shares_specific).
+        Only an event or judgment question pins them, so crux-search hits that also name the subject rank
+        first; a threshold or direction question pins nothing."""
         docs = self.corpus_docs()
         vocab = debate.lowercase_vocab(docs.values())
-        keep = debate.entities(question, vocab) if question else []
-        return debate.drop_frequent_entities(debate.crux_terms(texts, vocab), docs, keep_always=keep)
+        subj = debate.entities(question, vocab) if question else []
+        keep = subj if kind in ("event", "judgment") else []
+        return debate.drop_frequent_entities(debate.crux_terms(texts, vocab), docs, keep_always=keep, subject=subj)
 
     def redteam_search(self, rec: dict, takes: dict) -> dict:
         """§6 on a consensus day: the crux search on the red team's crux, stored under 'redteam'."""
@@ -1132,7 +1137,7 @@ SECTOR CONTEXT (crypto and macro landscape; background, not today's data):
                  (dd.get("would_change_my_mind") or {}).get("observable", "")]
         tri = (self.load("triage") if self.art("triage").exists() else {}).get("data") or {}
         qrec = next((x for x in tri.get("questions", []) if x.get("id") == rec["question_id"]), {})
-        terms = self.search_terms(texts, qrec.get("text", ""))
+        terms = self.search_terms(texts, qrec.get("text", ""), qrec.get("kind", ""))
         excl = [q for t in takes.values() for q in take_quotes(t)] + rec_quotes(rec)
         res = debate.crux_search(terms, self.corpus_docs(), excl, self.locator(),
                                  exclude_positions=debate.quote_positions(excl, self.locator()))
@@ -1158,7 +1163,7 @@ SECTOR CONTEXT (crypto and macro landscape; background, not today's data):
                 dd = (rec or {}).get("data") or {}
                 texts += [(dd.get("crux") or {}).get("claim", ""), (dd.get("crux") or {}).get("observable", ""),
                           (dd.get("would_change_my_mind") or {}).get("observable", "")]
-            terms = self.search_terms(texts, (qm.get(qid) or {}).get("text", ""))
+            terms = self.search_terms(texts, (qm.get(qid) or {}).get("text", ""), (qm.get(qid) or {}).get("kind", ""))
             excl = take_quotes(takes[hi]) + take_quotes(takes[lo]) + rec_quotes(by_hi) + rec_quotes(by_lo)
             res = debate.crux_search(terms, self.corpus_docs(), excl, self.locator(),
                                      exclude_positions=debate.quote_positions(excl, self.locator()))
@@ -1340,14 +1345,19 @@ SECTOR CONTEXT (crypto and macro landscape; background, not today's data):
             data["resolved"] = "no"
             flags.append("referee quote not found")
         # Only a quote that would qualify a move can confirm a closure (§8, §9.1): a single verbatim data line,
-        # not social, not a prediction-market odds line. Otherwise the verdict stands but confirms nothing.
+        # not social, not a prediction-market odds line, and about the crux: a crux number, or a crux entity
+        # (not frequent, not the question's subject) with a number, or on an event or judgment question alone
+        # (shares_specific against the pair's crux terms, as for a move). Otherwise the verdict stands but
+        # confirms nothing, and the split sheet does not show it (debate.crux_check_usable).
         st = self.locator().strict(quote) if quote else {"ok": False}
         market = bool(st.get("ok")) and debate.is_market_line(st.get("section", ""),
                                                               self.locator().line_text(st["doc"], st["line"]) or quote)
-        data["quote_qualifies"] = bool(st.get("ok") and st.get("cls") == "data" and not market)
+        about = debate.shares_specific(quote, c["entry"].get("crux_terms") or {}, q.get("kind", "")) if quote else False
+        data["quote_qualifies"] = bool(st.get("ok") and st.get("cls") == "data" and not market and about)
         if data.get("resolved") != "no" and not data["quote_qualifies"]:
             flags.append("referee quote " + ("is a prediction-market odds line" if market else
-                                             "is a social line" if st.get("ok") else
+                                             "is a social line" if st.get("ok") and st.get("cls") != "data" else
+                                             "is not about the crux (no crux number or entity)" if st.get("ok") else
                                              f"fails the strict check ({st.get('reason') or 'not found'})")
                          + ": confirms nothing")
         self.log(f"  Crux check [{qid}]: resolved {data.get('resolved')}, leans {data.get('leans')}"
@@ -1475,7 +1485,8 @@ SECTOR CONTEXT (crypto and macro landscape; background, not today's data):
         red = next((r for r in chs.values() if r.get("type") == "redteam"), None)
         red_in = ({"question_id": red["question_id"], "data": {**red["anon"], "evidence": red["data"].get("evidence", [])}}
                   if red else None)
-        crux = {"question_id": cc["question_id"], "data": cc["data"]} if cc.get("ran") else None
+        crux = ({"question_id": cc["question_id"], "data": cc["data"], "quote_status": cc.get("quote_status")}
+                if cc.get("ran") else None)
         ledger = self.read_ledger()
         day_type = pairing.get("day_type", "no_questions")
         sheet = debate.split_sheet(self.day, self.run_id, day_type, qs, pos["take_p"], pos["final"], pos["debates"],
@@ -1582,8 +1593,11 @@ SECTOR CONTEXT (crypto and macro landscape; background, not today's data):
                   f"Crux: {(dr.get('crux') or {}).get('claim', '')}", ""]
         if cc.get("ran"):
             dc = cc["data"]
+            shown = debate.crux_check_usable(cc)
             r += ["## CRUX CHECK", f"[{cc['question_id']}] resolved {dc.get('resolved')}, leans {dc.get('leans')}: "
-                  f"{dc.get('what_the_data_says', '')} (\"{dc.get('quote', '')}\")", ""]
+                  f"{dc.get('what_the_data_says', '')} (\"{dc.get('quote', '')}\")"
+                  + ("" if shown else f" — NOT IN THE SPLIT SHEET: quote {cc.get('quote_status')}, "
+                                      f"qualifies {dc.get('quote_qualifies')}"), ""]
         r += ["## SPLIT SHEET", read(self.dir / "07_split_sheet.md")]
         sc = self.scorecard()
         if sc:

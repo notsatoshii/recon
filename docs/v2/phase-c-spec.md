@@ -118,13 +118,16 @@ re-asks included. It is a planning budget, applied by pairing after the takes:
 ```python
 free  = budget - used - synth_calls          # used: calls so far; synth_calls: 2 until Phase D drops the filter, then 1
 with_crux, without_crux = (free - 1) // 4, free // 4    # a pair costs 4 calls (2 challenges, 2 responses)
-if with_crux >= depth_target:      target, crux_check = depth_target, True
-elif without_crux > with_crux:     target, crux_check = min(depth_target, without_crux), False   # drop the crux check first
-else:                              target, crux_check = with_crux, True                            # then fewer pairs
+if with_crux >= 1:   target, crux_check = min(depth_target, with_crux), True        # the last pair goes first
+else:                target, crux_check = min(depth_target, without_crux), False    # no pair fits with it
 ```
 
-So the order of sacrifice is the crux check, then the triage re-ask (made only when ≤ 1 question
-survives the gate, §2.4), then pairs (the lowest-scoring first). `crux_check_planned` is computed after
+So the order of sacrifice is the last pair (the lowest-scoring), then the crux check once no pair fits
+beside it, then the triage re-ask (made only when ≤ 1 question survives the gate, §2.4). Fifth review
+(2026-10-04, decision): the 09-10 c1 replay staged 3 pairs, reached 22 of 24 calls and dropped the crux
+check, and no debate on 09-10 or 09-11 was useful; the crux check is the only way a closure on data is
+confirmed (§8), so a clean normal day is 2 pairs + the crux check (21 of 24) until Phase D drops the
+filter call. The crux check still runs only when the crux search has a hit. `crux_check_planned` is computed after
 `pair()` returns, from the pairs that actually formed (`budget − used − synth − 4 × pairs − red team ≥ 1`),
 not from the depth target, and `ph_cruxcheck` decides again from the calls actually made
 (`used + 1 + synth ≤ budget`): a day with fewer pairs than the target, or a consensus day, gets the crux
@@ -228,6 +231,12 @@ recorded under `triage.json → gate.dropped[]`, when:
    (another entity, one of its numbers, or two content words: "Fed" + "hike" + "rate"). `debate.market_match`;
    reason "a prediction market already prices it". The prompt rule of §13.2 had no programmatic check, and
    the probe's measured failure was takes anchoring on a quoted market price (9 of 9 at 60 %).
+8. `kind != judgment` and its `settled_quote` verifies (`verified` or `partial`): the package already
+   reports what `settles_with` names, so the lenses would argue over whether that item counts (sixth
+   review: the widest 09-10 c1 split, 94 vs 36, was on 'Will a major AI provider announce
+   school-specific privacy or safety rules by 09-30?' beside 'Microsoft has new AI privacy rules for
+   schools'). Reason "the package already settles it"; a `settled_quote` that is not found is a note.
+   `questions.md` asks triage not to ask such a question and to name the line when it does.
 
 `lenses` is cleaned to valid active agents; if fewer than 2 remain it is filled from the
 domain's default lenses (`DOMAIN_LENSES` in `recon/debate.py`: markets_crypto → trader, analyst;
@@ -332,8 +341,16 @@ Four changes:
 
    | # | agent | entries (in order) |
    |---|---|---|
-   | 1 | macro_strategist | `# World Monitor Intelligence` (package), `# Kalshi Intelligence`, `news~` MACRO, `## ECONOMICS` and `## POLITICS` (Reddit) |
-   | 2 | trader | `# Polymarket Intelligence`, `# Kalshi Intelligence`, `news~` TRADER |
+   | 1 | macro_strategist | `# World Monitor Intelligence` (package), `news~` MACRO, `## ECONOMICS` and `## POLITICS` (Reddit) |
+   | 2 | trader | `news~` TRADER |
+
+   Sixth review (2026-10-04): the raw `# Polymarket Intelligence` and `# Kalshi Intelligence` blocks are
+   no lens's data until the e1 probe (§15.0) measures them. `take.md` asks for one lens quote per
+   position, so trader would have cited a market odds line on every question, the anchoring the first
+   probe measured (9 of 9 at 60 %). Odds lines anywhere else are evidence class `market`
+   (`debate.ev_class`), not `data`: they do not count as the lens quote (`take.md`, `lens_quote_share`)
+   or as the data quote that makes an agent eligible as a debate endpoint (§4), and are never a data
+   quote in the split sheet or the lens notes.
    | 3 | analyst | `## CRYPTO / WEB3 ROUNDS`, `## AI ROUNDS` (fundraising), `## CROSS-SOURCE SIGNALS` (package), `news~` ANALYST |
    | 4 | skeptic | `news~` SKEPTIC, `## 5. Controversy & Risk Flags`, `## 2. Narrative Analysis`, `## 3. Divergences` (package, BettaFish) |
    | 5 | policy_analyst | `## KOREA — CRYPTO & MARKETS`, `news~` POLICY, `# ZDNet Korea Intelligence` |
@@ -572,9 +589,17 @@ other side's challenge still goes to its target; the pair is marked `one-sided`.
 ## 6. Crux search (programmatic, between C and R)
 
 Fourth review: prediction-market odds lines (`debate.is_market_line`: PREDICTION MARKETS section with a
-probability, or odds by content in any section, `debate.odds_line`, fifth review) are never crux hits (they are what traders believe, not data on the crux), and the entities of
-the question itself are kept however frequent they are (`drop_frequent_entities(keep_always=…)`), so an
-event question about South Korea and Hormuz can still find lines about South Korea and Hormuz.
+probability, or odds by content in any section, `debate.odds_line`, fifth review) are never crux hits (they are what traders believe, not data on the crux).
+
+Sixth review (2026-10-04): the question's own entities are its `subject` on every kind of question
+(plus `SUBJECT_ALIASES`: BTC/Bitcoin, ETH/Ethereum, SOL/Solana, XRP/Ripple). They never score a crux hit
+or qualify a quote, however rare they are: on the 10-04 fixture a BTC/$87,500 crux let 10 strict data
+lines qualify, 'BTC dominance: 58.6%' and 'BTC mined (24h): 403.12 BTC' among them, and the same lines
+filled the crux block each responder is told is worth +10 a line. Only an event or judgment question pins
+its subject (`drop_frequent_entities(keep_always=…, subject=…)` → `pinned`), and a pin only ranks hits of
+equal score (lines about the subject first). A hit scores on crux numbers, crux metric words and crux
+entities that are neither frequent nor the subject. Hyphenated compounds with a lower-case part are split
+(`Astra-driven` → `Astra`, `Pro-signup` → `Pro`); proper compounds stay whole (`GPT-5`, `US-China`).
 
 Written to `phases/cruxsearch.json` at the start of the responses phase (so `--from-phase
 responses` re-runs it). On a consensus day it runs after the red-team call instead, on the red
@@ -2064,3 +2089,15 @@ Path: `docs/v2/phase-c-spec.md`.
 | 52 | medium | Cron fallback ran the whole v1 pipeline after the orchestrator's memory phase; tagged runs had the debate forced off and their brief looked for in briefs/<today> | One `--resume` retry first; bash only with no takes, after `--restore-state`; `--run-id` sets the brief path and leaves `RECON_DEBATE` unset | cron_run.sh |
 | 53 | medium | Take re-asked on persona prose ('I can't …'); takes exempt from the ceiling, so the §16 worst case was wrong | Re-ask only on missing positions, `RECON_TAKE_REASKS` per run; §16 corrected | §16 |
 | 54 | medium | Synthesizer persona still asked for bull/bear splits in WHAT IT MEANS | Persona: direct conclusions only; splits only in WHERE THE VIEWS SPLIT | §11.4 |
+
+### 20.4 Sixth review (2026-10-04, the evidence gate and the c1 replays)
+
+| # | Severity | Finding | Change | Where |
+|---|---|---|---|---|
+| 55 | high | Question entities were pinned on every kind and any crux-entity line with any number qualified: 'BTC dominance: 58.6%' qualified on a BTC price crux; on event questions any headline naming the subject did; the same lines filled the crux block | The question's entities are its `subject` (every kind, with aliases): never score a hit or qualify; pinned (rank only) on event and judgment questions; threshold/direction need a crux number or a non-subject, non-frequent entity with a number; event/judgment need a non-subject crux entity; 10-04 fixture test | §6, §7.2 |
+| 56 | high | Two movers on crux data: any lean but 'neither' confirmed both and dropped the block; the referee's quote was never checked against the crux | Confirm only with exactly one mover and `leans` its way; `quote_qualifies` also needs `shares_specific` against the pair's crux terms; two-mover test | §8, §9.1 |
+| 57 | medium | `cron_run.sh` took a fresh 07_daily_brief.md (written in synthesis) as success, so a run dying in checks or deliver was never resumed or sent | Orchestrator success = fresh `run.json` (record, after deliver); a brief without it gets the `--resume`; bash path unchanged; fake-orchestrator test | cron_run.sh |
+| 58 | medium | A crux check whose quote failed still put the referee's text and settles_on into the split sheet | Shown only when `quote_status` is verified and `quote_qualifies` (`crux_check_usable`); else null and the question's own settles_with | §11.2 |
+| 59 | medium | Trader's lens data was the Polymarket and Kalshi blocks, so every take cited an odds line; odds lines counted as data for endpoint eligibility | Raw odds blocks out of `LENS_RAW` until the e1 probe; odds lines are class `market` (not data, not a lens quote); `take.md` says so | §3, §4 |
+| 60 | medium | No debate useful on 09-10 / 09-11 c1: the crux check was budget-dropped on the 3-pair day; the 09-11 crux search found nothing | The last pair goes before the crux check (2 pairs + crux check = 21 of 24); hyphenated entities split. The 09-11 Pro line was quoted by both sides, so it is excluded by design (§6: lines neither side quoted) | §1.1, §6 |
+| 61 | medium | The widest 09-10 split was on a question a package item already settled ('Microsoft has new AI privacy rules for schools') | Triage: `settled_quote` and the rule not to ask a question the package settles; gate rule 8 drops a question whose `settled_quote` is found | §2.4, §12.2 |

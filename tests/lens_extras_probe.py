@@ -42,18 +42,19 @@ WARN_BELOW = 2000
 # picked from what the measured views leave out: on 09-10, 09-11 and 10-04 every on-chain, World
 # Monitor and AI & Tools line is already in the view, so those headings add nothing. Table order
 # matters: a line goes to the first agent (in this order) that picks it, so the narrow lenses come
-# first and the broad ones (whole Reddit and X blocks) last; macro_strategist precedes trader so
-# Kalshi goes to macro and Polymarket to trader.
+# first and the broad ones (whole Reddit and X blocks) last. The raw Polymarket and Kalshi blocks are
+# no lens's data (sixth review, 2026-10-04): take.md asks for one lens quote per position, so trader
+# would have cited a market odds line on every question, the anchoring the first probe measured (9 of 9
+# at 60 %). They come back only if the e1 probe (phase-c-spec §15.0) measures them.
 LENS_RAW: dict[str, list[str]] = {
     "macro_strategist": [
-        "# World Monitor Intelligence", "# Kalshi Intelligence",
+        "# World Monitor Intelligence",
         r"news~\bFed\b|FOMC|\bCPI\b|inflation|payroll|jobs report|tariff|treasur|\byields?\b|\bdollar"
         r"|\bDXY\b|recession|\bGDP\b|rate cut|rate hike|\bECB\b|\bBOJ\b|Powell|\boil\b|sanction|shutdown"
         r"|election|midterm|geopolit|China|Iran|Russia|Ukraine|Israel",
         "## ECONOMICS", "## POLITICS",
     ],
     "trader": [
-        "# Polymarket Intelligence", "# Kalshi Intelligence",
         r"news~liquidat|funding rate|open interest|short squeeze|whale|leverag|\boptions\b|\bperps?\b"
         r"|ETF.{0,12}(in|out)flow|\bsupport\b|\bresistance\b|\bshorts?\b|\blongs?\b",
     ],

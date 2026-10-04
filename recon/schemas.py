@@ -83,6 +83,8 @@ QUESTION = obj(
     comparator=enum([">", ">=", "<", "<=", ""]),
     threshold=s("the level as written, e.g. 86.61B; empty when not a threshold"),
     baseline_quote=s("the package line giving today's value, copied verbatim; empty for judgment"),
+    settled_quote=s("a package line that already reports what settles_with names (the event happened, the level "
+                    "was crossed), copied verbatim; empty when nothing in the package settles it"),
     resolves_on=DATE,
     settles_with=s("the observable or event and where it is published"),
     lenses=arr(enum(AGENTS)),
@@ -208,7 +210,7 @@ LEGACY = {"challenge": CHALLENGE, "response": RESPONSE, "deep_dive": DEEP_DIVE}
 P = i("integer 0-100")
 EV_STATUS = ["verified", "partial", "unverified", "empty"]
 EV_CHECKED = obj(section=s(), quote=s(), status=enum(EV_STATUS),
-                 cls=enum(["data", "social", ""]), doc=nullable(s()), line=nullable(i()))
+                 cls=enum(["data", "social", "market", ""]), doc=nullable(s()), line=nullable(i()))
 PAIR = obj(question_id=s(), high=enum(AGENTS), low=enum(AGENTS), p_high=P, p_low=P,
            gap=i(), score=num(), both_lenses=b(), repeat_of_yesterday=b())
 PAIRING = obj(
@@ -223,7 +225,7 @@ PAIRING = obj(
     budget=obj(used=i(), budget=i(), ceiling=i(), target_before_budget=i(), crux_check_planned=b()),
     debate=obj(enabled=b(), reason=s("why the debate is off (RECON_DEBATE, §0.1/§18); empty when on")),
 )
-EV_NEW = obj(section=s(), quote=s(), status=enum(EV_STATUS), cls=enum(["data", "social", ""]),
+EV_NEW = obj(section=s(), quote=s(), status=enum(EV_STATUS), cls=enum(["data", "social", "market", ""]),
              new_evidence_source=enum(["crux_data", "challenger", "own", "other"]), qualifies=b())
 SIDE_MOVE = obj(agent=enum(AGENTS), take=P, requested=nullable(P), gated=P, delta=i(),
                 clamped=b(), rescaled=b(), new_evidence=arr(EV_NEW),

@@ -50,6 +50,10 @@
    "type": "string",
    "description": "the package line giving today's value, copied verbatim; empty for judgment"
   },
+  "settled_quote": {
+   "type": "string",
+   "description": "a package line that already reports what settles_with names (the event happened, the level was crossed), copied verbatim; empty when nothing in the package settles it"
+  },
   "resolves_on": {
    "type": "string",
    "description": "YYYY-MM-DD or empty"
@@ -93,6 +97,7 @@
   "comparator",
   "threshold",
   "baseline_quote",
+  "settled_quote",
   "resolves_on",
   "settles_with",
   "lenses",

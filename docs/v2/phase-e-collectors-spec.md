@@ -554,8 +554,8 @@ same commit, because `collect_data.sh`, `run_recon.sh` and the orchestrator are 
 
    | # | agent | entries (in order) |
    |---|---|---|
-   | 1 | macro_strategist | `# World Monitor Intelligence` (package), `# Kalshi Intelligence`, `news~` MACRO, `## ECONOMICS` and `## POLITICS` (Reddit) |
-   | 2 | trader | `# Polymarket Intelligence`, `# Kalshi Intelligence`, `news~` TRADER |
+   | 1 | macro_strategist | `# World Monitor Intelligence` (package), `news~` MACRO, `## ECONOMICS` and `## POLITICS` (Reddit) (`# Kalshi Intelligence` removed, Phase C sixth review: see phase-c-spec §3) |
+   | 2 | trader | `news~` TRADER (`# Polymarket Intelligence` and `# Kalshi Intelligence` removed until the e1 probe measures them: every take cited an odds line as its lens quote) |
    | 3 | analyst | `## CRYPTO / WEB3 ROUNDS`, `## AI ROUNDS` (fundraising), `## CROSS-SOURCE SIGNALS` (package), `news~` ANALYST |
    | 4 | skeptic | `news~` SKEPTIC, `## 5. Controversy & Risk Flags`, `## 2. Narrative Analysis`, `## 3. Divergences` (package, BettaFish) |
    | 5 | policy_analyst | `## KOREA — CRYPTO & MARKETS`, `news~` POLICY, `# ZDNet Korea Intelligence` |
