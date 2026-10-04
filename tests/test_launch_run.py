@@ -83,8 +83,16 @@ class SyncTests(unittest.TestCase):
     def tearDown(self):
         shutil.rmtree(self.tmp, ignore_errors=True)
 
+    def foreign(self):
+        """Every repo foreign-owned, except the local bare origin (on the droplet it is GitHub; git also checks a
+        local origin's owner in upload-pack, and clears GIT_CONFIG_* env config for it, so the origin is trusted
+        in a scratch global config)."""
+        cfg = self.tmp / "global.cfg"
+        cfg.write_text(f"[safe]\n\tdirectory = {self.origin.resolve().as_posix()}\n", encoding="utf-8")
+        return mock.patch.dict(os.environ, {"GIT_TEST_ASSUME_DIFFERENT_OWNER": "1", "GIT_CONFIG_GLOBAL": str(cfg)})
+
     def test_foreign_owned_checkout_is_pulled(self):
-        with mock.patch.dict(os.environ, {"GIT_TEST_ASSUME_DIFFERENT_OWNER": "1"}):
+        with self.foreign():
             plain = subprocess.run(["git", "-C", str(self.co), "pull", "--ff-only"], capture_output=True, text=True)
             self.assertNotEqual(plain.returncode, 0)
             self.assertIn("dubious ownership", plain.stderr)
@@ -124,8 +132,7 @@ class SyncTests(unittest.TestCase):
     def test_print_only_after_sync(self):
         (self.co / "briefs" / "2026-09-11-c13").mkdir(parents=True)
         (self.co / "briefs" / "2026-09-11-c2").mkdir()
-        with mock.patch.dict(os.environ, {"GIT_TEST_ASSUME_DIFFERENT_OWNER": "1"}), \
-                mock.patch("builtins.print") as pr:
+        with self.foreign(), mock.patch("builtins.print") as pr:
             rc = launch_run.main(["2026-09-11", "--home", str(self.co), "--print-only"])
         self.assertEqual(rc, 0)
         pr.assert_called_with("2026-09-11-c14")
