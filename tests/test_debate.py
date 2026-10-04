@@ -1971,3 +1971,48 @@ class ScorecardExpiryTests(unittest.TestCase):
         self.assertEqual(evidence.dates("May 5 may be late; the 2026-09-10 call; 17 September 2026"),
                          [{"raw": "May 5", "key": "05-05", "year": ""}, {"raw": "2026-09-10", "key": "09-10", "year": "2026"},
                           {"raw": "17 September 2026", "key": "09-17", "year": "2026"}])
+
+
+class ThresholdNumberNeedsCruxWordTests(unittest.TestCase):
+    """09-11 c8 q1 ('Will Bitcoin trade below $75,000 by 2026-09-18?'), crux '$75,000': the headline 'Apeing's Crypto
+    Presale Crosses $75K Raised ...' qualified on the crux number alone (source other) and took trader 62 -> 47, a
+    15-point move with no flag, on a presale headline. On a threshold or direction question the crux nearly always
+    repeats the threshold, so a matched number needs a crux entity, a metric word or the question's subject on the
+    same line (the seventh-review small-percentage rule, extended to every figure)."""
+
+    Q = "Will Bitcoin trade below $75,000 by 2026-09-18?"
+    CRUX = ["Bitcoin breaks $75,000 support on ETF outflows before 2026-09-18."]
+    PRESALE = "- [Fri, 11 Sep 2026] Apeing's Crypto Presale Crosses $75K Raised as Early Buyers Pile In"
+    SUBJ = "- [Fri, 11 Sep 2026] Bitcoin slides toward $75K as ETF outflows mount"
+    METRIC = "- BTC support zone: $75,000 price floor tested twice this week"
+
+    def setUp(self):
+        from types import SimpleNamespace
+        from recon.orchestrator import Run
+        filler = [f"- [wire] Unrelated headline number {i} about markets and weather" for i in range(150)]
+        pkg = "\n".join(["# SECTION 4: NEWS INTELLIGENCE"] + filler[:75] + [self.PRESALE, self.SUBJ, self.METRIC]
+                        + filler[75:])
+        self.docs = {"raw": "", "social": "", "package": pkg}
+        self.loc = evidence.Locator({"package": pkg})
+        self.terms = Run.search_terms(SimpleNamespace(corpus_docs=lambda: self.docs), self.CRUX, self.Q, "threshold")
+
+    def test_presale_line_does_not_qualify(self):
+        self.assertEqual([x["raw"] for x in self.terms["numbers"]], ["$75,000"])
+        self.assertIn("Bitcoin", self.terms["subject"])
+        for kind in ("threshold", "direction"):
+            with self.subTest(kind=kind):
+                self.assertFalse(debate.shares_specific(self.PRESALE[2:], self.terms, kind))
+                self.assertTrue(debate.shares_specific(self.SUBJ[2:], self.terms, kind))     # the subject
+                self.assertTrue(debate.shares_specific(self.METRIC[2:], self.terms, kind))   # metric word 'price'
+        self.assertFalse(debate.quote_qualifies(self.PRESALE[2:], self.terms, "threshold", self.loc)["qualifies"])
+
+    def test_presale_line_cannot_lift_the_cap(self):
+        m = debate.gate_move("trader", 62, 47, {"q1": 62}, 30, "narrow", [{"section": "", "quote": self.PRESALE[2:]}],
+                             [], [], [], self.terms, self.loc, kind="threshold")
+        self.assertFalse(m["new_evidence"][0]["qualifies"])
+        self.assertEqual(m["gated"], 57)
+        self.assertIn("evidence not qualifying, capped", m["flags"])
+        ok = debate.gate_move("trader", 62, 47, {"q1": 62}, 30, "narrow", [{"section": "", "quote": self.SUBJ[2:]}],
+                              [], [], [], self.terms, self.loc, kind="threshold")
+        self.assertTrue(ok["new_evidence"][0]["qualifies"])
+        self.assertEqual(ok["gated"], 47)

@@ -1214,6 +1214,17 @@ def shares_term(quote: str, terms: dict) -> bool:
     return bool(h["entities"] or h["numbers"] or h["metrics"] or h["keywords"])
 
 
+def number_backed(line: str, h: dict, terms: dict, kind: str = "") -> bool:
+    """Whether a crux number on the line counts (2026-10-04, §20.7 #80). On a threshold or direction question
+    the cruxes repeat the question's own figure, so any line carrying that figure would match: there the number
+    needs a crux entity, a metric word or the question's subject (`subject`, aliases included) on the same line,
+    as a small percentage already does on every kind (term_hits). Other kinds keep the bare number."""
+    if kind not in ("threshold", "direction"):
+        return True
+    return bool(h.get("entities") or h.get("metrics")
+                or any(_ent_in(str(e), line) for e in terms.get("subject", []) if str(e).strip()))
+
+
 def shares_specific(quote: str, terms: dict, kind: str = "") -> bool:
     """What a qualifying quote needs (§7.2): a crux number (same_number), or a crux entity together with a
     number of its own. The entities are the cruxes' entities minus the frequent ones (> 2% of the corpus
@@ -1223,9 +1234,13 @@ def shares_specific(quote: str, terms: dict, kind: str = "") -> bool:
     than the question's own: a headline that only names the subject says nothing about the crux.
     An entity alone on a threshold or direction question, or a metric word alone, never counts.
     Eighth review: on an event or judgment question the pinned subject plus KEYWORD_PAIR crux keywords counts as
-    a crux entity (subject_keyword_pair; `keywords` is set only on those kinds, orchestrator.search_terms)."""
+    a crux entity (subject_keyword_pair; `keywords` is set only on those kinds, orchestrator.search_terms).
+    §20.7 #80 (2026-10-04, 09-11 c8 q1): on a threshold or direction question the crux nearly always repeats
+    the question's threshold, so a crux number counts only on a line that also carries a crux entity, a metric
+    word or the question's subject (number_backed). 'Apeing's Crypto Presale Crosses $75K Raised ...' qualified
+    on '$75,000' alone on 'Will Bitcoin trade below $75,000 by 2026-09-18?' and moved a side 15 points."""
     h = term_hits(quote or "", terms)
-    if h["numbers"]:
+    if h["numbers"] and number_backed(quote or "", h, terms, kind):
         return True
     if kind in ("event", "judgment") and subject_keyword_pair(h):
         return True
@@ -1763,7 +1778,8 @@ def gate_move(agent: str, take_p: int, requested, own_take_values, other_take_p:
                                f"cited before ({src})" if src in ("own", "challenger") else
                                "prediction-market odds line" if market else
                                "no crux entity beyond the question's subject" if kind in ("event", "judgment")
-                               else "no crux number or entity"))
+                               else "crux number without a crux entity, metric word or the subject"
+                               if term_hits(q, terms)["numbers"] else "no crux number or entity"))
         if qual:
             qual_lines.add(line_key(locator, st["doc"], st["line"]))
         items.append({"section": e.get("section", ""), "quote": q[:300], "status": loc["status"],
