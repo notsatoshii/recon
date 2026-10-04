@@ -112,3 +112,35 @@ class SpreadStabilityTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class GapRatioTests(unittest.TestCase):
+    """Pass-bar item (c) per debate (§20.7 #78): on 09-11 the q3 Hormuz pair went 22 -> 13 on two free moves (0.59,
+    under the 0.6 bar) while the median read 0.7; the report showed only the median."""
+    DEBATES = [{"question_id": "q3", "high": "macro_strategist", "low": "trader", "gap_before": 22, "gap_after": 13},
+               {"question_id": "q4", "high": "skeptic", "low": "builder", "gap_before": 37, "gap_after": 30},
+               {"question_id": "q5", "high": "analyst", "low": "narrator", "gap_before": 30, "gap_after": 21},
+               {"question_id": "q1", "high": "ai_engineer", "low": "user_agent", "gap_before": 30, "gap_after": 5,
+                "closed_on_data": True}]
+
+    def test_each_ratio_beside_the_median(self):
+        per, med = replay_report.gap_ratios(self.DEBATES)
+        self.assertAlmostEqual(med, 0.7)
+        self.assertEqual([x["question_id"] for x in per], ["q3", "q4", "q5"])   # q1 closed on crux data
+        self.assertEqual([x["below_bar"] for x in per], [True, False, False])
+        self.assertEqual(replay_report.render_ratios(per),
+                         "q3 macro_strategist/trader 22->13 0.59 (< 0.6); q4 skeptic/builder 37->30 0.81; "
+                         "q5 analyst/narrator 30->21 0.70")
+
+    def test_report_prints_per_debate_ratios(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            qs = [("q3", HORMUZ, [27, 30, 35, 40, 41, 42, 45, 47, 49])]
+            write_run(root, "2026-09-11-x", qs, 1)
+            pos = root / "2026-09-11-x" / "phases" / "positions.json"
+            data = json.loads(pos.read_text(encoding="utf-8"))
+            data["debates"] = [dict(self.DEBATES[0], effect="narrowed from 22 to 13 on argument")]
+            pos.write_text(json.dumps(data), encoding="utf-8")
+            text, m = replay_report.report(root, "2026-09-11-x", None, None)
+        self.assertEqual(m["gap_ratios_no_crux"][0]["ratio"], 0.591)
+        self.assertIn("0.59 (per debate: q3 macro_strategist/trader 22->13 0.59 (< 0.6))", text)

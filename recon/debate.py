@@ -639,7 +639,12 @@ def pair(questions: list[dict], p: dict, evq: dict, active: list[str], depth: st
             if qa and qa == qb:
                 score -= 5
             cands.append((round(score, 2), gap, vcount(a, qid) + vcount(b, qid), qid, lo, hi, both, rep))
-    cands.sort(key=lambda c: (-c[0], -c[1], -c[2], c[3], c[4], c[5]))
+    # A pair whose gap is under GAP_MIN + 2 x FREE_MOVE can fall below GAP_MIN on the two free moves alone, with
+    # no qualifying evidence, and stop being a held split (09-11 q3 Hormuz, 22 -> 13 on two free moves: the
+    # only debated split lost). Such pairs rank after every pair with that margin, whatever their score; they
+    # are still debated when slots remain (§4.2, §20.7 #78).
+    robust = gap_min + 2 * FREE_MOVE
+    cands.sort(key=lambda c: (c[1] < robust, -c[0], -c[1], -c[2], c[3], c[4], c[5]))
     if off_reason:
         target = 0
     pairs, used_q, load = [], set(), Counter()

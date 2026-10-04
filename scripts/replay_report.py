@@ -65,6 +65,25 @@ def old_metrics(old: dict | None) -> dict:
             "deep_dive": "yes" if any(a.get("deep_dive") for a in agents) else "no"}
 
 
+def gap_ratios(debates: list[dict]) -> tuple[list[dict], float | None]:
+    """Pass-bar item (c): gap_after/gap_before of each debate without crux data, and their median. The median
+    alone hid a pair under the 0.6 bar (09-11 q3 macro_strategist/trader 22 -> 13, 0.59, beside a median of
+    0.7), so the report prints each ratio beside it (§15.5 c, §20.7 #78)."""
+    out = [{"question_id": dd["question_id"], "high": dd.get("high"), "low": dd.get("low"),
+            "gap_before": dd["gap_before"], "gap_after": dd["gap_after"],
+            "ratio": round(dd["gap_after"] / dd["gap_before"], 3), "below_bar": dd["gap_after"] / dd["gap_before"] < 0.6}
+           for dd in debates
+           if not dd.get("closed_on_data") and dd.get("gap_after") is not None and dd.get("gap_before")]
+    med = statistics.median([dd["gap_after"] / dd["gap_before"] for dd in out]) if out else None
+    return out, med
+
+
+def render_ratios(per_debate: list[dict]) -> str:
+    """'q3 macro_strategist/trader 22->13 0.59 (< 0.6)' per debate, '; '-joined."""
+    return "; ".join(f"{x['question_id']} {x['high']}/{x['low']} {x['gap_before']}->{x['gap_after']} {x['ratio']:.2f}"
+                     + (" (< 0.6)" if x.get("below_bar") else "") for x in per_debate)
+
+
 def report(root: Path, run_id: str, old: dict | None, gap_min_probe: int | None) -> tuple[str, dict]:
     d = root / run_id
     run = jload(d / "run.json", {}) or {}
@@ -79,8 +98,7 @@ def report(root: Path, run_id: str, old: dict | None, gap_min_probe: int | None)
     flags = [f for x in rl for f in x["move"].get("flags", [])]
     srcs = [e.get("new_evidence_source") for x in rl for e in x["move"].get("new_evidence", [])]
     ch_flags = [f for c in chs.values() for f in (c.get("checks") or {}).get("flags", [])]
-    no_crux = [dd for dd in debates if not dd.get("closed_on_data") and dd.get("gap_after") is not None and dd["gap_before"]]
-    ratio = statistics.median([dd["gap_after"] / dd["gap_before"] for dd in no_crux]) if no_crux else None
+    per_debate, ratio = gap_ratios(debates)
     soft = sum(1 for f in flags if f == "soft move")
     soft_req = sum(1 for f in flags if f == "soft request")
     # Debate endpoints per agent and per take tier (review 2026-10-04: is the spread the lenses or the models?)
@@ -138,6 +156,7 @@ def report(root: Path, run_id: str, old: dict | None, gap_min_probe: int | None)
         "useful": sum(1 for dd in debates if dd.get("useful")),
         "effects": [f"{dd['question_id']} {dd['high']}/{dd['low']}: {dd['effect']}" for dd in debates],
         "closure_without_evidence": dbs.get("closure_without_evidence"), "gap_ratio_no_crux": ratio,
+        "gap_ratios_no_crux": per_debate,
         "evidence_rate": ev.get("rate"), "data_share": round(ev.get("data", 0) / max(1, ev.get("verified", 0) + ev.get("partial", 0)), 3) if ev else None,
         "debate_evidence_rate": dbs.get("debate_evidence_rate"),
         "concede": sum(1 for x in rl if x["data"].get("verdict") == "concede"), "responses": len(rl),
@@ -192,7 +211,8 @@ def report(root: Path, run_id: str, old: dict | None, gap_min_probe: int | None)
              f"| live splits / held splits / useful debates | {m['live_splits']} / {m['held_splits']} / {m['useful']} | deep dive: {o.get('deep_dive', '—')} |",
              f"| effect per debate | {'; '.join(m['effects']) or '—'} | — |",
              f"| closure without evidence; median gap_after/gap_before (no crux data) | {m['closure_without_evidence']}; "
-             f"{m['gap_ratio_no_crux'] if m['gap_ratio_no_crux'] is None else round(m['gap_ratio_no_crux'], 2)} | — |",
+             f"{m['gap_ratio_no_crux'] if m['gap_ratio_no_crux'] is None else round(m['gap_ratio_no_crux'], 2)}"
+             f"{f' (per debate: {render_ratios(per_debate)})' if per_debate else ''} | — |",
              f"| evidence verification rate (all / debate), data share | {m['evidence_rate']} / {m['debate_evidence_rate']}, {m['data_share']} | not measured |",
              f"| concessions, verbal concessions, soft moves (soft requests cut by the gate) | {m['concede']}/{m['responses']}, "
              f"{m['verbal_concessions']}, {m['soft_moves']} ({m['soft_requests']}) | updating: {o.get('updating', '—')} |",
@@ -341,8 +361,9 @@ def main(argv=None) -> int:
         s = ["# Phase C replays — pass bar (§15.5)", ""]
         s.append(f"- (b) a held split across the runs: {'PASS' if any(m['held_splits'] for m in allm) else 'FAIL'}")
         ratios = [m["gap_ratio_no_crux"] for m in allm if m["gap_ratio_no_crux"] is not None]
+        each = [x for m in allm for x in m.get("gap_ratios_no_crux") or []]
         s.append(f"- (c) median gap_after/gap_before without crux data: {statistics.median(ratios):.2f}"
-                 if ratios else "- (c) no debates without crux data")
+                 f" (per debate: {render_ratios(each)})" if ratios else "- (c) no debates without crux data")
         soft = sum(m["soft_moves"] for m in allm)
         nresp = sum(m["responses"] for m in allm)
         s.append(f"- (d) soft moves: {soft}/{nresp} ({'PASS' if not nresp or soft / nresp <= 0.3 else 'FAIL'}); "

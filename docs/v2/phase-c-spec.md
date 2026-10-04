@@ -497,7 +497,8 @@ for q in questions:
         if quotes(a, q) == quotes(b, q): score -= 5          # same evidence only, read differently
         cands.append((score, gap, verified_count(a, q) + verified_count(b, q), q.id, lo, hi))
 
-cands.sort(key=lambda c: (-c[0], -c[1], -c[2], c[3], c[4], c[5]))   # deterministic
+# a pair under GAP_MIN + 2 x FREE_MOVE can drop below GAP_MIN on the two free moves alone (§20.7 #78)
+cands.sort(key=lambda c: (c[1] < GAP_MIN + 2 * FREE_MOVE, -c[0], -c[1], -c[2], c[3], c[4], c[5]))   # deterministic
 pairs, used_q, load = [], set(), Counter()
 for cap in (1, 2):                                       # second pass only if short of target
     for c in cands:
@@ -509,7 +510,9 @@ for cap in (1, 2):                                       # second pass only if s
 Rules in words: one pair per question; at most one debate per agent unless the day would
 otherwise fall short of its target, then two; pairs straddle the median, so each debate is about
 the consensus, not about two degrees of the same view; pairs prefer the extremes because the
-score is the gap. Both sides of a pair challenge each other (2 calls), so direction does not
+score is the gap; a pair whose gap is under `GAP_MIN + 2 × FREE_MOVE` (30 at the default) ranks
+after every pair with that margin, whatever its score, since the two free moves (§7.2) alone can take
+it under `GAP_MIN` without qualifying evidence; it is still debated when a slot remains. Both sides of a pair challenge each other (2 calls), so direction does not
 matter; the record labels them `high` and `low`. `GAP_MIN_DEFAULT` is 20 until the spread probe
 sets it (§15.0: `max(20, 2 × median retest |Δp|)`); the value used is written to
 `pairing.json → gap_min`.
@@ -1776,7 +1779,8 @@ The three replays (09-10, 09-11, 10-04) together:
   GAP_MIN`, not confirmed closed, both cruxes stated; fifth review: the old `live_split` item passed as soon
   as any pair formed);
 - (c) **no closure by politeness**: for debates without crux-data evidence, median
-  `gap_after / gap_before ≥ 0.6`;
+  `gap_after / gap_before ≥ 0.6`; the report prints each debate's ratio beside the median, a ratio
+  under 0.6 marked (§20.7 #78);
 - (d) **soft moves**: gated moves of more than `FREE_MOVE` (5) points towards the opponent without
   qualifying (crux-data or other new verified data) evidence in ≤ 30 % of responses, whatever the verdict
   label says (fourth review: the free move itself no longer counts; the gate makes this an invariant, and
@@ -2194,3 +2198,4 @@ Path: `docs/v2/phase-c-spec.md`.
 | 75 | high | Market lines copied into SECTION 0 by deduplicate.py were data when the collector format missed `_ODDS` (Kalshi 24H MOVERS, the strike list, Polymarket CLOB depth, NEW MARKETS): on the Polymarket + Kalshi replays 6 of 20 cross-source items had `market_at` False, and the Starship mover copy could qualify an event move, be the only crux hit and confirm a closure. The 09-11 headline 'Brent Tops $106 And Hike Odds Reach 64%' was data on a hike-odds crux | `market_question_keys` keys every PREDICTION MARKETS list item by `_core`, so any copy is market; `_ODDS` adds the four collector formats; `market_line_in` treats odds/chance + a percentage as market (not in `odds_line`, so gate rule 7 is unchanged). After: 19/19 strict-verifiable copies market, the new `_ODDS` forms match no package-fixture line outside SECTION 8, `_HEADLINE_ODDS` only that headline and two tweets (already social). `CrossSourceMarketCopyTests` runs the dedup simulation | `debate._ODDS`, `_HEADLINE_ODDS`, `market_question_keys`, `market_line_in`; §6 |
 | 76 | medium | 09-11 c9 q5 (OpenAI Pro): the only crux hit was 'GPT-6 Astra: The next generation in intelligence for work - OpenAI', which says nothing about Pro capacity or reopening. It matched on the crux entity Astra, the pinned OpenAI and the keyword 'next'; the other take-derived keywords were as generic (week, user, remain, accept, offer). Both sides cited it and the gate qualified it as crux_data (one of crux_data 3; no effect on the move, policy_analyst moved only the free 5) | `CRUX_GENERIC` time and framing words are never crux keywords; where the cruxes have keywords a crux entity counts (hit and qualifying quote) only with a keyword, a number or a second crux entity on the line (`entity_backed`). Re-measured offline on the droplet run folders (HEAD vs fix, same quotes): the Astra launch line was a hit on 5 OpenAI Pro pairs (09-11 c1, c1-r0, c1-r1, c2, c9), now on none; c9 q5 goes 1 hit -> 0 hits and 2 shared lines (the Pro-hold headline and body, quoted by both), so a held split reaches the crux check on the shared pool; the Hormuz positives are unchanged. `GenericCruxKeywordTests` on the c9 cruxes, the launch line negative beside the Pro-hold line | `debate.CRUX_GENERIC`, `crux_keywords`, `entity_backed`, `shares_specific`, `crux_search`; §6, §7.2 |
 | 77 | medium | 09-11 c9 q5 (OpenAI Pro): the crux check ran on the shared pool and the referee quoted the right story, the Pro-hold headline with its body line. quote_status was verified, but the strict check rejected it as 'not a single verbatim line', so a correct answer confirmed nothing; 55cca1f's shared_block (headline + body) makes this the usual shape | The referee's quote check uses `Locator.strict(quote, item=True)`: a quote that crosses line breaks passes when every line after the first is an indented, non-empty body line of the same list item (at most 3 below, no blank line), the located line being the first it covers (label, market_at and social as for one line). A quote running into the next item still fails; the gate's strict check is unchanged. `SharedCruxPoolTests` (headline + body qualifies; body + next headline fails; gate still one line) | `evidence.Locator.strict`, `_item_occurrences`, `debate.quote_qualifies`; §8 |
+| 78 | medium | 09-11 q3 (South Korea Hormuz contribution), macro_strategist vs trader: the pair started at 22 and ended at 13 on two free moves (49 -> 45 with evidence source none, 27 -> 32), neither more than `FREE_MOVE`, so the gate was right and the split was lost: only one debated split held. Its gap_after/gap_before was 0.59, under the 0.6 bar, while bar (c) passed on the median 0.7. Any pair starting within 2 × `FREE_MOVE` of `GAP_MIN` (20-29) can fall under it on argument alone | Pairing ranks every candidate with `gap ≥ GAP_MIN + 2 × FREE_MOVE` ahead of the narrower ones, score order inside each group; a narrow pair is still debated when a slot remains. The free move itself is unchanged: flooring it at `GAP_MIN` would hide argument-only convergence from bar (c). `replay_report.py` prints each debate's ratio beside the median (row and summary, under 0.6 marked). `PairingTests.test_free_move_margin_ranks_first` (weight-3 22-point pair vs weight-1 40-point pair, target 1), `GapRatioTests` on the q3 numbers | `debate.pair`, `replay_report.gap_ratios`, `render_ratios`; §4.2, §15.5 (c) |

@@ -243,6 +243,19 @@ class PairingTests(unittest.TestCase):
         r = debate.pair(qs, p, e, list(p), "normal", 1)
         self.assertEqual(r["pairs"][0]["score"], 60 * 3)
 
+    def test_free_move_margin_ranks_first(self):
+        # 09-11 q3 (Hormuz): a 22-point pair fell to 13 on two free moves (49 -> 45 on no evidence, 27 -> 32), under
+        # GAP_MIN, and the only held split was lost. A pair under GAP_MIN + 2 x FREE_MOVE ranks after one with that
+        # margin, even when its weight gives it the higher score (66 vs 40); with a free slot it is still debated.
+        qs, p, e = setup({"q1": {"trader": 27, "analyst": 40, "macro_strategist": 49},
+                          "q2": {"builder": 20, "narrator": 45, "skeptic": 60}}, weights={"q1": 3, "q2": 1})
+        one = debate.pair(qs, p, e, list(p), "normal", 1)
+        self.assertEqual([(x["question_id"], x["gap"]) for x in one["pairs"]], [("q2", 40)])
+        two = debate.pair(qs, p, e, list(p), "normal", 2)
+        self.assertEqual([x["question_id"] for x in two["pairs"]], ["q2", "q1"])
+        alone = debate.pair([q for q in qs if q["id"] == "q1"], p, e, list(p), "normal", 1)
+        self.assertEqual([(x["question_id"], x["gap"]) for x in alone["pairs"]], [("q1", 22)])
+
     def test_same_side_no_pair(self):
         qs, p, e = setup({"q1": {"trader": 10, "analyst": 50, "skeptic": 55, "builder": 60}})
         e["skeptic"]["q1"] = ev(status="unverified")
