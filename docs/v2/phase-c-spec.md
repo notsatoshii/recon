@@ -637,6 +637,20 @@ number and ± 1 line of context; 3 KB block for the responders, 5 KB for the ref
 lines and their terms are kept in `cruxsearch.json → pairs[].hits[]` because the response gate
 (§7.2) matches new evidence against them.
 
+Eighth review (2026-10-04): event cruxes are written in words, not names or numbers ('a defined Hormuz
+troop, escort or logistics role'), so on the c6 Hormuz pairs the only passing line was quoted by both sides
+and no debate could move on data. On an event or judgment question the cruxes' **keywords** are terms too
+(`debate.crux_keywords`): lower-case words of ≥ 4 letters in the crux texts, as 5-letter stems, minus stop
+words, metric words, crux boilerplate (`CRUX_BOILERPLATE`: official, announcement, report, wire, cutoff…)
+and any stem of a question word; stems on > 2 % of the corpus lines are dropped like frequent entities.
+A keyword scores 1 like a metric word, and the pinned subject plus two distinct keywords
+(`KEYWORD_PAIR`) stands in for a crux entity: such a line is a hit and, on the same kinds, a qualifying
+quote (§7.2). The subject plus one keyword, or keywords without the subject, never are. Threshold and
+direction questions get no keywords. Measured on the c6 pairs (pass / after the quote exclusion): Hormuz
+09-10 1 / 0 → 3 / 1, 09-11 1 / 0 → 3 / 1 ('South Korea says … contribution options, not troop deployment',
+which neither side of the pair quoted); OpenAI Pro 0 / 0 → 1 / 0 (its one capacity line is quoted by both
+challenges, so it stays excluded by design).
+
 Zero hits is a normal outcome and is recorded as such.
 
 ---
@@ -2115,3 +2129,9 @@ Path: `docs/v2/phase-c-spec.md`.
 | 68 | high | Rule 8 fires only when triage fills settled_quote; 09-10 c6 left it empty and the school-privacy question led WHERE THE VIEWS SPLIT | Gate rule 9 (event questions): `settled_line` finds a package news line with the question's resolution verb in a reporting form, more than half (>= 2) of its object terms, its versioned names, and no hedge; the 09-10 package is a fixture and must drop that question and keep Hormuz | `debate.settled_line`, `gate_questions`, `tests/fixtures/package/2026-09-10` |
 | 69 | medium | No debate moved on data in either c6 replay; the crux check did not run on 09-11 | Measured (crux_search `pool`, now recorded per pair): Hormuz 09-10 6 term lines, 4 pass with the subject scored, 1 passes, 0 after the quote exclusion (09-11: 5 / 4 / 1 / 0); OpenAI Pro 10 / 1 / 0 / 0 (the cruxes name no entity beyond the subject; the one Pro line is quoted by both). Lines quoted by only one side: 0 on all four pairs. Loosened: on event and judgment questions the pinned subject counts once (2 points, one distinct term), so subject + one crux entity or number is a hit; it gains nothing on these four pairs because the corpus has no unquoted line about them | `debate.crux_search` |
 | 70 | medium | A degree block whose pair closed 27 -> 17 led the section above the held Hormuz split, its base case read as the opposite of 'all 9 lenses lean yes' | Held and live splits first, then direction, then degree; a degree block whose pair closed below gap_min is left out when a held split exists; degree blocks carry base_case.level (IQR) and minority_case.level, rendered and required by brief_split.md | `debate.split_sheet`, `render_split_sheet`, `brief_split.md` |
+
+### 20.6 Eighth review (2026-10-04, crux search on event questions)
+
+| # | Severity | Finding | Change | Where |
+|---|---|---|---|---|
+| 71 | medium | No debate moved on data in either c6 replay; the 09-11 crux check did not run and the 09-10 one ran on the settled school-privacy pair. After 69 the pool was measured but the rule left it unchanged: event cruxes name no entity beyond the subject, so the Hormuz pairs passed 1 line (quoted by both) | Event and judgment questions get crux keywords (lower-case crux words, boilerplate and question words out, frequency-filtered); the pinned subject plus two keywords is a hit and a qualifying quote. Re-measured on the c6 run folders: Hormuz 1 → 3 passing, 1 hit after the quote exclusion on both days, so 09-11 now has a crux-check candidate (gap 23) and 09-10 picks Hormuz (gap 32) over school privacy (27); OpenAI Pro still 0 after exclusion (only line quoted by both). Not yet replayed live | `debate.crux_keywords`, `term_hits`, `shares_specific`, `crux_search`, `orchestrator.search_terms` |

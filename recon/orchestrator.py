@@ -1126,12 +1126,16 @@ SECTOR CONTEXT (crypto and macro landscape; background, not today's data):
         """The crux terms of a pair or the red team (§6). The question's own entities never score a hit or
         qualify a quote, on any kind of question ('BTC' on a BTC price question: debate.shares_specific).
         Only an event or judgment question pins them, so crux-search hits that also name the subject rank
-        first; a threshold or direction question pins nothing."""
+        first; a threshold or direction question pins nothing. An event or judgment question also gets the
+        cruxes' keywords (debate.crux_keywords, eighth review): the subject plus two of them makes a hit."""
         docs = self.corpus_docs()
         vocab = debate.lowercase_vocab(docs.values())
         subj = debate.entities(question, vocab) if question else []
         keep = subj if kind in ("event", "judgment") else []
-        return debate.drop_frequent_entities(debate.crux_terms(texts, vocab), docs, keep_always=keep, subject=subj)
+        terms = debate.crux_terms(texts, vocab)
+        if kind in ("event", "judgment"):
+            terms["keywords"] = debate.crux_keywords(texts, question)
+        return debate.drop_frequent_entities(terms, docs, keep_always=keep, subject=subj)
 
     def redteam_search(self, rec: dict, takes: dict) -> dict:
         """§6 on a consensus day: the crux search on the red team's crux, stored under 'redteam'."""

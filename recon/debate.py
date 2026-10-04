@@ -8,6 +8,7 @@
   excerpts         §5.2 the lines around each verified quote, 4 KB shared between the sides
   challenge_checks §5.4 length, persona leakage, agreement opener
   crux_terms       §6 numbers, entities and metric words from the cruxes
+  crux_keywords    §6 the cruxes' lower-case content words (event and judgment questions)
   crux_search      §6 lines on disk about the crux that neither side quoted
   norm_p           §7.2 fractions rescaled, clamped to 0-100
   gate_move        §7.2 the evidence gate on a response's move (FREE_MOVE points on argument alone)
@@ -956,6 +957,77 @@ def crux_terms(texts: list[str], vocab: set[str] | None = None) -> dict:
     return {"numbers": uniq, "entities": ents, "metrics": list(dict.fromkeys(mets))}
 
 
+# Words every event crux uses whatever it is about ('an official announcement reported by a major wire service
+# before the cutoff'): they say nothing about what this disagreement turns on, so they are never crux keywords.
+CRUX_BOILERPLATE = {
+    "official", "officially", "announce", "announced", "announces", "announcement", "announcements", "report",
+    "reports", "reported", "reporting", "statement", "statements", "government", "public", "publicly", "page",
+    "record", "records", "document", "documentation", "whether", "resolution", "resolve", "resolves", "cutoff",
+    "date", "dated", "deadline", "before", "after", "until", "within", "without", "specific", "specifying",
+    "specifies", "specify", "defined", "define", "concrete", "named", "naming", "qualifying", "qualify", "major",
+    "wire", "service", "authoritative", "evidence", "confirm", "confirmed", "confirms", "verifiable", "would",
+    "could", "should", "still", "again", "enough", "sufficient", "immediate", "provides", "provide", "shows",
+    "showing", "says", "said", "more", "other", "every", "least", "following", "followed", "there", "their", "than",
+    "then", "into", "onto", "about", "also", "only", "some", "such", "being", "been", "have", "does", "will",
+    "shall", "must", "made", "make", "makes", "under", "over", "while", "where", "which", "potentially",
+    "constitute", "constitutes", "item", "items", "either", "neither", "both", "each", "none", "ruling", "rules",
+    "rule", "explicit", "explicitly", "clear", "clearly", "formal", "formally", "credible", "credibly", "outlet",
+    "outlets", "source", "sources", "rather", "level", "claim", "claims", "observable", "observed",
+}
+
+
+def _kw_stem(w: str) -> str:
+    """A keyword's stem: its first five letters ('discussions' / 'discussing', 'deployment' / 'deploy')."""
+    return w[:5] if len(w) >= 5 else w
+
+
+def _lower_words(text: str) -> list[str]:
+    """The all-lower-case words of four letters or more ('Hormuz', 'Seoul', 'Whether' are not among them; a
+    hyphenated 'option-level' gives 'option' and 'level'). Lower-case a line first to take all its words."""
+    return [w for w in re.findall(r"[A-Za-z]+", text or "") if len(w) >= 4 and w.islower()]
+
+
+def crux_keywords(texts: list[str], question: str = "") -> list[str]:
+    """The crux's own content words on an event or judgment question (eighth review, 2026-10-04): lower-case words
+    of four letters or more in the crux texts ('troop', 'deployment', 'options', 'capacity'), minus stop words,
+    metric words, any word that shares a stem with CRUX_BOILERPLATE or with a word of the question ('contribution'
+    on 'Will South Korea announce a concrete Hormuz security contribution?'). Returned as stems (_kw_stem).
+    Capitalised words are entities and stay out: only words the cruxes write in lower case count."""
+    skip = {_kw_stem(w) for w in _lower_words((question or "").lower())} | _BOILER_STEMS
+    out = []
+    for t in texts or []:
+        for w in _lower_words(t):
+            if w in STOP or w in METRIC_SET:
+                continue
+            st = _kw_stem(w)
+            if st in skip:
+                continue
+            out.append(st)
+    return list(dict.fromkeys(out))
+
+
+_BOILER_STEMS = {_kw_stem(w) for w in CRUX_BOILERPLATE}
+
+
+def keyword_hits(line: str, keywords) -> list[str]:
+    """The crux keyword stems a line carries (any case)."""
+    if not keywords:
+        return []
+    have = {_kw_stem(w) for w in _lower_words((line or "").lower())}
+    return [k for k in keywords if k in have]
+
+
+# On an event or judgment question the pinned subject plus this many distinct crux keywords counts as a crux
+# entity: a crux hit (§6) and a qualifying quote (§7.2).
+KEYWORD_PAIR = 2
+
+
+def subject_keyword_pair(h: dict) -> bool:
+    """A line that names the question's pinned subject and at least KEYWORD_PAIR crux keywords ('South Korea says
+    Hormuz talks concern contribution options, not troop deployment' on a crux about troop or escort roles)."""
+    return bool(h.get("pinned")) and len(h.get("keywords") or []) >= KEYWORD_PAIR
+
+
 def same_number(x: dict, y: dict) -> bool:
     """Two numbers are the same figure when their scaled values match within the evidence tolerance,
     both or neither are percentages, and their currencies do not differ. The bare mantissa never
@@ -1005,13 +1077,14 @@ def term_hits(line: str, terms: dict) -> dict:
                 continue
             if any(same_number(x, y) for x in xs):
                 nums.append(y["raw"])
-    return {"entities": ents, "numbers": nums, "metrics": mets, "pinned": pins}
+    kws = keyword_hits(line, terms.get("keywords"))
+    return {"entities": ents, "numbers": nums, "metrics": mets, "pinned": pins, "keywords": kws}
 
 
 def shares_term(quote: str, terms: dict) -> bool:
     """Any crux term, metric words included (reporting only)."""
     h = term_hits(quote or "", terms)
-    return bool(h["entities"] or h["numbers"] or h["metrics"])
+    return bool(h["entities"] or h["numbers"] or h["metrics"] or h["keywords"])
 
 
 def shares_specific(quote: str, terms: dict, kind: str = "") -> bool:
@@ -1021,9 +1094,13 @@ def shares_specific(quote: str, terms: dict, kind: str = "") -> bool:
     58.6%' does not qualify on a BTC price-threshold crux. On an event or judgment question (`kind`) a crux
     entity alone is enough, since headlines about events carry no number, but it has to be an entity other
     than the question's own: a headline that only names the subject says nothing about the crux.
-    An entity alone on a threshold or direction question, or a metric word alone, never counts."""
+    An entity alone on a threshold or direction question, or a metric word alone, never counts.
+    Eighth review: on an event or judgment question the pinned subject plus KEYWORD_PAIR crux keywords counts as
+    a crux entity (subject_keyword_pair; `keywords` is set only on those kinds, orchestrator.search_terms)."""
     h = term_hits(quote or "", terms)
     if h["numbers"]:
+        return True
+    if kind in ("event", "judgment") and subject_keyword_pair(h):
         return True
     if not h["entities"]:
         return False
@@ -1074,8 +1151,17 @@ def drop_frequent_entities(terms: dict, docs: dict[str, str], max_share: float =
         for y in terms["numbers"]:
             n = sum(1 for xs in line_nums if any(same_number(x, y) for x in xs))
             (ndropped if n > limit else nkeep).append(y)
-    return {**terms, "entities": keep, "numbers": nkeep, "pinned": pinned, "subject": subj,
-            "frequent_entities": dropped, "frequent_numbers": [y["raw"] for y in ndropped]}
+    # Crux keywords too (eighth review): a stem on more than max_share of the lines ('market', 'price') is generic.
+    kkeep, kdropped = [], []
+    if terms.get("keywords"):
+        line_kw = [{_kw_stem(w) for w in _lower_words(l.lower())} for l in lines]
+        for k in terms["keywords"]:
+            (kdropped if sum(1 for ws in line_kw if k in ws) > limit else kkeep).append(k)
+    out = {**terms, "entities": keep, "numbers": nkeep, "pinned": pinned, "subject": subj,
+           "frequent_entities": dropped, "frequent_numbers": [y["raw"] for y in ndropped]}
+    if "keywords" in terms:
+        out.update(keywords=kkeep, frequent_keywords=kdropped)
+    return out
 
 
 def crux_search(terms: dict, docs: dict[str, str], exclude_quotes, locator=None, top: int = 12,
@@ -1092,7 +1178,14 @@ def crux_search(terms: dict, docs: dict[str, str], exclude_quotes, locator=None,
     questions) counts once, as 2 points and one distinct term, so the subject plus one crux entity or number is
     a hit; among hits of equal score, lines that also name it come first. `pool` counts the candidate lines at
     each step: lines with any term or subject entity, lines that would pass with the subject scored as a crux
-    entity, lines that pass, and the hits left after the quote exclusion."""
+    entity, lines that pass, and the hits left after the quote exclusion.
+
+    Eighth review (2026-10-04): event cruxes are written in words, not names or numbers ('troop', 'escort',
+    'capacity'), so on an event or judgment question `keywords` (crux_keywords) score 1 each and the pinned
+    subject plus KEYWORD_PAIR keywords is a hit: 'South Korea says Hormuz talks concern contribution options,
+    not troop deployment' on a crux about a troop or escort role. Keywords also score with a crux entity, like
+    metric words. On the c6 Hormuz pairs this takes the passing lines from 1 (quoted by both sides) to 3, with 1
+    hit left after the quote exclusion on each day; the OpenAI Pro pair passes 1 line, quoted by both."""
     excl = [qnorm(q) for q in exclude_quotes if q and len(qnorm(q)) >= 12]
     excl_pos = set(exclude_positions or ())
     hits, seen = [], set()
@@ -1118,15 +1211,18 @@ def crux_search(terms: dict, docs: dict[str, str], exclude_quotes, locator=None,
             # On an event or judgment question the pinned subject counts once (2 points, one distinct term), so a
             # line naming the subject plus one crux entity or number is a hit (seventh review). It still never
             # qualifies a move or a referee quote (shares_specific), and alone it is never a hit.
+            # Eighth review: crux keywords (event and judgment questions only) score 1 each like metric words, and
+            # the pinned subject plus KEYWORD_PAIR of them stands in for a crux entity (subject_keyword_pair).
             pin = 1 if h["pinned"] else 0
-            distinct = len(h["entities"]) + len(h["numbers"]) + len(h["metrics"]) + pin
-            score = 3 * len(h["entities"]) + 2 * len(h["numbers"]) + len(h["metrics"]) + 2 * pin
+            nkw = len(h["keywords"])
+            distinct = len(h["entities"]) + len(h["numbers"]) + len(h["metrics"]) + nkw + pin
+            score = 3 * len(h["entities"]) + 2 * len(h["numbers"]) + len(h["metrics"]) + nkw + 2 * pin
             n_subj = len([e for e in subj if _ent_in(e, s)])
             if distinct or n_subj:
                 pool["term_lines"].add(ns)
             if score - 2 * pin + 3 * n_subj >= 4 and distinct - pin + n_subj >= 2:
                 pool["pass_with_subject"].add(ns)
-            if score < 4 or distinct < 2 or not (h["entities"] or h["numbers"]):
+            if score < 4 or distinct < 2 or not (h["entities"] or h["numbers"] or subject_keyword_pair(h)):
                 continue
             pool["pass"].add(ns)
             if ns in seen or (doc, n) in excl_pos:
@@ -1153,7 +1249,8 @@ def crux_search(terms: dict, docs: dict[str, str], exclude_quotes, locator=None,
             used += nbytes(piece) + 1
         return "\n".join(out) or "(nothing found on disk for this crux)"
     return {"terms": {"numbers": [x["raw"] for x in terms.get("numbers", [])], "entities": terms.get("entities", []),
-                      "metrics": terms.get("metrics", []), "pinned": terms.get("pinned", []),
+                      "metrics": terms.get("metrics", []), "keywords": terms.get("keywords", []),
+                      "pinned": terms.get("pinned", []),
                       "subject": terms.get("subject", [])},
             "hits": hits, "pool": pool, "block": block(block_bytes), "referee_block": block(referee_bytes)}
 

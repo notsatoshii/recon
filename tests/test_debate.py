@@ -1341,3 +1341,57 @@ class SeventhReviewScorecardTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class EighthReviewCruxKeywordTests(unittest.TestCase):
+    """09-10 / 09-11 c6: the Hormuz crux search passed 1 line (quoted by both sides), so no debate could move on
+    data and the 09-11 crux check did not run. Event cruxes are written in words ('troop', 'deployment',
+    'options'), not names or numbers: on an event or judgment question the pinned subject plus two crux keywords
+    is a hit and qualifies a quote. Lines and cruxes are the real 09-11 c6 ones."""
+
+    Q = "Will South Korea announce a concrete Hormuz security contribution by September 20, 2026?"
+    CRUXES = [
+        "The disrupted Hormuz environment and UAE assessment mission will convert Seoul's option review into an "
+        "announced defined logistical or maritime contribution.",
+        "A South Korean government announcement or major wire-service report specifying a Hormuz security contribution.",
+        "Seoul's assessment and option discussions will convert into an announced, concrete Hormuz contribution by "
+        "the resolution date.",
+        "An official South Korean announcement or major wire-service report specifying a committed Hormuz role, "
+        "asset, personnel deployment, or logistical support.",
+    ]
+    WEIGHS = "- [middle-east-online.com] South Korea weighs role in Hormuz security after Macron talks"
+    DISCUSS = "- [freemalaysiatoday.com] South Korea says discussing Hormuz contribution options , not troop deployment"
+    CONCERN = ("- [al-monitor.com] South Korea says Hormuz talks with France concern contribution options , "
+               "not troop deployment")
+    TEAM = "- [koreaherald.com] Seoul dispatches assessment team to UAE but deployment decision still pending"
+
+    def setUp(self):
+        from types import SimpleNamespace
+        from recon.orchestrator import Run
+        filler = [f"- [wire] Unrelated headline number {i} about markets and weather" for i in range(150)]
+        self.docs = {"raw": "", "social": "",
+                     "package": "\n".join(filler[:75] + [self.WEIGHS, self.DISCUSS, self.CONCERN, self.TEAM] + filler[75:])}
+        stub = SimpleNamespace(corpus_docs=lambda: self.docs)
+        self.terms = lambda kind: Run.search_terms(stub, self.CRUXES, self.Q, kind)
+
+    def test_subject_plus_two_crux_keywords_is_a_hit_on_event_questions(self):
+        t = self.terms("event")
+        self.assertIn("troop", debate.crux_keywords(["no troop role"], self.Q))
+        kw = set(t["keywords"])
+        self.assertTrue({"optio", "deplo", "discu"} <= kw)
+        # question words, boilerplate and capitalised names are never keywords
+        self.assertFalse({"contr", "secur", "annou", "offic", "repor", "ormuz", "eoul"} & kw)
+        both_quoted = [self.DISCUSS, self.TEAM]          # what the 09-11 pair quoted
+        res = debate.crux_search(t, self.docs, both_quoted)
+        self.assertEqual([h["text"] for h in res["hits"]], [self.CONCERN])
+        self.assertEqual(res["pool"]["pass"], 3)
+        self.assertTrue(debate.shares_specific(self.CONCERN, t, "event"))
+        # the subject plus one keyword is not enough, and keywords without the subject never qualify
+        self.assertFalse(debate.shares_specific(self.WEIGHS, t, "event"))
+        self.assertFalse(debate.shares_specific("- Insurers price troop deployment options for the Gulf", t, "event"))
+
+    def test_threshold_questions_get_no_keywords(self):
+        t = self.terms("threshold")
+        self.assertNotIn("keywords", t)
+        self.assertEqual(debate.crux_search(t, self.docs, [self.DISCUSS, self.TEAM])["hits"], [])
+        self.assertFalse(debate.shares_specific(self.CONCERN, t, "threshold"))
