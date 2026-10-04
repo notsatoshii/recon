@@ -102,10 +102,11 @@ _MONTHS.update({m.lower(): i for i, m in enumerate(calendar.month_abbr) if m})
 _MONTHS["sept"] = 9
 _MON = (r"(?:January|February|March|April|May|June|July|August|September|October|November|December|"
         r"Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sept|Sep|Oct|Nov|Dec)\b")
-# Capitalised month names only, so 'may 5' (the verb) is no date; a written day is 1-31, not followed by a digit.
+# Capitalised month names only, so 'may 5' (the verb) is no date; a written day is 1-31, not followed by a digit
+# or a clock colon ('Sept 12:30'); 'September 12:' (a WHAT TO WATCH lead) still counts.
 _DATE = re.compile(
     r"(?<!\d)(?P<iy>(?:19|20)\d\d)-(?P<im>\d\d)-(?P<id>\d\d)(?!\d)"
-    r"|(?<!\w)(?P<m1>" + _MON + r")\.?\s+(?P<d1>[0-3]?\d)(?:st|nd|rd|th)?(?![\d:])(?:,?\s+(?P<y1>(?:19|20)\d\d)\b)?"
+    r"|(?<!\w)(?P<m1>" + _MON + r")\.?\s+(?P<d1>[0-3]?\d)(?:st|nd|rd|th)?(?!\d|:\d)(?:,?\s+(?P<y1>(?:19|20)\d\d)\b)?"
     r"|(?<![\w:.$])(?P<d2>[0-3]?\d)(?:st|nd|rd|th)?\s+(?P<m2>" + _MON + r")\.?(?:,?\s+(?P<y2>(?:19|20)\d\d)\b)?")
 
 

@@ -2036,6 +2036,17 @@ class ScorecardExpiryTests(unittest.TestCase):
                          [{"raw": "May 5", "key": "05-05", "year": ""}, {"raw": "2026-09-10", "key": "09-10", "year": "2026"},
                           {"raw": "17 September 2026", "key": "09-17", "year": "2026"}])
 
+    def test_claims_check_covers_date_led_watch_bullets(self):
+        # c10 WHAT TO WATCH led each bullet with '**September 12:**'; the colon lookahead dropped the date.
+        self.assertEqual(evidence.dates("**September 12:** Whether the Fed holds"),
+                         [{"raw": "September 12", "key": "09-12", "year": ""}])
+        self.assertEqual(evidence.dates("CPI prints Sept 12:30 ET"), [])   # a clock time is no date
+        src = {"scorecard": self.CARD, "synth_scorecard": self.synth()}
+        bad = evidence.brief_claims("### WHAT TO WATCH\n- **September 12:** Whether ETF outflows resume.\n", src, {}, {})
+        self.assertEqual(len(bad), 1)
+        self.assertEqual(bad[0]["dates"], ["September 12"])
+        self.assertFalse(bad[0]["found_in_source"])
+
 
 class ThresholdNumberNeedsCruxWordTests(unittest.TestCase):
     """09-11 c8 q1 ('Will Bitcoin trade below $75,000 by 2026-09-18?'), crux '$75,000': the headline 'Apeing's Crypto
