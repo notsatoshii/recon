@@ -49,6 +49,11 @@ def locator(extra_pkg: str = "") -> evidence.Locator:
     return evidence.Locator({"package": PACKAGE + extra_pkg, "raw": "", "view": VIEW, "social": ""})
 
 
+def debate_line(loc, text, doc="package") -> int:
+    """1-based line number of the first line in `doc` that contains `text` (stripped)."""
+    return next(i for i, l in enumerate(loc.lines[doc], 1) if text.strip() in l)
+
+
 def q(text, kind="threshold", resolves="2026-10-11", bq="- Current: $86,610,000,000", weight=2, carried="",
       domain="markets_crypto", lenses=None, settled=""):
     return {"id": "", "text": text, "kind": kind, "domain": domain, "metric": "", "comparator": "", "threshold": "",
@@ -464,6 +469,43 @@ class GateMoveTests(unittest.TestCase):
                                            "# SECTION 4: NEWS INTELLIGENCE\n- [coindesk.com] " + head
                                            + " https://www.coindesk.com/a/1\n"})
         self.assertEqual(debate.line_key(loc, "package", 2), debate.line_key(loc, "package", 4))
+
+    def test_headline_and_its_body_are_one_line(self):
+        # Phase C: a headline and the indented summary under it in one list item are one story (c8345bf, §20.7 #77),
+        # so one line for the gate, the pair's distinct-line count and the own/challenger check.
+        head = "- [Fri, 11 Sep 2026] Nvidia Delays Rubin Ultra Shipments to Q2 2027 as HBM4 supply tightens at SK Hynix"
+        body = "  Supplier checks show HBM4 yields near 40%, pushing Rubin Ultra volume ramps out by two quarters."
+        loc = locator("# SECTION 4: NEWS INTELLIGENCE\n" + head + "\n" + body + "\n"
+                      "- [Fri, 11 Sep 2026] Micron guides HBM revenue higher on hyperscaler demand for Blackwell\n")
+        terms = debate.crux_terms(["Nvidia ships Rubin Ultra with HBM4 before Q2 2027"])
+        hits = [{"doc": "package", "line": debate_line(loc, head), "text": head.strip()},
+                {"doc": "package", "line": debate_line(loc, body), "text": body.strip()}]
+        ev = [{"section": "", "quote": head.strip()}, {"section": "", "quote": body.strip()}]
+        m = debate.gate_move("skeptic", 70, 45, {"q1": 70}, 30, "narrow", ev, [], [], hits, terms, loc, kind="event")
+        self.assertTrue(all(x["qualifies"] for x in m["new_evidence"]))
+        self.assertEqual(m["gated"], 55)                   # 5 free + 10 for the one story, not the full 25
+        keys = debate.qualifying_lines(m, ev, loc)
+        self.assertEqual(len(keys), 1)
+        self.assertEqual(debate.line_key(loc, "package", debate_line(loc, body)),
+                         debate.line_key(loc, "package", debate_line(loc, head)))
+        # one side cites the headline, the other the body: one shared story, the pair closes at most 5 + 5 + 10
+        hi = debate.gate_move("skeptic", 70, 45, {"q1": 70}, 30, "narrow", ev[:1], [], [], hits, terms, loc, kind="event")
+        lo = debate.gate_move("trader", 30, 55, {"q1": 30}, 70, "narrow", ev[1:], [], [], hits, terms, loc, kind="event")
+        k_hi, k_lo = debate.qualifying_lines(hi, ev[:1], loc), debate.qualifying_lines(lo, ev[1:], loc)
+        self.assertEqual(k_hi, k_lo)
+        self.assertEqual(debate.pair_allowance(k_hi, k_lo), 20)
+        # a body line of an item the other side quoted is the challenger's evidence, and the headline of an item
+        # whose body this side quoted is its own
+        ch = debate.gate_move("trader", 30, 55, {"q1": 30}, 70, "narrow", ev[1:], [], [head.strip()], hits, terms, loc,
+                              kind="event")
+        self.assertEqual(ch["new_evidence"][0]["new_evidence_source"], "challenger")
+        self.assertFalse(ch["new_evidence"][0]["qualifies"])
+        own = debate.gate_move("trader", 30, 55, {"q1": 30}, 70, "narrow", ev[:1], [body.strip()], [], hits, terms, loc,
+                               kind="event")
+        self.assertEqual(own["new_evidence"][0]["new_evidence_source"], "own")
+        # the next item, not indented under the headline, stays its own line
+        nxt = debate_line(loc, "Micron guides")
+        self.assertNotEqual(debate.line_key(loc, "package", nxt), debate.line_key(loc, "package", debate_line(loc, head)))
 
     def test_event_question_entity_line_qualifies(self):
         line = "- South Korea weighs role in Hormuz security after Macron talks, contribution options under review"

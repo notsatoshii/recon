@@ -1834,21 +1834,45 @@ EVIDENCE_MOVE_PER_ITEM = 10   # points beyond FREE_MOVE that one qualifying quot
 EVIDENCE_MOVE_MAX = 20        # at most this many points beyond FREE_MOVE, however many quotes qualify
 
 
+def item_head(locator, doc, line) -> int:
+    """The line that names the list item `line` belongs to: for an indented body line under a '- ' headline
+    (_same_item: no blank line between, within its span) the headline's line number, else `line` itself. A
+    headline '- [Fri, 11 Sep 2026] Nvidia Delays Rubin Ultra Shipments ...' and its '  Supplier checks show ...'
+    summary are one story (c8345bf 'one story = one line', §20.7 #77 reads them as one item)."""
+    lines = (getattr(locator, "lines", {}) or {}).get(doc) if locator is not None and doc else None
+    if not lines or not line or not 0 < line <= len(lines) or lines[line - 1][:1] not in (" ", "	"):
+        return line
+    head = _same_item(lines, line)[0]
+    raw = lines[head - 1]
+    return head if head < line and raw[:1] not in (" ", "	") and raw.strip().startswith("- ") else line
+
+
 def line_key(locator, doc, line) -> str:
     """What makes two qualifying lines the same fact: the line's story key (evidence.story_key: the _core() text,
     no URL, X bracket, engagement counts or list dash, and no syndication tail ' - <outlet>'), so a headline
     repeated in CROSS-SOURCE and NEWS, in the package and the raw file, or carried by two outlets
-    ('... - Bloomberg.com', '... - Bloomberg News - TradingView', 09-11 c8) is one line. Falls back to 'doc:line'
-    when the line has no core text."""
+    ('... - Bloomberg.com', '... - Bloomberg News - TradingView', 09-11 c8) is one line. A body line indented
+    under a '- ' headline takes the headline's key (item_head): one list item is one line. Falls back to
+    'doc:line' when the line has no core text."""
+    if locator is not None and doc:
+        line = item_head(locator, doc, line)
     core = evidence.story_key(locator.line_text(doc, line)) if locator is not None and doc else ""
     return core or f"{doc}:{line}"
 
 
 def story_keys(quotes, locator, positions=None) -> set:
     """The story keys a set of quotes stands on: the key of every line they sit on (`positions`, else
-    quote_positions()) plus each quote's own key; keys under 12 characters are left out."""
+    quote_positions()) and of the headline of the list item each sits in (item_head), plus each quote's own key;
+    keys under 12 characters are left out. So a body line of an item a side quoted by its headline, or the
+    headline of an item it quoted by its body, is that side's evidence."""
     pos = quote_positions(quotes, locator) if positions is None else positions
-    out = {evidence.story_key(locator.line_text(d, n)) for d, n in pos} if locator is not None else set()
+    out = set()
+    if locator is not None:
+        for d, n in pos:
+            out.add(evidence.story_key(locator.line_text(d, n)))
+            h = item_head(locator, d, n)
+            if h != n:
+                out.add(evidence.story_key(locator.line_text(d, h)))
     out |= {evidence.story_key(q) for q in quotes or [] if q}
     return {k for k in out if len(k) >= 12}
 
@@ -1882,7 +1906,8 @@ def gate_move(agent: str, take_p: int, requested, own_take_values, other_take_p:
     move beyond FREE_MOVE: +EVIDENCE_MOVE_PER_ITEM per distinct qualifying line, at most EVIDENCE_MOVE_MAX
     (5 + 10 per line, 25 in total; spec §7.2, response.md step 3).
 
-    A line is identified by line_key() (its _core() text), so the same headline in two places is one line.
+    A line is identified by line_key() (its _core() text), so the same headline in two places is one line, and an
+    indented body line under a '- ' headline is that headline's line (one list item, one story).
     The allowance belongs to the pair, not to each side: a line that the other side's response also
     qualified on (`shared_lines`, line keys, set by the responses phase once both sides answered) gives
     each side half (5 points), so one copied crux line closes a split by at most 5 + 5 + 10 = 20 points.
