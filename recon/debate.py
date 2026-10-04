@@ -1387,7 +1387,8 @@ def drop_frequent_entities(terms: dict, docs: dict[str, str], max_share: float =
 
 
 def crux_search(terms: dict, docs: dict[str, str], exclude_quotes, locator=None, top: int = 12,
-                block_bytes: int = 3000, referee_bytes: int = 5000, exclude_positions=None, sides=None) -> dict:
+                block_bytes: int = 3000, referee_bytes: int = 5000, exclude_positions=None, sides=None,
+                kind: str | None = None) -> dict:
     """Data lines in the run folder's raw file, package and social extract that score
     3 x entities + 2 x numbers + 1 x metric words >= 4, match two distinct terms, at least one a
     number or an entity, and are not already quoted by either side (by text, or by the line a quote
@@ -1442,6 +1443,10 @@ def crux_search(terms: dict, docs: dict[str, str], exclude_quotes, locator=None,
     pool = {"term_lines": set(), "pass_with_subject": set(), "pass": set(), "after_quote_exclusion": 0}
     subj = [str(x) for x in terms.get("subject", [])]
     mkeys = _market_keys(locator) if locator is not None else market_question_keys(all_lines)
+    # The question kind for event_belief_line: given, or event when the terms carry the event/judgment keywords
+    # (orchestrator.search_terms sets 'keywords' only on those kinds).
+    if kind is None:
+        kind = "event" if "keywords" in (terms or {}) else ""
     for doc in ("raw", "package", "social"):
         lines = all_lines[doc]
         for n, line in enumerate(lines, 1):
@@ -1453,7 +1458,7 @@ def crux_search(terms: dict, docs: dict[str, str], exclude_quotes, locator=None,
                 sec, cls = locator.label(doc, n)
             else:
                 sec, cls = "", ("social" if doc == "social" or evidence.social_line(s) else "data")
-            if cls == "social" or market_line_in(sec, lines, n - 1, mkeys):
+            if cls == "social" or market_line_in(sec, lines, n - 1, mkeys, terms, kind):
                 continue
             h = term_hits(s, terms)
             # On an event or judgment question the pinned subject counts once (2 points, one distinct term), so a
@@ -1521,7 +1526,7 @@ def crux_search(terms: dict, docs: dict[str, str], exclude_quotes, locator=None,
                     sec, cls = locator.label(doc, m)
                 else:
                     sec, cls = "", ("social" if doc == "social" or evidence.social_line(s) else "data")
-                if cls == "social" or market_line_in(sec, all_lines[doc], m - 1, mkeys):
+                if cls == "social" or market_line_in(sec, all_lines[doc], m - 1, mkeys, terms, kind):
                     continue
                 sseen.add(ns)
                 shared.append({"doc": doc, "line": m, "section": sec, "cls": cls, "text": s[:400],
@@ -1621,7 +1626,16 @@ _ODDS = re.compile(r"\bYES:?\s*\d{1,3}(?:\.\d+)?\s?%|\bNO:\s*\d{1,3}(?:\.\d+)?\s
 # 가능성 with a subject/object particle and up to 3 words before the percentage ('가능성에 국채 금리 4.1%' stays
 # data), or the percentage then 확률/가능성; 베팅 or a venue (페드워치, 폴리마켓, 칼시) within 40 characters before
 # or 15 after an unsigned percentage. The English verbs skip a price move ('futures show a 1.2% gain' stays data).
-_HO_PCT = r"\d{1,3}(?:\.\d+)?\s?(?:%|percent\b|per\s?cent\b|pct\b)"
+# Phase C (2026-10-04, fifth pass): widened by class, not by phrase. 'Traders peg an October Fed cut at 75%', 'Wall
+# Street sees a 75% shot', 'October Fed cut now 80% likely, CME data show', '... expectations to 80%', '... pricing to
+# 80%', 'Manifold users put ...', 'Metaculus community forecast ... rises to 35%', 'PredictIt shares ... trade at 64
+# cents' and 'Polymarket traders now favour an October Fed cut, 64-36' were data, qualified, and moved the skeptic
+# 40 -> 55 on an October-cut crux. Belief verbs take peg and favour; belief subjects take users, punters and Wall
+# Street; venues take Manifold, Metaculus, PredictIt, Myriad and Limitless; an unsigned percentage then likely /
+# unlikely / probable / shot / proposition is belief, as are expectations or pricing 'to N%' (not inflation or price
+# expectations), a community or crowd forecast, 'a 3-in-4 shot', and a belief subject or venue favouring one side
+# with an N-M split. On event and judgment questions event_belief_line() backs this up by meaning, not wording.
+_HO_PCT =r"\d{1,3}(?:\.\d+)?\s?(?:%|percent\b|per\s?cent\b|pct\b)"
 _HO_KO_PCT = r"(?<![+\-−.\d])\d{1,3}(?:\.\d+)?\s?(?:%|퍼센트)"
 _HO_KO_WORD = r"(?:확률|가능성)"
 _HO_KO_VENUE = r"(?:베팅|페드워치|폴리마켓|칼시)"
@@ -1630,10 +1644,12 @@ _HO_MOVE = (r"(?!\s+(?:gains?|drops?|rises?|falls?|declines?|loss(?:es)?|increas
             r"|rally|rallies|higher|lower|up|down|advances?|decreases?|climbs?)\b)")
 _HO_CENTS = r"\d{1,3}(?:\.\d+)?\s?(?:¢|cents?\b)"
 _HO_WORD = r"(?:odds|chances?|probabilit(?:y|ies)|likelihood|bets?|bettors?|betting|wagers?|wagering)"
-_HO_VENUE = r"(?:FedWatch|Polymarket|Kalshi)"
-_HO_SUBJ = r"(?:traders|markets?|investors|forecasters|futures|swaps|bettors)"
+_HO_VENUE = r"(?:FedWatch|Polymarket|Kalshi|Manifold|Metaculus|PredictIt|Myriad|Limitless)"
+_HO_SUBJ = r"(?:traders|markets?|investors|forecasters|futures|swaps|bettors|users|punters|Wall\s+Street)"
 _HO_VERB = (r"(?:puts?|putting|sees?|seeing|saw|gives?|giving|gave|assigns?|assigning|assigned"
-            r"|impl(?:y|ies|ying|ied)|pric(?:e|es|ed|ing))")
+            r"|impl(?:y|ies|ying|ied)|pric(?:e|es|ed|ing)|peg(?:s|ged|ging)?|favou?r(?:s|ed|ing)?)")
+_HO_UNSIGNED = r"(?<![+\-−±.\d])"
+_HO_NUMWORD = r"(?:one|two|three|four|five|six|seven|eight|nine|\d{1,2})"
 _HEADLINE_ODDS = re.compile(
     rf"\b{_HO_WORD}\b(?:\W+\w+){{0,10}}?\W+{_HO_PCT}"                           # 'Hike Odds Reach 64%'
     rf"|{_HO_PCT}\s+(?:\w+\s+)?(?:{_HO_WORD}|{_HO_VENUE}|implied)\b"            # '78% probability', '54.5% Polymarket odds'
@@ -1645,7 +1661,7 @@ _HEADLINE_ODDS = re.compile(
     rf"|\b(?:pricing|priced)\b(?:\W+\w+){{0,6}}?\s+at\s+{_HO_PCT}(?!\s+of\s+par)"  # 'pricing an October cut at 85%'
     rf"|\bimpl(?:y|ies|ying|ied)\s+(?:at\s+|an?\s+|about\s+|around\s+)?{_HO_PCT}"  # 'implied at 80%', 'imply 72%'
     rf"|\b{_HO_SUBJ}\s+(?:(?:now|are|were|is|still|fully|also|have|had|largely|mostly)\s+){{0,2}}{_HO_VERB}\b(?!\s+vol)"
-    rf"(?:\W+\w+){{0,8}}?\W+{_HO_PCT}"                                          # 'traders put a cut at 90%'
+    rf"(?:\W+\w+){{0,8}}?\W+(?<!\bup )(?<!\bdown ){_HO_UNSIGNED}{_HO_PCT}{_HO_MOVE}"  # 'traders put a cut at 90%'
     rf"|\b{_HO_VENUE}\b(?:\W+\w+){{0,8}}?\W+{_HO_CENTS}"                       # 'Polymarket: ... at 64 cents'
     rf"|{_HO_CENTS}\s+(?:\w+\s+){{0,2}}?(?:on\s+|at\s+)?{_HO_VENUE}\b"          # 'at 71¢ on Kalshi'
     rf"|\bcontracts?\s+(?:trades?|trading|traded|priced|sits?|is|at)\s+(?:at\s+|near\s+|around\s+)?{_HO_CENTS}"
@@ -1653,6 +1669,12 @@ _HEADLINE_ODDS = re.compile(
     rf"(?:\W+\w+){{0,8}}?\W+(?<![+\-−.\d]){_HO_PCT}{_HO_MOVE}"             # 'futures show 78%', 'signal 72%'
     rf"|\bseen\s+(?:at\s+)?{_HO_PCT}(?:\W+\w+){{0,4}}?\W+{_HO_SUBJ}\b"          # 'seen at 78% by rate futures'
     rf"|{_HO_PCT}\s+baked\s+in\b"                                              # '78% baked in'
+    rf"|{_HO_UNSIGNED}{_HO_PCT}\s+(?:likely|unlikely|probable|improbable|shot|proposition)\b"  # '80% likely'
+    rf"|(?<!inflation )(?<!price )\b(?:expectations|pricing)\s+(?:to|at|near|around)\s+{_HO_PCT}"  # '... to 80%'
+    rf"|\b(?:community|crowd|aggregate)\s+forecasts?\b(?:\W+\w+){{0,10}}?\W+{_HO_PCT}"  # 'community forecast ... 35%'
+    rf"|\b{_HO_NUMWORD}[\s-]in[\s-]{_HO_NUMWORD}\s+(?:shot|chance|odds|probability|likelihood)\b"  # 'a 3-in-4 shot'
+    rf"|\b(?:{_HO_VENUE}|{_HO_SUBJ})\b(?:\W+\w+){{0,3}}?\W+favou?r(?:s|ed|ing)?\b[^\n]{{0,80}}?"
+    r"(?<![\d.$])[1-9]\d?\s?[-–][1-9]\d?(?![\d%.\-])"                             # '... favour a cut, 64-36'
     rf"|{_HO_KO_WORD}(?:은|는|이|가|을|를|도)?\s+(?:[^\s%]+\s+){{0,3}}?(?:약\s*)?{_HO_KO_PCT}"  # '인하 확률은 78%'
     rf"|{_HO_KO_PCT}\s*(?:의\s*)?{_HO_KO_WORD}"                                 # '78% 확률로'
     rf"|{_HO_KO_VENUE}[^\n]{{0,40}}?{_HO_KO_PCT}(?!\s*\(?\s*(?:7d|24h|1d|30d)\b)"  # '페드워치에 따르면 ... 78%'
@@ -1736,18 +1758,62 @@ def _market_keys(locator) -> set[str]:
     return keys
 
 
-def market_line_in(section: str, lines: list[str], i: int, keys: set[str]) -> bool:
+# event_belief_line: an unsigned percentage between 1 and 99 (one decimal at most, so a '3.75%' rate level never
+# matches), not a share ('55% of the vote'), not a range or a period change, and not 'by N%'.
+_EV_PCT = re.compile(r"(?<![+\-−±.\d$])(?<!\bby\s)(\d{1,2}(?:\.\d)?)\s?(?:%|percent\b|per\s?cent\b|pct\b)"
+                     r"(?!\s*(?:of\b|\(|[-–]\s?\d|\d))", re.I)
+# A metric or outcome word up to five words before the percentage or right after it says the number measures
+# something (a level, a move, a tally, a result), so it is data: 'unemployment fell to 4.1%', '5% gain', 'won 52%'.
+_EV_METRIC = re.compile(
+    r"\b(?:rates?|yields?|prices?|inflation|cpi|pce|gdp|unemployment|jobless|payrolls?|growth|index|indices"
+    r"|volatility|range|target|benchmark|bps|basis|points?|tariffs?|tax(?:es)?|votes?|voters?|turnout|polls?|polling"
+    r"|approval|support|share|shares|stake|margin|revenue|sales|earnings|profits?|returns?|gains?|loss(?:es)?"
+    r"|rose|fell|rises?|falls?|drops?|dropped|declin\w*|increas\w*|decreas\w*|higher|lower|up|down|grew|surg\w*"
+    r"|slump\w*|tumbl\w*|rall\w*|advanc\w*|stocks?|bonds?|dollar|oil|gold|apy|apr|interest|mortgages?|wages?"
+    r"|budget|deficit|debt|spending|output|exports?|imports?|production|capacity|income|savings|pace|yoy|mom|qoq"
+    r"|annual\w*|won|wins?|winning|took|secured|received|garnered|captured|tallied|counted|majority|plurality"
+    r"|discount|premium|stake|owned|ownership|holdings?|allocation|weight\w*|dominance|cut\s+by|hike\s+by)\b", re.I)
+
+
+def event_belief_line(line: str, terms: dict | None, kind: str = "") -> bool:
+    """On an event or judgment question, a line that puts an unsigned percentage on the question's own event
+    with no metric word beside it is what someone believes about the event, not data about it: 'An October Fed
+    cut at 75% after soft payrolls' on 'The Fed cuts rates at the October 2026 FOMC meeting'. An event happens
+    or not; a bare percentage on it is a probability (Phase C, 2026-10-04, fifth pass: the phrase lists behind
+    _HEADLINE_ODDS kept leaking). 'The Fed cuts rates by 0.25%', '... to 3.75%', 'won 52% of the vote' and
+    'payrolls rose 4.1%' stay data. The line has to be about the crux (shares_specific)."""
+    if kind not in ("event", "judgment") or not terms or not line:
+        return False
+    body = re.sub(r"^\s*[-*]\s*(?:\[[^\]]*\]\s*)?", "", line)
+    for m in _EV_PCT.finditer(body):
+        if not 1 <= float(m.group(1)) <= 99:
+            continue
+        before = " ".join(re.findall(r"[\w']+", body[:m.start()])[-5:])
+        after = " ".join(re.findall(r"[\w']+", body[m.end():])[:1])
+        if _EV_METRIC.search(before) or _EV_METRIC.search(after):
+            continue
+        if shares_specific(line, terms, kind):
+            return True
+    return False
+
+
+def market_line_in(section: str, lines: list[str], i: int, keys: set[str], terms: dict | None = None,
+                   kind: str = "") -> bool:
     """is_market_line, aware of the neighbouring line and of the run's market questions: line i (0-based) of
     `lines` is a market line when its section or content says so, when the next non-empty line is its odds, or
-    when it is a copy of a market question line (`keys`, market_question_keys)."""
+    when it is a copy of a market question line (`keys`, market_question_keys). With the crux `terms` and the
+    question `kind`, a bare percentage on an event or judgment question's own event is market too
+    (event_belief_line)."""
     line = lines[i] if 0 <= i < len(lines) else ""
     if is_market_line(section, line) or odds_below(lines, i) or _HEADLINE_ODDS.search(line or ""):
+        return True
+    if event_belief_line(line, terms, kind):
         return True
     k = evidence._core(line)
     return len(k) >= 12 and k in keys
 
 
-def market_at(locator, doc, line, section=None) -> bool:
+def market_at(locator, doc, line, section=None, terms: dict | None = None, kind: str = "") -> bool:
     """market_line_in for a located (doc, 1-based line). Fourth review #48, closed at every reader (ninth
     review, 2026-10-04): ev_class, the gate's strict qualification (gate_move), crux_search, quote_qualifies
     and gate rule 9 all ask this, not is_market_line on the bare line. On the 09-10, 09-11 and raw 09-11
@@ -1757,7 +1823,7 @@ def market_at(locator, doc, line, section=None) -> bool:
         return False
     lines = (getattr(locator, "lines", {}) or {}).get(doc) or []
     sec = section if section is not None else locator.label(doc, line)[0]
-    return market_line_in(sec or "", lines, line - 1, _market_keys(locator))
+    return market_line_in(sec or "", lines, line - 1, _market_keys(locator), terms, kind)
 
 
 def quote_qualifies(quote: str, terms: dict, kind: str, locator) -> dict:
@@ -1767,7 +1833,7 @@ def quote_qualifies(quote: str, terms: dict, kind: str, locator) -> dict:
     (market_at, so a POLYMARKET LIVE MARKETS question line or its CROSS-SOURCE copy is market), and it is about the
     crux (shares_specific). {qualifies, market, about, strict}."""
     st = locator.strict(quote, item=True) if quote and locator is not None else {"ok": False}
-    market = bool(st.get("ok")) and (market_at(locator, st["doc"], st["line"], st.get("section", ""))
+    market = bool(st.get("ok")) and (market_at(locator, st["doc"], st["line"], st.get("section", ""), terms, kind)
                                      or is_market_line(st.get("section", ""), quote))
     about = shares_specific(quote, terms or {}, kind) if quote else False
     return {"qualifies": bool(st.get("ok") and st.get("cls") == "data" and not market and about),
@@ -1962,7 +2028,7 @@ def gate_move(agent: str, take_p: int, requested, own_take_values, other_take_p:
         else:
             src = "other"
         st = locator.strict(q) if q else {"ok": False, "reason": "empty", "cls": ""}
-        market = bool(st.get("ok")) and (market_at(locator, st["doc"], st["line"], st.get("section", ""))
+        market = bool(st.get("ok")) and (market_at(locator, st["doc"], st["line"], st.get("section", ""), terms, kind)
                                          or is_market_line(st.get("section", ""), q))
         specific = shares_specific(q, terms, kind)
         qual = bool(st["ok"] and st.get("cls") == "data" and src in ("crux_data", "other") and not market and specific)

@@ -1202,7 +1202,8 @@ SECTOR CONTEXT (crypto and macro landscape; background, not today's data):
         terms = self.search_terms(texts, qrec.get("text", ""), qrec.get("kind", ""))
         excl = [q for t in takes.values() for q in take_quotes(t)] + rec_quotes(rec)
         res = debate.crux_search(terms, self.corpus_docs(), excl, self.locator(),
-                                 exclude_positions=debate.quote_positions(excl, self.locator()))
+                                 exclude_positions=debate.quote_positions(excl, self.locator()),
+                                 kind=qrec.get("kind", ""))
         entry = {"question_id": rec["question_id"], "agent": rec["agent"], "crux_terms": terms, **res}
         cs = self.load("cruxsearch") if self.art("cruxsearch").exists() else {}
         cs = {"pairs": cs.get("pairs", []) if isinstance(cs, dict) else [], "redteam": entry}
@@ -1233,7 +1234,8 @@ SECTOR CONTEXT (crypto and macro landscape; background, not today's data):
             ev_kind = (qm.get(qid) or {}).get("kind", "") in ("event", "judgment")
             res = debate.crux_search(terms, self.corpus_docs(), excl, self.locator(),
                                      exclude_positions=debate.quote_positions(excl, self.locator()),
-                                     sides=(q_hi, q_lo) if ev_kind else None)
+                                     sides=(q_hi, q_lo) if ev_kind else None,
+                                     kind=(qm.get(qid) or {}).get("kind", ""))
             cs["pairs"].append({"question_id": qid, "high": hi, "low": lo, "crux_terms": terms, **res})
             self.log(f"  Crux search [{qid}] {hi}/{lo}: {len(res['hits'])} hits"
                      + (f", {len(res['shared'])} shared lines (quoted by both)" if res.get("shared") else "")

@@ -2161,6 +2161,21 @@ class CrossSourceMarketCopyTests(unittest.TestCase):
         "- [Sat, 3 Oct 2026] Investors expect 70% for an October Fed rate cut after payrolls",
         "- [Sat, 3 Oct 2026] An October Fed rate cut is seen at 78% by rate futures",
         "- [Sat, 3 Oct 2026] An October Fed rate cut is now 78% baked in by futures",
+        # Phase C (2026-10-04, fifth pass): peg, likely, shot, expectations/pricing 'to N%', a community forecast,
+        # more venues (Manifold, Metaculus, PredictIt), Wall Street / users as belief subjects and a favour split
+        # were data, qualified, and moved the skeptic 40 -> 55 on an October-cut crux.
+        "- [Sat, 3 Oct 2026] Traders peg an October Fed cut at 75% after soft payrolls",
+        "- [Sat, 3 Oct 2026] Futures traders peg a December Fed cut at 80% after the CPI print",
+        "- [Sat, 3 Oct 2026] Wall Street sees a 75% shot of an October Fed cut after payrolls",
+        "- [Sat, 3 Oct 2026] October Fed cut now 80% likely, CME data show",
+        "- [Sat, 3 Oct 2026] Traders ramp up October Fed cut expectations to 80%",
+        "- [Sat, 3 Oct 2026] Traders lift October Fed cut pricing to 80% after payrolls",
+        "- [Sat, 3 Oct 2026] Manifold users put an October Fed cut at 55%",
+        "- [Sat, 3 Oct 2026] Metaculus community forecast for an October Fed cut rises to 35%",
+        "- [Sat, 3 Oct 2026] PredictIt shares on an October Fed cut trade at 64 cents",
+        "- [Sat, 3 Oct 2026] Polymarket traders now favour an October Fed cut, 64-36",
+        "- [Sat, 3 Oct 2026] An October Fed cut is now a 75% proposition in rate futures",
+        "- [Sat, 3 Oct 2026] October Fed cut a 3-in-4 shot, traders say",
     )
     DATA_LINES = (
         "- Kalshi: $481,547,487 (+3.3% 7d)", "- BTC 30-day implied volatility at 52%",
@@ -2171,6 +2186,9 @@ class CrossSourceMarketCopyTests(unittest.TestCase):
         "- Stock futures show a 1.2% gain before the open", "- Markets reflect a 0.4% rise in the dollar index",
         "- 금리 인하 가능성에 국채 10년물 금리 4.1%로 하락", "- 미국 9월 소비자물가 3.1% 상승, 예상치 부합",
         "- 비트코인 떠나 선거·금리 베팅…개인투자자 예측시장 이동",
+        "- Michigan survey lifts inflation expectations to 3.1% in September",
+        "- Brent rose 2% as the market priced tighter supply; WTI up 1.5%",
+        "- Senate passes the funding bill 52-48 after a late amendment",
     )
 
     def test_more_market_belief_phrasings_are_market_not_qualifying(self):
@@ -2200,6 +2218,41 @@ class CrossSourceMarketCopyTests(unittest.TestCase):
             with self.subTest(line=line):
                 self.assertIsNone(debate._HEADLINE_ODDS.search(line))
                 self.assertEqual(debate.ev_class(loc.locate(line), loc), "data")
+
+
+    def test_event_question_bare_percentage_on_its_own_event_is_market(self):
+        # Phase C (2026-10-04, fifth pass): the phrase lists keep leaking, so on an event or judgment question an
+        # unsigned percentage on the question's own event with no metric word beside it is market belief
+        # (event_belief_line), at the gate, the referee's quote check and the crux search. The event's own data
+        # ('cuts rates by 0.25%', 'to 3.75%', 'unemployment hit 4.3%', '75% of Fed officials') stays data.
+        belief = ["- [Sat, 3 Oct 2026] An October Fed cut at 75% after soft payrolls",
+                  "- [Sat, 3 Oct 2026] October Fed cut: 70% now, says a Goldman desk"]
+        data = ["- [Sat, 3 Oct 2026] The Fed cuts rates by 0.25% at the October FOMC meeting",
+                "- [Sat, 3 Oct 2026] The Fed cut its benchmark to 3.75% at the October FOMC meeting",
+                "- [Sat, 3 Oct 2026] Ahead of the October FOMC meeting unemployment hit 4.3%, pressing for a Fed cut",
+                "- [Sat, 3 Oct 2026] October FOMC: 75% of Fed officials back a cut, minutes show"]
+        pkg = "# SECTION 4: NEWS INTELLIGENCE\n## NEWS MEDIA\n" + "\n".join(belief + data) + "\n"
+        loc = evidence.Locator({"package": pkg})
+        terms = debate.crux_terms(["The Fed cuts rates at the October 2026 FOMC meeting"])
+        for line in belief + data:
+            with self.subTest(line=line):
+                is_belief = line in belief
+                self.assertEqual(debate.event_belief_line(line, terms, "event"), is_belief)
+                self.assertFalse(debate.event_belief_line(line, terms, "threshold"))
+                qq = debate.quote_qualifies(line, terms, "event", loc)
+                self.assertEqual(qq["market"], is_belief)
+                self.assertEqual(qq["qualifies"], not is_belief)
+                m = debate.gate_move("skeptic", 40, 55, {"q1": 40}, 80, "narrow", [{"section": "", "quote": line}],
+                                     [], [], [], terms, loc, kind="event")
+                self.assertEqual(m["new_evidence"][0]["cls"], "market" if is_belief else "data")
+                self.assertEqual(m["gated"], 45 if is_belief else 55)
+        hits = [h["text"].strip() for h in debate.crux_search(terms, {"package": pkg}, [], loc, kind="event")["hits"]]
+        self.assertFalse(set(hits) & set(belief))
+        self.assertTrue(set(hits) & set(data))
+        # The kind is inferred from the event/judgment keywords when the caller does not pass it.
+        kterms = dict(terms, keywords=["cut"])
+        hits = [h["text"].strip() for h in debate.crux_search(kterms, {"package": pkg}, [], loc)["hits"]]
+        self.assertFalse(set(hits) & set(belief))
 
 
 class ScorecardExpiryTests(unittest.TestCase):
