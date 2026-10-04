@@ -108,23 +108,48 @@ _MON = (r"(?:January|February|March|April|May|June|July|August|September|October
 _DATE = re.compile(
     r"(?<!\d)(?P<iy>(?:19|20)\d\d)-(?P<im>\d\d)-(?P<id>\d\d)(?!\d)"
     r"|(?<!\w)(?P<m1>" + _MON + r")\.?\s+(?P<d1>[0-3]?\d)(?:st|nd|rd|th)?(?!\d|:\d)(?:,?\s+(?P<y1>(?:19|20)\d\d)\b)?"
-    r"|(?<![\w:.$])(?P<d2>[0-3]?\d)(?:st|nd|rd|th)?\s+(?P<m2>" + _MON + r")\.?(?:,?\s+(?P<y2>(?:19|20)\d\d)\b)?")
+    r"|(?<![\w:.$])(?P<d2>[0-3]?\d)(?:st|nd|rd|th)?\s+(?P<m2>" + _MON + r")\.?(?:,?\s+(?P<y2>(?:19|20)\d\d)\b)?"
+    # Korean: '2026년 9월 16일', '9월 16일', and a bare '16일' (a day of its item's month); '30일간', '3일째' are spans
+    r"|(?<!\d)(?:(?P<ky>(?:19|20)\d\d)년\s*)?(?P<km>1[0-2]|0?[1-9])월\s*(?P<kd>[0-3]?\d)일"
+    r"|(?<![\d.,])(?P<bd>[0-3]?\d)일(?!간|째|치|분|당|\s*(?:동안|만에))")
+# A news item header '- [Fri, 11 Sep 2026] ...' (or '- [2026-09-11]'): a bare Korean day in it, or in the indented
+# summary lines under it, is that day of the item's month (c12: '…16일 첫 韓-중앙아 정상회의' on 11 Sep -> 2026-09-16).
+_ITEM = re.compile(r"\s*[-*]\s*\[(?:[A-Za-z]{3},?\s*)?(?:(?P<d>[0-3]?\d)\s+(?P<m>" + _MON + r")\.?\s+(?P<y>(?:19|20)\d\d)"
+                   r"|(?P<iy>(?:19|20)\d\d)-(?P<im>\d\d)-\d\d)")
 
 
 def dates(text: str) -> list[dict]:
     """Calendar dates in text: [{raw, key 'MM-DD', year 'YYYY' or ''}]. ISO dates and written dates
-    ('September 24', 'Sept. 24, 2026', '24 September 2026'); a month without a day ('August 2026') is no date."""
+    ('September 24', 'Sept. 24, 2026', '24 September 2026'); a month without a day ('August 2026') is no date.
+    Korean dates too: '9월 16일' (yearless), '2026년 9월 16일', and a bare '16일' inside a dated news item, read
+    as that day of the item's own month and year; a bare day outside an item is no date."""
     t = re.sub(r"https?://\S+", " ", (text or "").translate(_TRANS))
     out = []
-    for m in _DATE.finditer(t):
-        if m.group("iy"):
-            y, mo, d = m.group("iy"), int(m.group("im")), int(m.group("id"))
-        else:
-            mo = _MONTHS[(m.group("m1") or m.group("m2")).lower()]
-            d = int(m.group("d1") or m.group("d2"))
-            y = m.group("y1") or m.group("y2") or ""
-        if 1 <= mo <= 12 and 1 <= d <= 31:
-            out.append({"raw": m.group(0).strip(), "key": f"{mo:02d}-{d:02d}", "year": y})
+    item = None                                          # (year, month) of the news item the line belongs to
+    for line in t.split("\n"):
+        h = _ITEM.match(line)
+        if h:
+            item = ((int(h.group("iy")), int(h.group("im"))) if h.group("iy")
+                    else (int(h.group("y")), _MONTHS[h.group("m").lower()]))
+        elif not line[:1].isspace():
+            item = None
+        for m in _DATE.finditer(line):
+            if m.group("iy"):
+                y, mo, d = m.group("iy"), int(m.group("im")), int(m.group("id"))
+            elif m.group("km"):
+                y, mo, d = m.group("ky") or "", int(m.group("km")), int(m.group("kd"))
+            elif m.group("bd"):
+                if not item or not 1 <= item[1] <= 12:
+                    continue
+                y, mo, d = str(item[0]), item[1], int(m.group("bd"))
+                if d > calendar.monthrange(item[0], mo)[1]:
+                    continue
+            else:
+                mo = _MONTHS[(m.group("m1") or m.group("m2")).lower()]
+                d = int(m.group("d1") or m.group("d2"))
+                y = m.group("y1") or m.group("y2") or ""
+            if 1 <= mo <= 12 and 1 <= d <= 31:
+                out.append({"raw": m.group(0).strip(), "key": f"{mo:02d}-{d:02d}", "year": y})
     return out
 
 

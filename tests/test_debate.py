@@ -2196,6 +2196,27 @@ class ScorecardExpiryTests(unittest.TestCase):
         self.assertEqual(bad[0]["dates"], ["September 12"])
         self.assertFalse(bad[0]["found_in_source"])
 
+    def test_claims_check_reads_korean_dates(self):
+        # 09-11 c12 flagged '**September 16:** The first Korea-Central Asia summit' as not in the sources: the
+        # etnews item gives only '16일', the day of the month, so the date was never indexed. A bare 'N일' takes
+        # the year and month of its own item's date; 'N월 N일' is a yearless date, 'YYYY년 N월 N일' a full one.
+        raw = ("- [Fri, 11 Sep 2026] 李, 프랑스 이어 중앙아시아 정상외교…16일 첫 '韓-중앙아 정상회의' "
+               "https://www.etnews.com/20260911000296\n")
+        self.assertIn({"raw": "16일", "key": "09-16", "year": "2026"}, evidence.dates(raw))
+        got = evidence.brief_claims("### WHAT TO WATCH\n- **September 16:** The first Korea-Central Asia summit.\n",
+                                    {"raw": raw, "package": raw}, {}, {})
+        self.assertEqual(len(got), 1)
+        self.assertTrue(got[0]["found_in_source"], got[0]["action"])
+        self.assertEqual(evidence.DateIndex({"raw": raw}).find({"raw": "2026-09-16", "key": "09-16", "year": "2026"}), "raw")
+        # an indented summary line belongs to the item above it; a line outside any item resolves no bare day
+        self.assertEqual([x["key"] for x in evidence.dates(
+            "- [Fri, 11 Sep 2026] KB금융 차기 회장\n  회추위는 11일 회의를 열고 지난 2일 30일간 3일째\n16일 회의\n")],
+            ["09-11", "09-11", "09-02"])
+        self.assertEqual(evidence.dates("10월 2일 발표, 2026년 9월 30일 마감, 31일"),
+                         [{"raw": "10월 2일", "key": "10-02", "year": ""},
+                          {"raw": "2026년 9월 30일", "key": "09-30", "year": "2026"}])
+        self.assertEqual(evidence.dates("- [Sat, 26 Sep 2026] 31일 공개"), [{"raw": "26 Sep 2026", "key": "09-26", "year": "2026"}])
+
 
 class ThresholdNumberNeedsCruxWordTests(unittest.TestCase):
     """09-11 c8 q1 ('Will Bitcoin trade below $75,000 by 2026-09-18?'), crux '$75,000': the headline 'Apeing's Crypto
