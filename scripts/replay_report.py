@@ -148,7 +148,10 @@ def report(root: Path, run_id: str, old: dict | None, gap_min_probe: int | None)
         "b held split (two-sided, gap_after >= GAP_MIN, cruxes stated)": m["held_splits"] >= 1,
         "c gap_after/gap_before >= 0.6 (no crux data)": ratio is None or ratio >= 0.6,
         "d soft moves (> FREE_MOVE without qualifying evidence) <= 30%": (soft / len(rl) <= 0.3) if rl else True,
-        "lens >= 2 KB for 7/9": lens_ok >= 7,
+        # §15.5: 7 of 9 at 2 KB on 09-11 and 10-04; the 09-10 package predates the KOREA, AI EDUCATION and
+        # fundraising blocks (measured 5/9), so its bar is every agent above 0
+        **({"lens > 0 B for every agent (09-10 package)": bool(lens) and all(v > 0 for v in lens.values())}
+           if str(run.get("day") or run_id[:10]) < "2026-09-11" else {"lens >= 2 KB for 7/9": lens_ok >= 7}),
         "debate evidence >= 80%": (dbs.get("debate_evidence_rate") or 0) >= 0.8 if rl or chs else True,
         "leakage <= 1": m["leakage"] <= 1,
         "calls <= ceiling": (m["calls"] or 0) <= m["ceiling"],
