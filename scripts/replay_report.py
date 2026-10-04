@@ -78,6 +78,27 @@ def gap_ratios(debates: list[dict]) -> tuple[list[dict], float | None]:
     return out, med
 
 
+# A take range at most NEAR_MISS under GAP_MIN is a near miss: the probe's median retest |dp| is 3 (§15.0), so one
+# rerun of the takes can carry it across. 09-11 c10: q1-q3 at 18/18/19 under GAP_MIN 20, 1 pair staged where c9
+# staged 2, and nothing in the report said the pair count was one draw (§15.5 g, §20.7 #82).
+NEAR_MISS = 3
+
+
+def near_misses(pos: dict, gap_min: int) -> list[dict]:
+    """Questions whose take range is in [gap_min - NEAR_MISS, gap_min): not paired on this draw, paired on a
+    likely rerun. The range is take_stats.range, else recomputed from take_p."""
+    take_p = pos.get("take_p") or {}
+    out = []
+    for q in pos.get("questions") or []:
+        rng = (q.get("take_stats") or {}).get("range")
+        if rng is None:
+            vals = [v[q["id"]] for v in take_p.values() if q.get("id") in v]
+            rng = max(vals) - min(vals) if len(vals) >= 3 else None
+        if rng is not None and gap_min - NEAR_MISS <= rng < gap_min:
+            out.append({"question_id": q["id"], "range": int(rng)})
+    return out
+
+
 def render_ratios(per_debate: list[dict]) -> str:
     """'q3 macro_strategist/trader 22->13 0.59 (< 0.6)' per debate, '; '-joined."""
     return "; ".join(f"{x['question_id']} {x['high']}/{x['low']} {x['gap_before']}->{x['gap_after']} {x['ratio']:.2f}"
@@ -145,6 +166,9 @@ def report(root: Path, run_id: str, old: dict | None, gap_min_probe: int | None)
     for q in pos.get("questions", []):
         ts = q.get("take_stats") or {}
         spread.append(f"{q['id']} range {ts.get('range')} (median {ts.get('median')})")
+    gm_run = int(pairing.get("gap_min") or gap_min_probe or debate.GAP_MIN_DEFAULT)
+    near = near_misses(pos, gm_run)
+    near_txt = "; ".join(f"{x['question_id']} {x['range']}" for x in near) or "none"
     m = {
         "run_id": run_id, "day": run.get("day"), "status": run.get("status"),
         "questions_kept": len(qs), "questions_dropped": len(dropped),
@@ -177,7 +201,7 @@ def report(root: Path, run_id: str, old: dict | None, gap_min_probe: int | None)
         "calls": u.get("calls_logged", u.get("calls")), "budget_skips": len(u.get("budget_skips", [])),
         "in_tok": u.get("in_tok"), "cached_tok": u.get("cached_tok"), "out_tok": u.get("out_tok"),
         "wall": u.get("wall_seconds"), "ceiling": u.get("ceiling", 32), "lens_bytes": lens, "lens_ok": lens_ok,
-        "spread": spread, "top_pair": (pairing.get("pairs") or [{}])[0].get("question_id"),
+        "spread": spread, "near_misses": near, "top_pair": (pairing.get("pairs") or [{}])[0].get("question_id"),
     }
     o = old_metrics(old)
     bar = {
@@ -208,6 +232,9 @@ def report(root: Path, run_id: str, old: dict | None, gap_min_probe: int | None)
              f"| take spread per question | {'; '.join(spread)} | — |",
              f"| day type, pairs, red team, gap_min | {m['day_type']}, {m['pairs']}, {m['red_team'] or '—'}, {m['gap_min']}"
              f"{f' (probe {gap_min_probe})' if gap_min_probe else ''} | — |",
+             f"| near misses: take range within {NEAR_MISS} under gap_min {gm_run} (one draw: rerun --from-phase takes "
+             f"before reading the pair count) | "
+             f"{near_txt} | — |",
              f"| live splits / held splits / useful debates | {m['live_splits']} / {m['held_splits']} / {m['useful']} | deep dive: {o.get('deep_dive', '—')} |",
              f"| effect per debate | {'; '.join(m['effects']) or '—'} | — |",
              f"| closure without evidence; median gap_after/gap_before (no crux data) | {m['closure_without_evidence']}; "
@@ -305,6 +332,9 @@ def spread_stability(samples: list[dict], gap_min: int = debate.GAP_MIN_DEFAULT)
             t["asked"] = len(t["runs"])
             t["clears"] = sum(1 for r in t["ranges"] if r >= gap_min)
             t["unstable"] = 0 < t["clears"] < t["asked"]
+            # near misses that repeat across samples (never clearing) point at GAP_MIN, not at the draw (§20.7 #82)
+            t["near"] = sum(1 for r in t["ranges"] if gap_min - NEAR_MISS <= r < gap_min)
+            t["near_repeat"] = t["clears"] == 0 and t["near"] >= 2
         topics.sort(key=lambda t: (-t["clears"], -max(t["ranges"]), t["label"]))
         pairs = [s["pairs"] for s in runs if s["pairs"] is not None]
         targets = sorted({s["target"] for s in runs if s["target"] is not None})
@@ -325,7 +355,9 @@ def render_spread_stability(days: list[dict]) -> list[str]:
             lines.append(f"  - {t['label']}: asked {t['asked']}/{len(d['runs'])}, take range "
                          f"{min(t['ranges'])}-{max(t['ranges'])} ({', '.join(map(str, t['ranges']))}), "
                          f"range >= GAP_MIN {d['gap_min']} in {t['clears']}/{t['asked']}"
-                         + (" (UNSTABLE: the pair depends on the sample)" if t["unstable"] else ""))
+                         + (" (UNSTABLE: the pair depends on the sample)" if t["unstable"] else "")
+                         + (f" (NEAR MISS in {t['near']}/{t['asked']}, within {NEAR_MISS} under GAP_MIN: recheck "
+                            f"GAP_MIN {d['gap_min']} against the probe)" if t.get("near_repeat") else ""))
     return lines
 
 
@@ -352,7 +384,7 @@ def main(argv=None) -> int:
         (root / rid / "replay_report.md").write_text(text, encoding="utf-8")
         allm.append(m)
         print(f"| {day} | **Phase C replay {rid}** ({m['day_type']}): {m['questions_kept']} questions, {m['pairs']} pairs, "
-              f"live splits {m['live_splits']}, held {m['held_splits']}, useful {m['useful']}, soft moves {m['soft_moves']}/{m['responses']} "
+              f"near misses {len(m['near_misses'])}, live splits {m['live_splits']}, held {m['held_splits']}, useful {m['useful']}, soft moves {m['soft_moves']}/{m['responses']} "
               f"(requests {m['soft_requests']}), endpoints by tier {m['endpoints_by_tier']}, "
               f"evidence {m['evidence_rate']}, overlap {m['citation_overlap']}, brief {m['words']} words, status {m['status']} "
               f"| {m['calls']} | {(m['in_tok'] or 0) / 1e6:.2f} M ({(m['cached_tok'] or 0) / 1e6:.2f} M cached) | "

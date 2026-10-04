@@ -144,3 +144,52 @@ class GapRatioTests(unittest.TestCase):
             text, m = replay_report.report(root, "2026-09-11-x", None, None)
         self.assertEqual(m["gap_ratios_no_crux"][0]["ratio"], 0.591)
         self.assertIn("0.59 (per debate: q3 macro_strategist/trader 22->13 0.59 (< 0.6))", text)
+
+
+class NearMissTests(unittest.TestCase):
+    """09-11 c10 (§20.7 #82): q1-q3 take ranges 18/18/19 sat just under GAP_MIN 20, so 1 pair was staged (q4, OpenAI
+    Pro, 32) where c9 staged 2; the report gave the pair count with nothing saying three questions missed by 1-2
+    points on one draw. The per-run report lists near misses; item (g) flags a topic that misses in two samples."""
+    C10 = [("q1", BTC, [54, 56, 57, 58, 60, 62, 63, 70, 72]),               # 18
+           ("q2", COWORK, [60, 62, 64, 66, 70, 72, 74, 76, 78]),            # 18
+           ("q3", HORMUZ, [30, 33, 36, 38, 40, 42, 44, 46, 49]),            # 19
+           ("q4", OPENAI, [36, 38, 40, 44, 50, 60, 62, 66, 68])]            # 32
+    C10T1 = [("q1", BTC, [55, 57, 58, 60, 61, 62, 64, 70, 73]),             # 18 again
+             ("q2", COWORK, [62, 64, 66, 68, 70, 72, 74, 76, 77]),          # 15: outside the band
+             ("q3", HORMUZ, [28, 32, 36, 38, 40, 42, 44, 46, 50]),          # 22: clears
+             ("q4", OPENAI, [38, 40, 42, 44, 50, 60, 62, 66, 68])]          # 30
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self.tmp.name)
+        write_run(self.root, "2026-09-11-c10", self.C10, 1)
+        write_run(self.root, "2026-09-11-c10t1", self.C10T1, None)
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_report_lists_near_misses(self):
+        text, m = replay_report.report(self.root, "2026-09-11-c10", None, None)
+        self.assertEqual(m["near_misses"], [{"question_id": "q1", "range": 18}, {"question_id": "q2", "range": 18},
+                                            {"question_id": "q3", "range": 19}])
+        self.assertIn("near misses: take range within 3 under gap_min 20", text)
+        self.assertIn("| q1 18; q2 18; q3 19 |", text)
+
+    def test_no_near_miss_when_ranges_clear_or_fall_short(self):
+        pos = {"questions": [{"id": "q1", "take_stats": {"range": 20}}, {"id": "q2", "take_stats": {"range": 16}},
+                             {"id": "q3", "take_stats": {"range": 17}}]}
+        self.assertEqual(replay_report.near_misses(pos, 20), [{"question_id": "q3", "range": 17}])
+
+    def test_repeated_near_miss_flagged_in_item_g(self):
+        samples = [replay_report.run_sample(self.root, r) for r in ("2026-09-11-c10", "2026-09-11-c10t1")]
+        (day,) = replay_report.spread_stability(samples, 20)
+        topics = {t["label"]: t for t in day["topics"]}
+        self.assertTrue(topics["Bitcoin"]["near_repeat"])                            # 18, 18
+        self.assertFalse(topics["Anthropic, Claude, Cowork"]["near_repeat"])         # 18, 15
+        self.assertFalse(topics["Hormuz, South Korea"]["near_repeat"])               # 19, 22: UNSTABLE instead
+        self.assertTrue(topics["Hormuz, South Korea"]["unstable"])
+        self.assertFalse(topics["OpenAI, Pro"]["near_repeat"])
+        text = "\n".join(replay_report.render_spread_stability([day]))
+        self.assertIn("Bitcoin: asked 2/2, take range 18-18 (18, 18), range >= GAP_MIN 20 in 0/2 (NEAR MISS in 2/2, "
+                      "within 3 under GAP_MIN: recheck GAP_MIN 20 against the probe)", text)
+        self.assertEqual(text.count("NEAR MISS"), 1)
