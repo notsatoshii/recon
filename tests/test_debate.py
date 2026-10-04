@@ -2043,6 +2043,21 @@ class CrossSourceMarketCopyTests(unittest.TestCase):
         "- [Sat, 3 Oct 2026] Chances of an October Fed rate cut now stand at 90%",
         "- [Sat, 3 Oct 2026] Traders boost bets on an October Fed cut to 78%",
         "- [Sat, 3 Oct 2026] Fed cut seen 78% likely, on CME FedWatch",
+        # Phase C (2026-10-04, fourth pass): Korean odds wording (the run collects Korean prediction-market news)
+        # and English belief verbs outside the list (show, signal, reflect, expect, seen at, baked in) were data,
+        # qualified, and moved the skeptic 40 -> 55 on a threshold crux.
+        "- [Sat, 3 Oct 2026] CME 페드워치에 따르면 10월 연준 금리 인하 확률은 78%로 높아졌다",
+        "- [Sat, 3 Oct 2026] 10월 연준 금리 인하 가능성은 64%로 반영됐다",
+        "- [Sat, 3 Oct 2026] 트레이더들, 10월 연준 금리 인하에 78% 베팅",
+        "- [Sat, 3 Oct 2026] 폴리마켓서 10월 연준 금리 인하 64%까지 올라",
+        "- [Sat, 3 Oct 2026] 칼시, 10월 연준 금리 인하 72%",
+        "- [Sat, 3 Oct 2026] Fed funds futures show 78% for an October rate cut",
+        "- [Sat, 3 Oct 2026] Prediction markets show 64% yes on an October Fed rate cut",
+        "- [Sat, 3 Oct 2026] Rate futures signal 72% for an October Fed rate cut",
+        "- [Sat, 3 Oct 2026] Fed funds futures now reflect 80% for an October rate cut",
+        "- [Sat, 3 Oct 2026] Investors expect 70% for an October Fed rate cut after payrolls",
+        "- [Sat, 3 Oct 2026] An October Fed rate cut is seen at 78% by rate futures",
+        "- [Sat, 3 Oct 2026] An October Fed rate cut is now 78% baked in by futures",
     )
     DATA_LINES = (
         "- Kalshi: $481,547,487 (+3.3% 7d)", "- BTC 30-day implied volatility at 52%",
@@ -2050,6 +2065,9 @@ class CrossSourceMarketCopyTests(unittest.TestCase):
         "- Producer prices rose at a 0.3% pace in September", "- Home prices grew at 4.5 percent over the year",
         "- Corn futures fell 5 cents a bushel on harvest pressure",
         "- The Treasury priced the 10-year note at 99.5% of par",
+        "- Stock futures show a 1.2% gain before the open", "- Markets reflect a 0.4% rise in the dollar index",
+        "- 금리 인하 가능성에 국채 10년물 금리 4.1%로 하락", "- 미국 9월 소비자물가 3.1% 상승, 예상치 부합",
+        "- 비트코인 떠나 선거·금리 베팅…개인투자자 예측시장 이동",
     )
 
     def test_more_market_belief_phrasings_are_market_not_qualifying(self):

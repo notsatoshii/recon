@@ -1598,7 +1598,20 @@ _ODDS = re.compile(r"\bYES:?\s*\d{1,3}(?:\.\d+)?\s?%|\bNO:\s*\d{1,3}(?:\.\d+)?\s
 # October Fed cut jumps to 64%', '78% on CME FedWatch', '85% priced in', 'with 90% certainty' and 'boost wagers on
 # ... to 78%' were data, qualified, and moved the skeptic 40 -> 55. The belief word and the venue reach 10 words to
 # the percentage, a venue may follow the percentage by up to 3 words, and wager(s)/wagering are belief words.
+# Phase C (2026-10-04, fourth pass): the run collects Korean prediction-market news (c8 raw data carries 폴리마켓 and
+# 칼시 headlines), and 'CME 페드워치에 따르면 ... 인하 확률은 78%로 높아졌다' was data; so were English belief subjects
+# with show/signal/reflect/expect ('Fed funds futures show 78%', 'Rate futures signal 72%'), 'seen at 78% by rate
+# futures' and '78% baked in'. Each qualified and moved the skeptic 40 -> 55 on a threshold crux. Korean: 확률 or
+# 가능성 with a subject/object particle and up to 3 words before the percentage ('가능성에 국채 금리 4.1%' stays
+# data), or the percentage then 확률/가능성; 베팅 or a venue (페드워치, 폴리마켓, 칼시) within 40 characters before
+# or 15 after an unsigned percentage. The English verbs skip a price move ('futures show a 1.2% gain' stays data).
 _HO_PCT = r"\d{1,3}(?:\.\d+)?\s?(?:%|percent\b|per\s?cent\b|pct\b)"
+_HO_KO_PCT = r"(?<![+\-−.\d])\d{1,3}(?:\.\d+)?\s?(?:%|퍼센트)"
+_HO_KO_WORD = r"(?:확률|가능성)"
+_HO_KO_VENUE = r"(?:베팅|페드워치|폴리마켓|칼시)"
+_HO_SHOW = r"(?:shows?|showing|showed|shown|signal(?:s|l?ed|l?ing)?|reflect(?:s|ed|ing)?|expect(?:s|ed|ing)?)"
+_HO_MOVE = (r"(?!\s+(?:gains?|drops?|rises?|falls?|declines?|loss(?:es)?|increases?|jumps?|surges?|slides?|moves?"
+            r"|rally|rallies|higher|lower|up|down|advances?|decreases?|climbs?)\b)")
 _HO_CENTS = r"\d{1,3}(?:\.\d+)?\s?(?:¢|cents?\b)"
 _HO_WORD = r"(?:odds|chances?|probabilit(?:y|ies)|likelihood|bets?|bettors?|betting|wagers?|wagering)"
 _HO_VENUE = r"(?:FedWatch|Polymarket|Kalshi)"
@@ -1619,7 +1632,15 @@ _HEADLINE_ODDS = re.compile(
     rf"(?:\W+\w+){{0,8}}?\W+{_HO_PCT}"                                          # 'traders put a cut at 90%'
     rf"|\b{_HO_VENUE}\b(?:\W+\w+){{0,8}}?\W+{_HO_CENTS}"                       # 'Polymarket: ... at 64 cents'
     rf"|{_HO_CENTS}\s+(?:\w+\s+){{0,2}}?(?:on\s+|at\s+)?{_HO_VENUE}\b"          # 'at 71¢ on Kalshi'
-    rf"|\bcontracts?\s+(?:trades?|trading|traded|priced|sits?|is|at)\s+(?:at\s+|near\s+|around\s+)?{_HO_CENTS}",
+    rf"|\bcontracts?\s+(?:trades?|trading|traded|priced|sits?|is|at)\s+(?:at\s+|near\s+|around\s+)?{_HO_CENTS}"
+    rf"|\b{_HO_SUBJ}\s+(?:(?:now|are|were|is|still|fully|also|have|had|largely|mostly)\s+){{0,2}}{_HO_SHOW}\b"
+    rf"(?:\W+\w+){{0,8}}?\W+(?<![+\-−.\d]){_HO_PCT}{_HO_MOVE}"             # 'futures show 78%', 'signal 72%'
+    rf"|\bseen\s+(?:at\s+)?{_HO_PCT}(?:\W+\w+){{0,4}}?\W+{_HO_SUBJ}\b"          # 'seen at 78% by rate futures'
+    rf"|{_HO_PCT}\s+baked\s+in\b"                                              # '78% baked in'
+    rf"|{_HO_KO_WORD}(?:은|는|이|가|을|를|도)?\s+(?:[^\s%]+\s+){{0,3}}?(?:약\s*)?{_HO_KO_PCT}"  # '인하 확률은 78%'
+    rf"|{_HO_KO_PCT}\s*(?:의\s*)?{_HO_KO_WORD}"                                 # '78% 확률로'
+    rf"|{_HO_KO_VENUE}[^\n]{{0,40}}?{_HO_KO_PCT}(?!\s*\(?\s*(?:7d|24h|1d|30d)\b)"  # '페드워치에 따르면 ... 78%'
+    rf"|{_HO_KO_PCT}[^\n]{{0,15}}?{_HO_KO_VENUE}",                              # '78% 베팅'
     re.I)
 _LADDER = re.compile(r"\bmarket-implied\b")
 _ODDS_CONT = re.compile(r"^\s*(?:YES|NO):?\s*\d{1,3}(?:\.\d+)?\s?%")   # an odds line under its question line
