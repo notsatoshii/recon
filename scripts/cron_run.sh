@@ -9,11 +9,17 @@
 # This launcher loads the env file itself, takes a lock so two runs never overlap, logs to
 # logs/cron.log, and sends ONE Telegram message when the run fails or no brief lands.
 # Pipeline: the Python orchestrator (recon/orchestrator.py, Phase B) since 2026-10-04, after two
-# live validation runs; if it fails and no brief landed, the bash pipeline (run_recon.sh) runs once
-# on the same day's package. RECON_PIPELINE=bash in the env file goes back to bash only.
+# live validation runs. If it fails and no brief landed, it is retried once with --resume (only the
+# failed phase and the ones after it run again). The bash pipeline (run_recon.sh) runs on the same
+# day's package only when the orchestrator produced no takes, and only after the orchestrator's memory
+# snapshot is put back (orchestrator.py --restore-state), so bash never writes a second memory and state
+# entry for the day. Tagged runs (--run-id) never fall back to bash: run_recon.sh writes briefs/<today>.
+# RECON_PIPELINE=bash in the env file goes back to bash only.
 # The Phase C debate (pairs, challenges, responses, crux check) is OFF here: the spread probe failed twice
 # (phase-c-spec §0.1, model log) and no replay or c3/c4 run has passed (§15.5, §17.5). Triage, takes and the
 # split sheet from the takes still run. The §18 cutover is RECON_DEBATE=1 below (or in the env file).
+# A tagged run (--run-id, e.g. the §17.5 c3/c4 runs) leaves RECON_DEBATE unset so the orchestrator's tagged
+# default (debate on) applies, and its brief is looked for in briefs/<run-id>/.
 # Arguments go to the pipeline. --no-telegram (validation runs) also silences the alert.
 #
 set -uo pipefail
@@ -29,12 +35,31 @@ for _f in "${RECON_ENV:-}" "$RECON_HOME/.recon.env" "$RECON_HOME/../.recon.env" 
     [ -n "$_f" ] && [ -f "$_f" ] && { set -a; source "$_f"; set +a; break; }
 done
 
-# Debate gate (see above): the env file may set RECON_DEBATE=1 once the gate and the validation runs pass.
-export RECON_DEBATE="${RECON_DEBATE:-0}"
-
 stamp() { date '+%Y-%m-%d %H:%M:%S'; }
 quiet=0
-for a in "$@"; do [ "$a" = "--no-telegram" ] && quiet=1; done
+RUN_ID=""
+prev=""
+RESUME_ARGS=()
+skip_next=0
+for a in "$@"; do
+    [ "$a" = "--no-telegram" ] && quiet=1
+    [ "$prev" = "--run-id" ] && RUN_ID="$a"
+    case "$a" in --run-id=*) RUN_ID="${a#--run-id=}" ;; esac
+    # the --resume retry drops --from-phase / --resume (mutually exclusive with it)
+    if [ "$skip_next" = 1 ]; then skip_next=0
+    elif [ "$a" = "--from-phase" ]; then skip_next=1
+    elif [ "$a" != "--resume" ] && [ "${a#--from-phase=}" = "$a" ]; then RESUME_ARGS+=("$a")
+    fi
+    prev="$a"
+done
+
+# Debate gate (see above): the env file may set RECON_DEBATE=1 once the gate and the validation runs pass.
+# A tagged run leaves it unset: an explicit 0 would override the orchestrator's tagged default (debate on).
+if [ -n "$RUN_ID" ]; then
+    unset RECON_DEBATE
+else
+    export RECON_DEBATE="${RECON_DEBATE:-0}"
+fi
 
 alert() {
     echo "[$(stamp)] ALERT: $1"
@@ -63,11 +88,12 @@ if ! flock -n 9; then
 fi
 
 TODAY=$(date +%Y-%m-%d)
-BRIEF="$RECON_HOME/briefs/$TODAY/07_daily_brief.md"
-DAY_LOG="$RECON_HOME/logs/$TODAY.log"
+RUN="${RUN_ID:-$TODAY}"
+BRIEF="$RECON_HOME/briefs/$RUN/07_daily_brief.md"
+DAY_LOG="$RECON_HOME/logs/$RUN.log"
 started=$(date +%s)
 PIPELINE="${RECON_PIPELINE:-orchestrator}"
-echo "[$(stamp)] cron_run: start $PIPELINE (debate ${RECON_DEBATE}) $*"
+echo "[$(stamp)] cron_run: start $PIPELINE (run $RUN, debate ${RECON_DEBATE:-tagged default}) $*"
 
 brief_landed() {
     [ -f "$BRIEF" ] && [ "$(stat -c %Y "$BRIEF")" -ge "$started" ] && head -c 400 "$BRIEF" | grep -q '^# RECON DAILY BRIEF'
@@ -77,8 +103,24 @@ if [ "$PIPELINE" = "bash" ]; then
     timeout --kill-after=120 3h /bin/bash "$RECON_HOME/scripts/run_recon.sh" "$@"; rc=$?
 else
     timeout --kill-after=120 2h python3 "$RECON_HOME/recon/orchestrator.py" "$@"; rc=$?
-    # Fallback: the orchestrator failed before a brief landed -> the bash pipeline once, on the same package
-    brief_landed || { echo "[$(stamp)] orchestrator exit $rc, no brief: falling back to run_recon.sh --skip-collect"; timeout --kill-after=120 2h /bin/bash "$RECON_HOME/scripts/run_recon.sh" --skip-collect "$@"; rc=$?; }
+    # First fallback: one --resume of the orchestrator, which redoes only the failed phase and those after it
+    if ! brief_landed; then
+        echo "[$(stamp)] orchestrator exit $rc, no brief: retrying once with --resume"
+        timeout --kill-after=120 1h python3 "$RECON_HOME/recon/orchestrator.py" "${RESUME_ARGS[@]}" --resume; rc=$?
+    fi
+    # Last fallback: the bash pipeline, only when the orchestrator produced no takes (a v1 run is ~61 calls),
+    # never for a tagged run, and only after the orchestrator's memory snapshot is put back
+    if ! brief_landed; then
+        if [ -n "$RUN_ID" ]; then
+            echo "[$(stamp)] orchestrator --resume exit $rc, no brief for tagged run $RUN_ID: no bash fallback"
+        elif [ -f "$RECON_HOME/briefs/$RUN/phases/takes.json" ]; then
+            echo "[$(stamp)] orchestrator --resume exit $rc, no brief, but takes exist: no bash fallback (it would redo ~61 calls)"
+        else
+            echo "[$(stamp)] orchestrator --resume exit $rc, no takes: restoring memory, then run_recon.sh --skip-collect"
+            python3 "$RECON_HOME/recon/orchestrator.py" "${RESUME_ARGS[@]}" --restore-state || echo "[$(stamp)] --restore-state failed (exit $?)"
+            timeout --kill-after=120 2h /bin/bash "$RECON_HOME/scripts/run_recon.sh" --skip-collect "$@"; rc=$?
+        fi
+    fi
 fi
 
 landed=0

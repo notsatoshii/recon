@@ -344,15 +344,48 @@ class GateMoveTests(unittest.TestCase):
         alone = self.gm(65, [{"section": "", "quote": HIT_A}])
         self.assertEqual(alone["gated"], 55)
         shared = debate.gate_move("trader", 40, 65, {"q1": 40}, 80, "narrow", [{"section": "", "quote": HIT_A}], [], [],
-                                  self.hits, self.terms, self.loc, shared_lines={("package", 5)})
+                                  self.hits, self.terms, self.loc, shared_lines={debate.line_key(self.loc, "package", 5)})
         self.assertEqual(shared["gated"], 50)             # 5 free + half of the shared line's 10
         self.assertIn("shared evidence line, allowance split", shared["flags"])
         lines = debate.qualifying_lines(alone, [{"section": "", "quote": HIT_A}], self.loc)
-        self.assertEqual(lines, {("package", 5)})
+        self.assertEqual(lines, {debate.line_key(self.loc, "package", 5)})
         # both responders cite the one crux line: a split of 40 closes by at most 5 + 5 + 10 = 20
         hi = debate.gate_move("skeptic", 80, 40, {"q1": 80}, 40, "concede", [{"section": "", "quote": HIT_A}], [], [],
                               self.hits, self.terms, self.loc, shared_lines=lines)
         self.assertEqual(hi["gated"] - shared["gated"], 20)
+
+    def test_pair_closure_capped_on_different_lines(self):
+        # each side qualifies on a different pair of crux lines: per side 5 + 20 = 25, but the pair may close at
+        # most 2 x 5 + min(20, 10 x 2 distinct lines... here 4) = 30, not 50
+        lines = ["- Aave lending TVL rose to $31.2B on Base and Arbitrum this week, per DefiLlama data",
+                 "- Hyperliquid open interest reached $9.8B, a record, as BTC perps funding turned negative"]
+        terms = debate.crux_terms([CRUX, "Aave TVL $31.2B and Hyperliquid open interest $9.8B"])
+        lo = debate.gate_move("trader", 40, 65, {"q1": 40}, 80, "narrow",
+                              [{"section": "", "quote": HIT_A}, {"section": "", "quote": HIT_B}], [], [],
+                              self.hits, terms, self.loc)
+        hi = debate.gate_move("skeptic", 80, 55, {"q1": 80}, 40, "narrow",
+                              [{"section": "", "quote": x} for x in lines], [], [], [], terms, self.loc)
+        self.assertEqual((lo["gated"], hi["gated"]), (65, 55))        # 25 each before the pair cap
+        k_lo = debate.qualifying_lines(lo, [{"quote": HIT_A}, {"quote": HIT_B}], self.loc)
+        k_hi = debate.qualifying_lines(hi, [{"quote": x} for x in lines], self.loc)
+        self.assertEqual(len(k_lo | k_hi), 4)
+        self.assertEqual(debate.pair_allowance(k_hi, k_lo), 30)
+        mh, ml, capped = debate.cap_pair(hi, lo, k_hi, k_lo)
+        self.assertTrue(capped)
+        self.assertEqual((80 - mh["gated"]) + (ml["gated"] - 40), 30)
+        self.assertTrue(any(f.startswith("pair evidence cap") for f in mh["flags"]))
+        again = debate.cap_pair(mh, ml, k_hi, k_lo)                    # idempotent
+        self.assertFalse(again[2])
+        # a move that fits is left alone; a missing side is fine
+        self.assertFalse(debate.cap_pair(None, debate.gate_move("trader", 40, 45, {"q1": 40}, 80, "narrow", [], [], [],
+                                                                self.hits, terms, self.loc), set(), set())[2])
+
+    def test_same_headline_twice_is_one_line(self):
+        head = "SEC delays decision on spot SOL ETF to November 14"
+        loc = evidence.Locator({"package": "# SECTION 0: CROSS-SOURCE SIGNALS\n- " + head + "\n"
+                                           "# SECTION 4: NEWS INTELLIGENCE\n- [coindesk.com] " + head
+                                           + " https://www.coindesk.com/a/1\n"})
+        self.assertEqual(debate.line_key(loc, "package", 2), debate.line_key(loc, "package", 4))
 
     def test_event_question_entity_line_qualifies(self):
         line = "- South Korea weighs role in Hormuz security after Macron talks, contribution options under review"
@@ -421,22 +454,67 @@ class ScoreTests(unittest.TestCase):
         resp = {"high": side_rec(70, 48, "crux_data"), "low": side_rec(40, 40)}
         s = debate.score_debate(PR, {}, resp, None, 20)
         self.assertTrue(s["closed_on_data"])
-        self.assertTrue(s["live_split"])            # not confirmed: the block stays
+        self.assertTrue(s["in_split"])              # not confirmed: the block stays
+        self.assertFalse(s["live_split"])           # but the split measured after the debate is gone (8 < 20)
         self.assertTrue(s["narrowed_on_data"])
-        s = debate.score_debate(PR, {}, resp, {"resolved": "yes", "leans": "lower"}, 20)
-        self.assertFalse(s["live_split"])
-        s = debate.score_debate(PR, {}, resp, {"resolved": "partly", "leans": "lower"}, 20)
-        self.assertFalse(s["live_split"])
-        s = debate.score_debate(PR, {}, resp, {"resolved": "partly", "leans": "higher"}, 20)
-        self.assertTrue(s["live_split"])
+        ok = {"quote_qualifies": True}
+        s = debate.score_debate(PR, {}, resp, {"resolved": "yes", "leans": "lower", **ok}, 20)
+        self.assertFalse(s["in_split"])
+        s = debate.score_debate(PR, {}, resp, {"resolved": "partly", "leans": "lower", **ok}, 20)
+        self.assertFalse(s["in_split"])
+        s = debate.score_debate(PR, {}, resp, {"resolved": "partly", "leans": "higher", **ok}, 20)
+        self.assertTrue(s["in_split"])
+
+    def test_yes_leaning_against_the_mover_confirms_nothing(self):
+        # the high side came down on crux data; the referee says yes, but the data favours the high view
+        resp = {"high": side_rec(70, 48, "crux_data"), "low": side_rec(40, 40)}
+        s = debate.score_debate(PR, {}, resp, {"resolved": "yes", "leans": "higher", "quote_qualifies": True}, 20)
+        self.assertTrue(s["in_split"])
+        self.assertIn("crux data", s["effect"])
+        self.assertNotIn("confirmed", s["effect"])
+        # a referee quote that would not qualify a move (social, odds line, not strict) confirms nothing either
+        for cc in ({"resolved": "yes", "leans": "lower", "quote_qualifies": False}, {"resolved": "yes", "leans": "lower"}):
+            with self.subTest(cc=cc):
+                self.assertTrue(debate.score_debate(PR, {}, resp, cc, 20)["in_split"])
 
     def test_useful_on_crux_check(self):
         pr = {**PR, "p_high": 58, "p_low": 40}
         resp = {"high": side_rec(58, 55), "low": side_rec(40, 42)}
-        neither = debate.score_debate(pr, {}, resp, {"resolved": "partly", "leans": "neither"}, 20)
-        higher = debate.score_debate(pr, {}, resp, {"resolved": "partly", "leans": "higher"}, 20)
+        ok = {"quote_qualifies": True}
+        neither = debate.score_debate(pr, {}, resp, {"resolved": "partly", "leans": "neither", **ok}, 20)
+        higher = debate.score_debate(pr, {}, resp, {"resolved": "partly", "leans": "higher", **ok}, 20)
+        bad_quote = debate.score_debate(pr, {}, resp, {"resolved": "partly", "leans": "higher"}, 20)
         self.assertFalse(neither["useful"])
         self.assertTrue(higher["useful"])
+        self.assertFalse(bad_quote["useful"])
+
+    def test_live_and_useful_can_fail(self):
+        # a staged pair is not live or useful by construction: a failed debate is neither
+        failed = debate.score_debate(PR, {}, {}, None, 20)
+        self.assertEqual(failed["status"], "failed")
+        self.assertTrue(failed["in_split"])
+        self.assertFalse(failed["live_split"])
+        self.assertFalse(failed["useful"])
+        self.assertFalse(failed["held_split"])
+        # narrowed on argument below gap_min: not live, not useful (no data move, no crux check)
+        s = debate.score_debate(PR, {}, {"high": side_rec(70, 65), "low": side_rec(40, 46)}, None, 20)
+        self.assertEqual(s["gap_after"], 19)
+        self.assertFalse(s["live_split"])
+        self.assertFalse(s["useful"])
+        self.assertTrue(s["in_split"])
+
+    def test_held_split_needs_stated_cruxes(self):
+        resp = {"high": side_rec(70, 70), "low": side_rec(40, 40)}
+        ch = {"data": {"crux": {"claim": "DEX volume holds above $11B"}}}
+        held = debate.score_debate(PR, {"high": ch, "low": ch}, resp, None, 20)
+        self.assertTrue(held["held_split"])
+        self.assertTrue(held["live_split"])
+        self.assertTrue(held["useful"])                       # held with an agreed crux
+        no_crux = debate.score_debate(PR, {"high": ch, "low": {"data": {"crux": {"claim": ""}}}}, resp, None, 20)
+        self.assertFalse(no_crux["held_split"])
+        one = debate.score_debate(PR, {"high": ch, "low": ch}, {"high": side_rec(70, 70)}, None, 20)
+        self.assertFalse(one["held_split"])
+        schemas.validate(json.loads(json.dumps(held)), schemas.ARTIFACTS["debate_score"])
 
 
 # ── crux search ──────────────────────────────────────────────────────────────────────────
@@ -511,6 +589,46 @@ class MarketGateTests(unittest.TestCase):
         self.assertTrue(debate.market_match("Will Bitcoin trade above $84,000 on October 4?", self.LINES))
         self.assertFalse(debate.market_match("Will Bitcoin ETF inflows exceed $500M this week?", self.LINES))
         self.assertFalse(debate.market_match("Will Uniswap V3 daily volume stay above $1.2B by October 10?", self.LINES))
+
+    def test_odds_by_content(self):
+        for line, ok in (("- Fed Rate Hike by September 2026 Meeting? — YES: 59.5% | vol: $3,037,770", True),
+                         ("  YES: 40% | 24h vol: $2,031,739 | total vol: $28,333,986", True),
+                         ('- [Economics] Fed decision? — top: "Hike 25bps" 18% (+2)', True),
+                         ('- [fed-rates] Fed Decision in October? — leading: "No change" YES 82%', True),
+                         ("- BITCOIN: $76,898.00 (-1.1% 24h)", False), ("- 7d TVL change: +1.8%", False),
+                         ("- Polymarket International: 24h $63,700,846 | 7d $509,396,573 (+18.1% 7d)", False)):
+            with self.subTest(line=line):
+                self.assertEqual(debate.odds_line(line), ok)
+
+    def test_world_monitor_odds_on_the_0911_fixture(self):
+        # World Monitor's Polymarket block sits in SECTION 2 GEOPOLITICAL CONTEXT, not SECTION 8
+        f = FIX / "2026-09-11"
+        pkg, raw = read(f / "00_data_package.md"), read(f / "00_raw_data.md")
+        loc = evidence.Locator({"package": pkg, "raw": raw})
+        wm = "- Fed Rate Hike by September 2026 Meeting? — YES: 59.5% | vol: $3,037,770"
+        lines = debate.market_lines(loc)
+        self.assertIn(wm, lines)
+        self.assertTrue(any(x.startswith("- Will the Fed increase interest rates by 25 bps") and "YES: 60%" in x for x in lines))
+        fed = "Will the Fed hike rates at its September 2026 meeting?"
+        self.assertTrue(debate.market_match(fed, lines))
+        # rule 7 drops the Fed-hike question
+        qs = [q(fed, kind="event", bq="", domain="macro_policy", resolves="2026-09-18"),
+              q("Will total DeFi TVL increase over the next seven days?", kind="direction", bq="", resolves="2026-09-18")]
+        r = debate.gate_questions(qs, "2026-09-11", loc, market=lines)
+        self.assertEqual([d["text"] for d in r["dropped"] if "prediction market already prices it" in d["reason"]], [fed])
+        # the 59.5% line passes Locator.strict as a GEOPOLITICAL CONTEXT data line, but never qualifies a move ...
+        st = loc.strict(wm)
+        self.assertTrue(st["ok"])
+        self.assertEqual((st["section"], st["cls"]), ("GEOPOLITICAL CONTEXT", "data"))
+        terms = debate.crux_terms(["The Fed hikes at the September 2026 meeting; markets price 59.5%"])
+        m = debate.gate_move("macro_strategist", 40, 65, {"q1": 40}, 70, "narrow", [{"section": "", "quote": wm}],
+                             [], [], [], terms, loc, kind="event")
+        self.assertFalse(m["new_evidence"][0]["qualifies"])
+        self.assertEqual(m["new_evidence"][0]["why_not"], "prediction-market odds line")
+        self.assertEqual(m["gated"], 45)
+        # ... and is never a crux hit shown to the responders
+        res = debate.crux_search(terms, {"package": pkg, "raw": raw, "social": ""}, [], loc)
+        self.assertFalse([h for h in res["hits"] if "59.5%" in h["text"] or debate.odds_line(h["text"])])
 
     def test_gate_drops_a_priced_question(self):
         qs = [q("Will Bitcoin trade above $84,000 on October 11?", lenses=["trader", "analyst"]),

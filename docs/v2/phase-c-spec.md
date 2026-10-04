@@ -221,7 +221,10 @@ recorded under `triage.json → gate.dropped[]`, when:
    while `carried_from` is empty (a silent repeat);
 6. more than 2 questions have `carried_from` set (keep the higher weight);
 7. a prediction-market odds line of the run folder (package SECTION 8, raw Polymarket and Kalshi blocks,
-   with a probability) prices it: the line shares an entity of the question plus a second specific term
+   with a probability, **or any line that carries odds by its content**: `— YES: 59.5%`, `YES 59%`, Kalshi
+   `top: "…" 59%`, or a `YES: 40% | …` line under its question line, which is joined to that question; fifth
+   review: World Monitor's Polymarket block sits in SECTION 2 GEOPOLITICAL CONTEXT and the POLYMARKET LIVE
+   MARKETS block in SECTION 3, so the section rule alone found 0 lines on every replay package) prices it: the line shares an entity of the question plus a second specific term
    (another entity, one of its numbers, or two content words: "Fed" + "hike" + "rate"). `debate.market_match`;
    reason "a prediction market already prices it". The prompt rule of §13.2 had no programmatic check, and
    the probe's measured failure was takes anchoring on a quoted market price (9 of 9 at 60 %).
@@ -569,7 +572,7 @@ other side's challenge still goes to its target; the pair is marked `one-sided`.
 ## 6. Crux search (programmatic, between C and R)
 
 Fourth review: prediction-market odds lines (`debate.is_market_line`: PREDICTION MARKETS section with a
-probability) are never crux hits (they are what traders believe, not data on the crux), and the entities of
+probability, or odds by content in any section, `debate.odds_line`, fifth review) are never crux hits (they are what traders believe, not data on the crux), and the entities of
 the question itself are kept however frequent they are (`drop_frequent_entities(keep_always=…)`), so an
 event question about South Korea and Hormuz can still find lines about South Korea and Hormuz.
 
@@ -681,6 +684,14 @@ both qualified on gives each side half its allowance (5 points) and both moves a
 `shared evidence line, allowance split`). One shared line now closes a split by at most 5 + 5 + 10 = 20
 points, so a split of 30 cannot close on one quote.
 
+**Pair cap (fifth review).** Splitting only lines both sides cited left the pair at 25 + 25 = 50 points when
+each side cited two different lines of the same 12-line crux block. The pair's total closure (the high side's
+move down plus the low side's move up) is capped at `2 × FREE_MOVE + min(EVIDENCE_MOVE_MAX,
+EVIDENCE_MOVE_PER_ITEM × distinct qualifying lines across both sides)` (`debate.cap_pair`, flag
+`pair evidence cap N`): each side keeps its free part, the evidence parts are scaled down together. Lines are
+identified by their `_core()` text (`debate.line_key`), so a headline repeated in CROSS-SOURCE and NEWS, or in
+the package and the raw file, is one line within a side and across sides.
+
 **Event and judgment questions (fourth review).** Headlines about events carry no number, so on the two
 replays not one of 10 new-evidence items qualified ("South Korea weighs role in Hormuz security after
 Macron talks" was rejected as "no crux number or entity"). On a question of kind `event` or `judgment` a
@@ -738,7 +749,9 @@ pairs; the decision is made from the calls actually used, after the responses (�
   (verbatim), `remaining_uncertainty` (≤ 40 words), `settles_on` (`observable`, `by_date`),
   `leans` (`higher|lower|neither`: which side the data favours).
 - **Check**: the referee's quote is verified; if it does not verify, `resolved` is forced to `no`
-  and the result is flagged `referee quote not found`.
+  and the result is flagged `referee quote not found`. Fifth review: the verdict can confirm a closure
+  (§9.1) only when the quote would qualify a move: `Locator.strict` passes, the line is data and not a
+  prediction-market odds line (`quote_qualifies`; otherwise flagged `… confirms nothing`).
 
 The crux check adds a fact to the split sheet. It changes no probability: a third round of
 opinions is what F11 showed to be useless.
@@ -756,21 +769,30 @@ rated by each target), `crux_agreed`, `evidence` (claimed vs verified vs data-cl
 
 - `closed_on_data`: at least one side moved more than the free 5 points towards the opponent with
   `evidence_source == "crux_data"` (a crux check that resolved `no` resets it);
-- `confirmed` (internal): `closed_on_data` **and** the crux check ran on this debate and resolved `yes`,
-  or `partly` with `leans` pointing the way the mover moved (`lower` when the high side came down);
+- `confirmed` (internal): `closed_on_data` **and** the crux check ran on this debate, resolved `yes` or
+  `partly`, with `leans` pointing the way the mover moved (`lower` when the high side came down) in both
+  cases, and its quote qualifies (§8 check). Fifth review: a `yes` leaning against the mover confirmed the
+  closure before, the one path by which a debate collapse reached the brief;
 - `narrowed_on_data`: closed on crux data but not confirmed, and the gap narrowed;
 - `closure_without_evidence`: `max(0, gap_before − gap_after)` when `closed_on_data` is false,
   else 0 (points of the split that disappeared on argument alone);
 - `effect`: rendered by code for the replay report and RUBRIC, never for the brief, e.g.
   "narrowed from 30 to 18 on argument", "narrowed from 30 to 8 on crux data", "held at 32";
-- `live_split`: `gap_after ≥ 20` **or** (`gap_before ≥ GAP_MIN` **and** not `confirmed`).
-  A split that two polite debaters closed by 5 points each is still a split; it stops being one
+- `in_split` (the §11.1 selection rule): `gap_after ≥ 20` **or** (`gap_before ≥ GAP_MIN` **and** not
+  `confirmed`). A split that two polite debaters closed by 5 points each is still a split; it stops being one
   only when data closed it **and** the neutral crux check confirmed that data (§20.2: a responder can copy
   a crux-hit line, and on a normal day the budget drops the crux check, so a move on crux data alone no
-  longer removes the block; the block stays and is marked `narrowed_on_data`);
-- `useful`: `live_split`, or any side moved ≥ 10 points on qualifying evidence, or the crux check
-  resolved `yes`, or resolved `partly` with `leans != "neither"`. A referee's bare `partly` (that
-  model's default hedge) does not count. "Useful debates per run" is the headline replay metric.
+  longer removes the block; the block stays and is marked `narrowed_on_data`). Every staged pair has
+  `gap_before ≥ GAP_MIN`, so this is true by construction unless confirmed: it is a selection rule, not a
+  metric (fifth review: it was named `live_split` and could not fail);
+- `live_split` (measured): status not `failed`, `gap_after ≥ GAP_MIN` and not `confirmed`;
+- `held_split` (pass bar §15.5 b): two-sided, `gap_after ≥ GAP_MIN`, not `confirmed`, and both challenges
+  stated a crux;
+- `useful`: status not `failed`, and the debate produced something: a side moved more than `FREE_MOVE`
+  on qualifying evidence, or the crux check (with a qualifying quote) resolved `yes` or `partly` with
+  `leans != "neither"`, or the split held or widened (`gap_after ≥ gap_before`) with an agreed crux.
+  A referee's bare `partly` (that model's default hedge) does not count, and being staged does not
+  count. "Useful debates per run" is the headline replay metric.
 
 Run-level metric in `positions.json → summary`: `closure_without_evidence` (sum and median over
 the day's debates) and `soft_moves` (count of `soft move` flags / responses).
@@ -815,8 +837,8 @@ Programmatic, in the `split` phase. Blocks are selected on the split the takes s
 (`gap_before`, the take spread), not on what is left after the debate, so a split that two polite
 debaters talked down without data still reaches the reader. Candidates:
 
-1. debated questions with `live_split` (§9.1: `gap_after ≥ 20`, or `gap_before ≥ GAP_MIN` not
-   closed on crux data), ordered by `weight × gap_before`;
+1. debated questions with `in_split` (§9.1: `gap_after ≥ 20`, or `gap_before ≥ GAP_MIN` not
+   confirmed closed on crux data), ordered by `weight × gap_before`;
 2. undebated questions with `minority_count ≥ 2` and take `range ≥ 40` (possible when more
    questions split than there were pair slots), ordered by `weight × range`. On a
    `split_unpaired` day (§4.3) the bar is `range ≥ GAP_MIN` and `minority_count ≥ 1` or a degree
@@ -1670,7 +1692,9 @@ The three replays (09-10, 09-11, 10-04) together:
 
 - (a) **real spread**: in each replay, at least one question whose largest straddling take gap
   exceeds `GAP_MIN` and the two agents' combined retest `|Δp|` (§15.0);
-- (b) **a live split**: at least one `live_split` across the three packages;
+- (b) **a held split**: at least one `held_split` across the three packages (two-sided, `gap_after ≥
+  GAP_MIN`, not confirmed closed, both cruxes stated; fifth review: the old `live_split` item passed as soon
+  as any pair formed);
 - (c) **no closure by politeness**: for debates without crux-data evidence, median
   `gap_after / gap_before ≥ 0.6`;
 - (d) **soft moves**: gated moves of more than `FREE_MOVE` (5) points towards the opponent without
@@ -1748,9 +1772,14 @@ drops the filter, a normal day has 3 pairs and the crux check.
 | `split_unpaired` day | — | 12 calls / ~0.40 M | | |
 | After Phase D (no filter), normal day | — | 23–24 calls (3 pairs + crux check) / ~0.46 M | | |
 
-Ceiling: `RECON_CALL_CEILING = 32` bounds the worst case (every take re-asked once and every
-schema re-ask used) at 32 calls; the old unbounded case was up to 4 take calls per agent at
-25–35 K input each.
+Ceiling: `RECON_CALL_CEILING = 32` bounds the optional calls (pairs, challenges, responses, crux
+check and their schema re-asks and retries). It does not bound the first triage call, the takes or the
+synthesis, which are exempt (fifth review: the earlier "bounds the worst case at 32 calls" was wrong).
+Their own bounds: a take re-ask happens only when a reply has no positions (never on persona prose such
+as "I can't justify above 40%"), at most `RECON_TAKE_REASKS = 2` per run; each logical call has at most
+2 schema attempts × `RECON_LLM_RETRIES` (3) provider attempts. Worst case for the exempt calls: triage
+1 × 6, takes (9 + 2) × 6, synthesis 2 × 6 = 84 provider attempts, plus the optional calls up to the
+ceiling. A normal day stays at the budget of 24.
 
 What this says honestly: Phase C cuts calls by about a quarter (and by 60 % on consensus days),
 but input tokens only by ~10 %, because the nine takes carry the shared block and dominate. The
@@ -2028,3 +2057,10 @@ Path: `docs/v2/phase-c-spec.md`.
 | 45 | medium | Evidence path dead on event questions; soft-move threshold equal to the free move | Entity-only qualification on event/judgment questions, question entities kept; `evidence not qualifying, capped`; soft move > FREE_MOVE, `soft request` reported | §6, §7.2, §15.5 |
 | 46 | medium | Spread came mostly from the two lens-tier agents | Replay report: endpoints per agent and per tier; decision on model diversity recorded | §15.5 |
 | 47 | medium | Citation overlap bar not comparable with the v1 takes | Per-question overlap and lens-quote share measured; bar item is lens-quote share ≥ 0.5 | §15.5 |
+| 48 | high | Gate rule 7, the gate's market check and the crux-hit filter saw only SECTION 8; World Monitor's Polymarket odds (SECTION 2) and POLYMARKET LIVE MARKETS (SECTION 3) passed as data, qualified moves and became crux hits | Odds recognised by content in any section (`odds_line`); continuation odds lines joined to their question; 09-11 fixture test | §2.4, §6, §7.2 |
+| 49 | medium | Pair allowance split only on lines both sides cited: two different lines each closed 50 points; one fact counted twice by (doc, line) | Pair cap `2 × FREE_MOVE + min(20, 10 × distinct lines)`; lines keyed by `_core()` text | §7.2 |
+| 50 | medium | A crux check `yes` confirmed a closure whatever `leans` said; any verified quote (social, odds) counted | `leans` must point the mover's way for `yes` too; the quote must pass `strict`, be data and not an odds line | §8, §9.1 |
+| 51 | medium | `live_split` and `useful` could not fail (true for every staged pair); pass bar (b) vacuous | `in_split` is the selection rule; `live_split` measured; `held_split` for (b); `useful` judged on what the debate produced | §9.1, §11.1, §15.5 |
+| 52 | medium | Cron fallback ran the whole v1 pipeline after the orchestrator's memory phase; tagged runs had the debate forced off and their brief looked for in briefs/<today> | One `--resume` retry first; bash only with no takes, after `--restore-state`; `--run-id` sets the brief path and leaves `RECON_DEBATE` unset | cron_run.sh |
+| 53 | medium | Take re-asked on persona prose ('I can't …'); takes exempt from the ceiling, so the §16 worst case was wrong | Re-ask only on missing positions, `RECON_TAKE_REASKS` per run; §16 corrected | §16 |
+| 54 | medium | Synthesizer persona still asked for bull/bear splits in WHAT IT MEANS | Persona: direct conclusions only; splits only in WHERE THE VIEWS SPLIT | §11.4 |

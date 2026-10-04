@@ -217,6 +217,18 @@ class DryRunEndToEnd(unittest.TestCase):
         sc = (st / "agent_scores" / "trader.jsonl").read_text(encoding="utf-8").splitlines()
         self.assertEqual(len(sc), 1)
 
+    def test_restore_state_before_the_bash_fallback(self):
+        # cron_run.sh puts the orchestrator's memory snapshot back before run_recon.sh runs (no second entry)
+        self.run_orch("rs1")
+        st = self.rd("rs1") / "state"
+        snap = json.loads((self.rd("rs1") / "phases" / "state_before_memory.json").read_text(encoding="utf-8"))
+        out = self.run_orch("rs1", "--restore-state")
+        self.assertIn("restored from", out)
+        for name, body in snap["state"].items():
+            f = st / "agent_state" / name
+            self.assertEqual(f.read_text(encoding="utf-8") if f.exists() else None, body)
+        self.assertTrue((self.rd("rs1") / "07_daily_brief.md").exists())   # nothing else touched
+
     def test_crux_check_planned_from_staged_pairs(self):
         self.run_orch("k1", env={"RECON_CALL_BUDGET": "22"})
         pr = self.load("k1", "pairing")

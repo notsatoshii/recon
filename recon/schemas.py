@@ -240,7 +240,7 @@ DEBATE_SCORE = obj(
     flags=arr(obj(agent=enum(AGENTS), flag=s(), where=enum(["challenge", "response"]))),
     crux_check=nullable(obj(resolved=s(), leans=s())),
     closed_on_data=b(), narrowed_on_data=b(), closure_without_evidence=i(), effect=s(),
-    live_split=b(), useful=b(),
+    in_split=b(), live_split=b(), held_split=b(), useful=b(),
 )
 STATS = obj(n=i(), median=nullable(num()), mean=nullable(num()), min=nullable(num()), max=nullable(num()),
             range=nullable(num()), iqr=nullable(num()), majority_side=enum(["yes", "no", "even", ""]),

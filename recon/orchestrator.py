@@ -35,6 +35,8 @@ Usage
                run (untagged, not dry, not replay) until the §0.1 spread gate and the §15.5/§17.5 runs pass
                (§18 cutover; cron_run.sh sets it), on for replays, dry runs and tagged validation runs. Off,
                a split prints as undebated blocks from the takes (split_unpaired).
+  RECON_TAKE_REASKS=<n>  take re-asks per run (default 2); a take is re-asked only when it has no positions.
+  --restore-state  put memory and state back from <run>/phases/state_before_memory.json and exit (cron fallback).
 Exit code 0 when a brief was written (or the run stopped where RECON_STOP_AFTER said), 1 otherwise.
 """
 from __future__ import annotations
@@ -68,6 +70,7 @@ PHASE_ALIASES = {"deepdive": "cruxcheck"}   # --from-phase deepdive still works,
 BRIEF_SECTIONS = schemas.BRIEF_SECTIONS
 PARALLEL = int(os.environ.get("RECON_PARALLEL", "5"))
 SYNTH_CALLS = 2            # draft + filter until Phase D drops the filter (§1.1)
+TAKE_REASKS = int(os.environ.get("RECON_TAKE_REASKS", "2"))   # per run: take re-asks are exempt from the ceiling (§16)
 LENS = {"trader": "markets, flows, positioning", "narrator": "narratives and social attention",
         "builder": "products and protocols", "analyst": "the sector model", "skeptic": "risks and weak claims",
         "policy_analyst": "regulation and policy", "user_agent": "users and adoption",
@@ -221,6 +224,7 @@ class Run:
         self.budget = int(os.environ.get("RECON_CALL_BUDGET", "24"))
         self.ceiling = int(os.environ.get("RECON_CALL_CEILING", "32"))
         self.ncalls = 0
+        self.take_reasks = 0
         self.inflight = 0
         self.stop_after = os.environ.get("RECON_STOP_AFTER", "").strip()
         self.active = self.roster()
@@ -897,12 +901,24 @@ SECTOR CONTEXT (crypto and macro landscape; background, not today's data):
             tier = debate.LENS_TIER.get(agent, "analyst")
             data, meta = self.call("takes", agent, tier, prompt, schema="take", agent=agent, optional=False)
             calls = [meta]
+            # Re-ask only a reply that answered nothing: no positions on a day with questions, or a short reply with no
+            # positions that reads as a refusal. Persona prose ('I can't justify above 40%') never triggers it. Take
+            # re-asks are exempt from the ceiling, so they have their own per-run cap (RECON_TAKE_REASKS, §16).
             t = data.get("take", "")
-            if re.search(r"I can't|I cannot|as an AI|I'm sorry", t[:400]) or (has_q and not data.get("positions")):
-                self.log(f"  {agent}: a refusal or no positions; asking once more")
-                data, meta = self.call("takes", agent, tier, prompt + "\n\nStay in character and answer every question.",
-                                       schema="take", agent=agent, optional=False)
-                calls.append(meta)
+            no_pos = not data.get("positions")
+            refusal = no_pos and len(t.split()) < 60 and bool(re.search(r"I can't|I cannot|as an AI|I'm sorry", t))
+            if (has_q and no_pos) or refusal:
+                with self.lock:
+                    allowed = self.take_reasks < TAKE_REASKS
+                    if allowed:
+                        self.take_reasks += 1
+                if not allowed:
+                    self.log(f"  {agent}: no positions, but the take re-ask cap ({TAKE_REASKS} per run) is used; kept as is")
+                else:
+                    self.log(f"  {agent}: a refusal or no positions; asking once more")
+                    data, meta = self.call("takes", agent, tier, prompt + "\n\nStay in character and answer every question.",
+                                           schema="take", agent=agent, optional=False)
+                    calls.append(meta)
             lx = lens.get(agent, {})
             rec = {"agent": agent, "data": data, "calls": calls,
                    "fed": {"lens_extra_bytes": lx.get("bytes", 0),
@@ -1201,16 +1217,32 @@ SECTOR CONTEXT (crypto and macro landscape; background, not today's data):
         for x in pairing.get("pairs") or []:
             kh, kl = f"{x['high']}__{x['question_id']}", f"{x['low']}__{x['question_id']}"
             rh, rl = res.get(kh), res.get(kl)
-            if not (isinstance(rh, dict) and isinstance(rl, dict)):
+            rh = rh if isinstance(rh, dict) else None
+            rl = rl if isinstance(rl, dict) else None
+            if not (rh or rl):
                 continue
-            shared = (debate.qualifying_lines(rh["move"], rh["data"].get("new_evidence"), self.locator())
-                      & debate.qualifying_lines(rl["move"], rl["data"].get("new_evidence"), self.locator()))
-            if not shared:
-                continue
-            for k, r in ((kh, rh), (kl, rl)):
-                r["move"] = gate(by_key[k], r["data"], shared)
-                (d / f"{k}.json").write_text(json.dumps(r, ensure_ascii=False, indent=1), encoding="utf-8")
-            self.log(f"  [{x['question_id']}] {len(shared)} crux line(s) qualified for both sides: allowance shared")
+            keys = {k: (debate.qualifying_lines(r["move"], r["data"].get("new_evidence"), self.locator()) if r else set())
+                    for k, r in ((kh, rh), (kl, rl))}
+            shared = keys[kh] & keys[kl]
+            if shared:
+                for k, r in ((kh, rh), (kl, rl)):
+                    r["move"] = gate(by_key[k], r["data"], shared)
+                self.log(f"  [{x['question_id']}] {len(shared)} crux line(s) qualified for both sides: allowance shared")
+            # The pair's total closure is capped (§7.2): FREE_MOVE per side + 10 per distinct qualifying line across
+            # both sides, the 20-point item cap once per pair, so two different lines per side cannot close 50.
+            mh, ml, capped = debate.cap_pair(rh["move"] if rh else None, rl["move"] if rl else None, keys[kh], keys[kl])
+            if capped:
+                if rh:
+                    rh["move"] = mh
+                if rl:
+                    rl["move"] = ml
+                self.log(f"  [{x['question_id']}] pair closure capped at "
+                         f"{debate.pair_allowance(keys[kh], keys[kl])} points")
+            if shared or capped:
+                for k, r in ((kh, rh), (kl, rl)):
+                    if r:
+                        res[k] = r
+                        (d / f"{k}.json").write_text(json.dumps(r, ensure_ascii=False, indent=1), encoding="utf-8")
         ok = []
         for k, r in res.items():
             if isinstance(r, BudgetSkip):
@@ -1307,6 +1339,17 @@ SECTOR CONTEXT (crypto and macro landscape; background, not today's data):
         if data.get("resolved") != "no" and loc.get("status") != "verified":
             data["resolved"] = "no"
             flags.append("referee quote not found")
+        # Only a quote that would qualify a move can confirm a closure (§8, §9.1): a single verbatim data line,
+        # not social, not a prediction-market odds line. Otherwise the verdict stands but confirms nothing.
+        st = self.locator().strict(quote) if quote else {"ok": False}
+        market = bool(st.get("ok")) and debate.is_market_line(st.get("section", ""),
+                                                              self.locator().line_text(st["doc"], st["line"]) or quote)
+        data["quote_qualifies"] = bool(st.get("ok") and st.get("cls") == "data" and not market)
+        if data.get("resolved") != "no" and not data["quote_qualifies"]:
+            flags.append("referee quote " + ("is a prediction-market odds line" if market else
+                                             "is a social line" if st.get("ok") else
+                                             f"fails the strict check ({st.get('reason') or 'not found'})")
+                         + ": confirms nothing")
         self.log(f"  Crux check [{qid}]: resolved {data.get('resolved')}, leans {data.get('leans')}"
                  + (f" ({', '.join(flags)})" if flags else ""))
         return {"ran": True, "kind": c["kind"], "question_id": qid, "high": c.get("high"), "low": c.get("low"),
@@ -1333,7 +1376,8 @@ SECTOR CONTEXT (crypto and macro landscape; background, not today's data):
             sc = debate.score_debate(x, ch_by, resp_of, crux, gap_min)
             self.check_artifact("debate_score", sc, f"debate {qid}")
             debates.append(sc)
-            self.log(f"  [{qid}] {hi} vs {lo}: {sc['effect']}; live split {sc['live_split']}, useful {sc['useful']}")
+            self.log(f"  [{qid}] {hi} vs {lo}: {sc['effect']}; in split {sc['in_split']}, live split {sc['live_split']}, "
+                     f"held split {sc['held_split']}, useful {sc['useful']}")
         debated = {d["question_id"] for d in debates}
         qstats = []
         for q in qs:
@@ -1402,11 +1446,14 @@ SECTOR CONTEXT (crypto and macro landscape; background, not today's data):
         summ = {"closure_without_evidence": {"sum": sum(cwe), "median": statistics.median(cwe) if cwe else None},
                 "soft_moves": {"count": soft, "requests": soft_req, "responses": len(resp_list)},
                 "live_splits": sum(1 for dd in debates if dd["live_split"]),
+                "held_splits": sum(1 for dd in debates if dd["held_split"]),
+                "in_split": sum(1 for dd in debates if dd["in_split"]),
                 "useful_debates": sum(1 for dd in debates if dd["useful"]),
                 "debate_evidence_rate": summary(debate_items)["rate"]}
         self.log(f"  Evidence quotes: {overall['verified']} verified, {overall['partial']} partial, "
                  f"{overall['unverified']} unverified of {overall['total']} ({overall['data']} data)")
-        self.log(f"  Debates: {len(debates)}, live splits {summ['live_splits']}, useful {summ['useful_debates']}; "
+        self.log(f"  Debates: {len(debates)}, live splits {summ['live_splits']}, held splits {summ['held_splits']}, "
+                 f"useful {summ['useful_debates']}; "
                  f"soft moves {soft}/{len(resp_list)}; citation overlap {overlap.get('mean_jaccard')} "
                  f"(per question {overlap.get('mean_per_question')}, lens-quote share {overlap.get('lens_quote_share_mean')}); "
                  f"agent score lines appended {appended}")
@@ -1506,7 +1553,7 @@ SECTOR CONTEXT (crypto and macro landscape; background, not today's data):
         r.append("## DEBATES")
         for dd in pos.get("debates", []):
             qid, hi, lo = dd["question_id"], dd["high"], dd["low"]
-            r.append(f"### [{qid}] {hi.upper()} (high) vs {lo.upper()} (low): {dd['effect']}; live split {dd['live_split']}")
+            r.append(f"### [{qid}] {hi.upper()} (high) vs {lo.upper()} (low): {dd['effect']}; live split {dd['live_split']}, held split {dd.get('held_split')}")
             for c, t in ((hi, lo), (lo, hi)):
                 ch = chs.get(f"{c}__{t}__{qid}")
                 if not ch:
@@ -2055,6 +2102,9 @@ def main(argv: list[str] | None = None) -> int:
     g.add_argument("--from-phase", choices=PHASES + list(PHASE_ALIASES))
     g.add_argument("--resume", action="store_true")
     ap.add_argument("--dry-run", action="store_true")
+    ap.add_argument("--restore-state", action="store_true",
+                    help="put agent memory and state back from <run>/phases/state_before_memory.json and exit "
+                         "(cron_run.sh, before the bash fallback)")
     args = ap.parse_args(argv)
     alias_note = None
     if args.from_phase in PHASE_ALIASES:
@@ -2075,6 +2125,10 @@ def main(argv: list[str] | None = None) -> int:
         args.skip_collect = True
     os.environ.setdefault("RECON_CODEX_SLIM", "1")
     run = Run(args)
+    if args.restore_state:
+        ok = run.restore_state()
+        run.log(f"--restore-state: memory and state {'restored from ' + str(run.snapshot_path()) if ok else 'unchanged (no snapshot)'}")
+        return 0
     if alias_note:
         run.log(alias_note)
     try:

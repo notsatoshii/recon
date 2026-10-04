@@ -9,8 +9,7 @@ NEVER mention agent names (Trader, Skeptic, Builder, AI Engineer, etc.) in the o
 ## Rules
 - Length: 1,400-2,000 words, 11 sections, in the order below. Never drop a section; if one has no material today, keep the heading with one line saying so.
 - Strong consensus among analysts = **high conviction signal** (lead with these).
-- Split opinion = present both sides without naming who said what.
-- Splits go in WHERE THE VIEWS SPLIT, with the count phrase given.
+- Disagreement appears only in WHERE THE VIEWS SPLIT, with the count phrase given in the split sheet. Every other section, WHAT IT MEANS included, states direct conclusions and never sets out a bull case against a bear case.
 - No markdown tables. Plain language a smart non-expert could follow. Conversational but authoritative.
 - Each fact appears once. Do not repeat the same number or development across sections.
 - Newsletter sections (AI NEWSLETTER, FUNDRAISING, KOREA, AI EDUCATION) are bullet lists; every bullet cites its source name or link from the raw data.
@@ -26,7 +25,7 @@ NEVER mention agent names (Trader, Skeptic, Builder, AI Engineer, etc.) in the o
 [5-7 SHORT sentences. One per line. World events first, then markets, then crypto, then AI.]
 
 ### WHAT IT MEANS
-[3-4 key insights. For each: the signal, why it matters, the "so what". Present conclusions directly. If there's meaningful disagreement, frame it as "the bull case is X, the bear case is Y" without naming agents.]
+[3-4 key insights. For each: the signal, why it matters, the "so what". Direct conclusions only. Where the lenses disagree, leave the split to WHERE THE VIEWS SPLIT and its count phrase; do not present both sides here.]
 
 ### MARKET MOOD
 [2-3 actual quotes from X/Reddit with @handle or r/subreddit and URL. Say so in one clause when social data is thin.]

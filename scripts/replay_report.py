@@ -117,6 +117,8 @@ def report(root: Path, run_id: str, old: dict | None, gap_min_probe: int | None)
         "day_type": pairing.get("day_type"), "gap_min": pairing.get("gap_min"), "pairs": len(pairing.get("pairs", [])),
         "red_team": (pairing.get("red_team") or {}).get("agent"),
         "live_splits": sum(1 for dd in debates if dd.get("live_split")),
+        # held split (§15.5 b): two-sided, still >= gap_min after the debate, not confirmed closed, both cruxes stated
+        "held_splits": sum(1 for dd in debates if dd.get("held_split")),
         "useful": sum(1 for dd in debates if dd.get("useful")),
         "effects": [f"{dd['question_id']} {dd['high']}/{dd['low']}: {dd['effect']}" for dd in debates],
         "closure_without_evidence": dbs.get("closure_without_evidence"), "gap_ratio_no_crux": ratio,
@@ -143,7 +145,7 @@ def report(root: Path, run_id: str, old: dict | None, gap_min_probe: int | None)
     }
     o = old_metrics(old)
     bar = {
-        "b live split": m["live_splits"] >= 1,
+        "b held split (two-sided, gap_after >= GAP_MIN, cruxes stated)": m["held_splits"] >= 1,
         "c gap_after/gap_before >= 0.6 (no crux data)": ratio is None or ratio >= 0.6,
         "d soft moves (> FREE_MOVE without qualifying evidence) <= 30%": (soft / len(rl) <= 0.3) if rl else True,
         "lens >= 2 KB for 7/9": lens_ok >= 7,
@@ -166,7 +168,7 @@ def report(root: Path, run_id: str, old: dict | None, gap_min_probe: int | None)
              f"| take spread per question | {'; '.join(spread)} | — |",
              f"| day type, pairs, red team, gap_min | {m['day_type']}, {m['pairs']}, {m['red_team'] or '—'}, {m['gap_min']}"
              f"{f' (probe {gap_min_probe})' if gap_min_probe else ''} | — |",
-             f"| live splits / useful debates | {m['live_splits']} / {m['useful']} | deep dive: {o.get('deep_dive', '—')} |",
+             f"| live splits / held splits / useful debates | {m['live_splits']} / {m['held_splits']} / {m['useful']} | deep dive: {o.get('deep_dive', '—')} |",
              f"| effect per debate | {'; '.join(m['effects']) or '—'} | — |",
              f"| closure without evidence; median gap_after/gap_before (no crux data) | {m['closure_without_evidence']}; "
              f"{m['gap_ratio_no_crux'] if m['gap_ratio_no_crux'] is None else round(m['gap_ratio_no_crux'], 2)} | — |",
@@ -215,14 +217,14 @@ def main(argv=None) -> int:
         (root / rid / "replay_report.md").write_text(text, encoding="utf-8")
         allm.append(m)
         print(f"| {day} | **Phase C replay {rid}** ({m['day_type']}): {m['questions_kept']} questions, {m['pairs']} pairs, "
-              f"live splits {m['live_splits']}, useful {m['useful']}, soft moves {m['soft_moves']}/{m['responses']} "
+              f"live splits {m['live_splits']}, held {m['held_splits']}, useful {m['useful']}, soft moves {m['soft_moves']}/{m['responses']} "
               f"(requests {m['soft_requests']}), endpoints by tier {m['endpoints_by_tier']}, "
               f"evidence {m['evidence_rate']}, overlap {m['citation_overlap']}, brief {m['words']} words, status {m['status']} "
               f"| {m['calls']} | {(m['in_tok'] or 0) / 1e6:.2f} M ({(m['cached_tok'] or 0) / 1e6:.2f} M cached) | "
               f"{(m['out_tok'] or 0) / 1e3:.1f} K | {m['wall']} s |")
     if len(allm) > 1 or a.stability:
         s = ["# Phase C replays — pass bar (§15.5)", ""]
-        s.append(f"- (b) a live split across the runs: {'PASS' if any(m['live_splits'] for m in allm) else 'FAIL'}")
+        s.append(f"- (b) a held split across the runs: {'PASS' if any(m['held_splits'] for m in allm) else 'FAIL'}")
         ratios = [m["gap_ratio_no_crux"] for m in allm if m["gap_ratio_no_crux"] is not None]
         s.append(f"- (c) median gap_after/gap_before without crux data: {statistics.median(ratios):.2f}"
                  if ratios else "- (c) no debates without crux data")

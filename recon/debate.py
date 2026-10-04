@@ -11,7 +11,7 @@
   crux_search      §6 lines on disk about the crux that neither side quoted
   norm_p           §7.2 fractions rescaled, clamped to 0-100
   gate_move        §7.2 the evidence gate on a response's move (FREE_MOVE points on argument alone)
-  score_debate     §9.1 per-debate scores (live_split, useful, closure_without_evidence, effect)
+  score_debate     §9.1 per-debate scores (in_split, live_split, held_split, useful, closure_without_evidence, effect)
   question_stats   §10 per-question stats; final_positions: gated value if debated, else the take
   agent_run_score  §9.2 per agent per run
   split_sheet      §11.1-11.2 blocks for WHERE THE VIEWS SPLIT; render_split_sheet (<= 6 KB)
@@ -948,24 +948,46 @@ MARKET_STOP = STOP | {"above", "below", "more", "less", "than", "before", "after
                       "contracts", "leading", "total", "ends", "polymarket", "kalshi", "markets"}  # + the odds-line boilerplate
 
 
+# Odds by content, in any section: World Monitor's Polymarket feed sits in SECTION 2 GEOPOLITICAL CONTEXT
+# ('Fed Rate Hike by September 2026 Meeting? — YES: 59.5% | vol: …'), the POLYMARKET LIVE MARKETS block in
+# SECTION 3 puts 'YES: 40% | 24h vol …' under the question line, the Polymarket collector writes
+# '"…" YES 59%' and 'YES 59%', and Kalshi writes 'top: "…" 59% (+3)'.
+_ODDS = re.compile(r"\bYES:?\s*\d{1,3}(?:\.\d+)?%|\bNO:\s*\d{1,3}(?:\.\d+)?%"
+                   r"|\btop:\s*\"[^\"]{1,120}\"\s*\d{1,3}(?:\.\d+)?%"
+                   r"|\"[^\"]{1,120}\"\s+\d{1,3}(?:\.\d+)?%\s*\((?:[+\-\u2212]|0\b|new\b|flat\b)")
+_ODDS_CONT = re.compile(r"^\s*(?:YES|NO):?\s*\d{1,3}(?:\.\d+)?%")   # an odds line under its question line
+
+
+def odds_line(line: str) -> bool:
+    """A line that carries market odds by its content, whatever section it sits in."""
+    return bool(_ODDS.search(line or ""))
+
+
 def is_market_line(section: str, line: str) -> bool:
-    """A prediction-market odds line: in the PREDICTION MARKETS section (package SECTION 8, raw Polymarket and
-    Kalshi blocks) and carrying a probability. Market odds are what traders believe, not data about the crux:
-    they never qualify a move (§7.2) and are not crux hits (§6)."""
-    return (section or "").upper().startswith(MARKET_SECTION) and bool(_PROB.search(line or ""))
+    """A prediction-market odds line: a line in the PREDICTION MARKETS section (package SECTION 8, raw Polymarket
+    and Kalshi blocks) carrying a probability, or a line that carries odds by its content in any section
+    (odds_line: World Monitor's Polymarket block in GEOPOLITICAL CONTEXT, POLYMARKET LIVE MARKETS in ON-CHAIN).
+    Market odds are what traders believe, not data about the crux: they never qualify a move (§7.2), are not
+    crux hits (§6) and cannot confirm a closure (§8)."""
+    return ((section or "").upper().startswith(MARKET_SECTION) and bool(_PROB.search(line or ""))) or odds_line(line)
 
 
 def market_lines(locator) -> list[str]:
-    """The odds lines of the run folder (package and raw) for the question gate's market rule."""
+    """The odds lines of the run folder (package and raw) for the question gate's market rule. An odds line
+    under its question line ('- Will the Fed …?' then '  YES: 60% | …') is joined to that question."""
     if locator is None or not hasattr(locator, "labels"):
         return []
     out = []
     for doc in ("package", "raw"):
         if doc not in getattr(locator, "lines", {}):
             continue
-        for (sec, _), line in zip(locator.labels(doc), locator.lines[doc]):
-            if line.strip().startswith("- ") and is_market_line(sec, line):
-                out.append(line.strip())
+        lines = locator.lines[doc]
+        for n, ((sec, _), line) in enumerate(zip(locator.labels(doc), lines)):
+            s = line.strip()
+            if _ODDS_CONT.match(line) and n and lines[n - 1].strip().startswith("- "):
+                out.append(f"{lines[n - 1].strip()} — {s}")
+            elif s.startswith("- ") and is_market_line(sec, line):
+                out.append(s)
     return list(dict.fromkeys(out))
 
 
@@ -1001,6 +1023,14 @@ EVIDENCE_MOVE_PER_ITEM = 10   # points beyond FREE_MOVE that one qualifying quot
 EVIDENCE_MOVE_MAX = 20        # at most this many points beyond FREE_MOVE, however many quotes qualify
 
 
+def line_key(locator, doc, line) -> str:
+    """What makes two qualifying lines the same fact: the line's _core() text (no URL, X bracket, engagement
+    counts, list dash), so a headline repeated in CROSS-SOURCE and NEWS, or in the package and the raw file,
+    is one line. Falls back to 'doc:line' when the line has no core text."""
+    core = evidence._core(locator.line_text(doc, line)) if locator is not None and doc else ""
+    return core or f"{doc}:{line}"
+
+
 def quote_positions(quotes, locator) -> set:
     out = set()
     for q in quotes or []:
@@ -1027,9 +1057,11 @@ def gate_move(agent: str, take_p: int, requested, own_take_values, other_take_p:
     move beyond FREE_MOVE: +EVIDENCE_MOVE_PER_ITEM per distinct qualifying line, at most EVIDENCE_MOVE_MAX
     (5 + 10 per line, 25 in total; spec §7.2, response.md step 3).
 
+    A line is identified by line_key() (its _core() text), so the same headline in two places is one line.
     The allowance belongs to the pair, not to each side: a line that the other side's response also
-    qualified on (`shared_lines`, {(doc, line)}, set by the responses phase once both sides answered) gives
-    each side half (5 points), so one copied crux line closes a split by at most 5 + 5 + 10 = 20 points."""
+    qualified on (`shared_lines`, line keys, set by the responses phase once both sides answered) gives
+    each side half (5 points), so one copied crux line closes a split by at most 5 + 5 + 10 = 20 points.
+    cap_pair() then caps the pair's total closure (different lines on each side)."""
     new_p, nflags = norm_p(requested, own_take_values)
     flags: list[str] = []
     if new_p is None:
@@ -1067,7 +1099,7 @@ def gate_move(agent: str, take_p: int, requested, own_take_values, other_take_p:
                                "prediction-market odds line" if market else
                                "no crux entity" if kind in ("event", "judgment") else "no crux number or entity"))
         if qual:
-            qual_lines.add((st["doc"], st["line"]))
+            qual_lines.add(line_key(locator, st["doc"], st["line"]))
         items.append({"section": e.get("section", ""), "quote": q[:300], "status": loc["status"],
                       "cls": loc.get("cls") or "", "new_evidence_source": src, "qualifies": qual,
                       **({"why_not": why} if not qual else {})})
@@ -1122,7 +1154,7 @@ def gate_move(agent: str, take_p: int, requested, own_take_values, other_take_p:
 
 
 def qualifying_lines(move: dict, new_evidence: list[dict], locator) -> set:
-    """{(doc, line)} of a gated move's qualifying items; `new_evidence` is the response's own list (the
+    """Line keys (line_key) of a gated move's qualifying items; `new_evidence` is the response's own list (the
     move stores quotes cut to 300 characters), in the same order as move['new_evidence']."""
     out = set()
     for x, e in zip((move or {}).get("new_evidence") or [], new_evidence or []):
@@ -1130,8 +1162,53 @@ def qualifying_lines(move: dict, new_evidence: list[dict], locator) -> set:
         if x.get("qualifies") and q:
             st = locator.strict(q)
             if st.get("ok"):
-                out.add((st["doc"], st["line"]))
+                out.add(line_key(locator, st["doc"], st["line"]))
     return out
+
+
+def pair_allowance(keys_high, keys_low) -> int:
+    """The most a pair may close in total (§7.2): FREE_MOVE for each side plus EVIDENCE_MOVE_PER_ITEM per distinct
+    qualifying line across both sides, the EVIDENCE_MOVE_MAX item cap applied once for the pair."""
+    distinct = set(keys_high or ()) | set(keys_low or ())
+    return 2 * FREE_MOVE + min(EVIDENCE_MOVE_MAX, EVIDENCE_MOVE_PER_ITEM * len(distinct))
+
+
+def cap_pair(move_high: dict | None, move_low: dict | None, keys_high, keys_low) -> tuple[dict | None, dict | None, bool]:
+    """Cap the pair's total closure: the high side's move down plus the low side's move up may not exceed
+    pair_allowance(). Each side keeps its free part (up to FREE_MOVE towards the other side); the evidence parts
+    beyond it are scaled down together to fit. Moves away from the other side are left alone. Idempotent.
+    Returns (move_high, move_low, capped); the moves are copies, flagged 'pair evidence cap'."""
+    def toward(m, side):
+        if not m:
+            return 0
+        d = m["gated"] - m["take"]
+        return max(0, -d) if side == "high" else max(0, d)
+    th, tl = toward(move_high, "high"), toward(move_low, "low")
+    allowed = pair_allowance(keys_high, keys_low)
+    if th + tl <= allowed:
+        return move_high, move_low, False
+    fh, fl = min(th, FREE_MOVE), min(tl, FREE_MOVE)
+    eh, el = th - fh, tl - fl
+    pool = max(0, allowed - fh - fl)
+    if eh + el:
+        nh = int(eh * pool // (eh + el))
+        nl = min(el, pool - nh)
+    else:
+        nh = nl = 0
+    out = []
+    for m, side, free, ev in ((move_high, "high", fh, nh), (move_low, "low", fl, nl)):
+        if not m:
+            out.append(m)
+            continue
+        m = dict(m)
+        new = m["take"] - (free + ev) if side == "high" else m["take"] + (free + ev)
+        if new != m["gated"]:
+            m["gated"] = int(max(0, min(100, new)))
+            m["delta"] = int(m["gated"] - m["take"])
+            m["flags"] = list(m.get("flags") or []) + ([f"pair evidence cap {allowed}"]
+                                                      if not any(str(f).startswith("pair evidence cap") for f in m.get("flags") or []) else [])
+        out.append(m)
+    return out[0], out[1], True
 
 
 # ── §9.1 per-debate scores ─────────────────────────────────────────────────────────────
@@ -1170,8 +1247,13 @@ def score_debate(pr: dict, ch_by: dict, resp_of: dict, crux_check: dict | None, 
             closed = True
             movers.append("lower" if side == "high" else "higher")
     cc = crux_check or {}
-    confirmed = bool(closed and crux_check and (cc.get("resolved") == "yes" or
-                                                (cc.get("resolved") == "partly" and cc.get("leans") in movers)))
+    # The referee confirms a closure only when its verdict points the way the mover moved ('yes' and 'partly'
+    # alike: a 'yes, leans higher' after the high side came down says the data favours the high view) and its
+    # quote would qualify a move: a strict single data line, not social, not a market odds line
+    # (ph_cruxcheck sets quote_qualifies; an artifact without it confirms nothing).
+    quote_ok = cc.get("quote_qualifies") is True
+    confirmed = bool(closed and crux_check and quote_ok and cc.get("resolved") in ("yes", "partly")
+                     and cc.get("leans") in movers)
     if closed and cc.get("resolved") == "no":
         closed = False
     ga = gap_after if gap_after is not None else gap_before
@@ -1186,11 +1268,14 @@ def score_debate(pr: dict, ch_by: dict, resp_of: dict, crux_check: dict | None, 
         effect = f"widened from {gap_before} to {ga}"
     else:
         effect = f"held at {gap_before}"
-    live = ga >= 20 or (gap_before >= gap_min and not confirmed)
+    # in_split: the selection rule for WHERE THE VIEWS SPLIT (§11.1): the block stays unless data closed the
+    # split and the crux check confirmed it. True for nearly every staged pair by construction.
+    in_split = ga >= 20 or (gap_before >= gap_min and not confirmed)
+    # live_split: measured after the debate, independent of the selection rule: answered, still >= gap_min apart
+    # and not confirmed closed.
+    live = status != "failed" and ga >= gap_min and not confirmed
     narrowed_on_data = bool(closed and not confirmed and ga < gap_before)
-    big_move = any(abs(m["delta"]) >= 10 and m["evidence_source"] != "none" for m in moves)
-    useful = bool(live or big_move or cc.get("resolved") == "yes"
-                  or (cc.get("resolved") == "partly" and cc.get("leans") not in (None, "", "neither")))
+    data_move = any(abs(m["delta"]) > FREE_MOVE and m["evidence_source"] != "none" for m in moves)
     flags = []
     for side, agent in (("high", hi), ("low", lo)):
         ch = ch_by.get(side)
@@ -1214,6 +1299,18 @@ def score_debate(pr: dict, ch_by: dict, resp_of: dict, crux_check: dict | None, 
         return d or ""
     agreed = bool(resp_of.get("high") and resp_of.get("low")
                   and rdata("high", "crux_agreed", "verdict") == "yes" and rdata("low", "crux_agreed", "verdict") == "yes")
+
+    def stated_crux(side):
+        return bool((((ch_by.get(side) or {}).get("data") or {}).get("crux") or {}).get("claim", "").strip())
+    # held_split (pass bar §15.5 b): both sides answered, the split is still >= gap_min, not confirmed closed,
+    # and both challenges stated a crux. A failed or one-sided debate cannot pass it.
+    held = bool(status == "two-sided" and ga >= gap_min and not confirmed and stated_crux("high") and stated_crux("low"))
+    # useful (§9.1): judged on what the debate produced, never on having been staged. A qualifying data move,
+    # a crux check with a qualifying quote that resolved yes or leaned partly, or a split that held (or widened)
+    # with an agreed crux. A failed debate is never useful.
+    cc_useful = quote_ok and (cc.get("resolved") == "yes" or
+                              (cc.get("resolved") == "partly" and cc.get("leans") not in (None, "", "neither")))
+    useful = bool(status != "failed" and (data_move or cc_useful or (gap_after is not None and ga >= gap_before and agreed)))
     return {
         "question_id": pr["question_id"], "high": hi, "low": lo, "status": status,
         "gap_before": gap_before, "gap_after": gap_after,
@@ -1225,7 +1322,8 @@ def score_debate(pr: dict, ch_by: dict, resp_of: dict, crux_check: dict | None, 
         "flags": flags,
         "crux_check": {"resolved": cc.get("resolved", ""), "leans": cc.get("leans", "")} if crux_check else None,
         "closed_on_data": closed, "narrowed_on_data": narrowed_on_data, "closure_without_evidence": int(cwe),
-        "effect": effect, "live_split": bool(live), "useful": useful,
+        "effect": effect, "in_split": bool(in_split), "live_split": bool(live), "held_split": held,
+        "useful": useful,
     }
 
 
@@ -1445,7 +1543,7 @@ def split_sheet(day: str, run_id: str, day_type: str, questions: list[dict], tak
 
     cands = []
     for d in debates:
-        if d.get("live_split") and d["question_id"] in qby:
+        if d.get("in_split", d.get("live_split")) and d["question_id"] in qby:
             w = int(qby[d["question_id"]].get("weight", 1) or 1)
             cands.append((0, -w * d["gap_before"], d["question_id"]))
     for q in questions:
