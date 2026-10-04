@@ -517,7 +517,11 @@ sets it (§15.0: `max(20, 2 × median retest |Δp|)`); the value used is written
 ### 4.3 Day types: debate, split_unpaired, consensus
 
 - **debate**: `cands` is not empty; the pairs above are staged. (If `cands` is not empty but the
-  budget leaves `target = 0`, the day is `split_unpaired` and the skip is logged.)
+  budget leaves `target = 0`, the day is `split_unpaired` and the skip is logged.) A question with
+  a candidate pair that got no pair goes to `unpaired[]` with its reason when the pair was given up
+  for the day rather than for lack of slots: the budget or the ceiling dropped a pair that the
+  depth target would have debated (`pair()` at `PAIRS_BY_DEPTH` vs at the budgeted target), or the
+  load cap of 2 left it out while slots remained. These get the `split_unpaired` bar in §11.1.
 - **split_unpaired**: `cands` is empty but at least one question has a take `range ≥ GAP_MIN`
   (a range always straddles the median), so the views do split and the endpoints only failed
   eligibility. No debate and no red team are staged. The widest such questions (up to 3) go to the
@@ -881,11 +885,15 @@ debaters talked down without data still reaches the reader. Candidates:
 2. undebated questions with `minority_count ≥ 2` and take `range ≥ 40` (possible when more
    questions split than there were pair slots), ordered by `weight × range`. On a
    `split_unpaired` day (§4.3) the bar is `range ≥ GAP_MIN` and `minority_count ≥ 1` or a degree
-   split, because these are the only splits that day.
+   split, because these are the only splits that day. The same lower bar applies on a debate day
+   to every question in `pairing.json → unpaired[]`: its candidate pair was dropped by the budget,
+   the ceiling or the load cap, not outranked for a slot, so the split the takes showed still
+   reaches the reader (review 2026-10-04: `budget_pairs(12, 24, 2, 3)` gives up the third pair on
+   a normal day, and a range-35 split with one dissenting lens vanished from the brief).
 
 At most 3 blocks, debated first. A block is a **direction** split when `minority_count ≥ 1`, else a
 **degree** split (everyone on one side, but ≥ 30 points apart; ≥ `GAP_MIN` on a `split_unpaired`
-day). A take gap under `GAP_MIN` is never a block (plan §3.4). With no block and a red team, the
+day or for an `unpaired[]` question). A take gap under `GAP_MIN` is never a block (plan §3.4). With no block and a red team, the
 sheet holds one **consensus** block. With neither, the sheet says `no split today`.
 
 ### 11.2 Block contents (schema `SPLIT_BLOCK`)
@@ -1160,7 +1168,7 @@ PAIRING = obj(
     depth=enum(["quiet", "normal", "risk"]), target=i(), gap_min=i(),
     pairs=arr(PAIR),
     candidates_considered=i(),
-    unpaired=arr(obj(question_id=s(), range=i(), reason=s())),   # split_unpaired questions and why
+    unpaired=arr(obj(question_id=s(), range=i(), reason=s())),   # split_unpaired questions, or pairs dropped by budget/ceiling/load cap (§4.3), and why
     red_team=nullable(obj(agent=enum(AGENTS), question_id=s(), median=num(), distance=num(),
                           reason=s())),
     eligible=obj(**{q: arr(enum(AGENTS)) for q in QIDS}),   # all five keys, empty arrays allowed

@@ -999,6 +999,10 @@ SECTOR CONTEXT (crypto and macro landscape; background, not today's data):
             for x in full["pairs"]:
                 if (x["question_id"], x["high"], x["low"]) not in kept:
                     self.skip("pairing", f"pair {x['question_id']} {x['high']}-{x['low']}", "ceiling" if at_ceiling else "budget")
+            # A split the depth target would have debated keeps a block on the split_unpaired bar when the budget,
+            # the ceiling or the load cap drops its pair (§11.1 rule 2, fifth review 2026-10-04).
+            if res["day_type"] == "debate":
+                res["unpaired"] = debate.dropped_unpaired(res, full, "ceiling" if at_ceiling else "budget", p)
         # The crux check is planned from the pairs that actually formed, not from the depth target: a day with
         # fewer pairs than the target (or a consensus day: 1 red-team call) has room for it (§1.1).
         staged = 4 * len(res["pairs"]) + (1 if res.get("red_team") else 0)
@@ -1508,7 +1512,8 @@ SECTOR CONTEXT (crypto and macro landscape; background, not today's data):
         sheet = debate.split_sheet(self.day, self.run_id, day_type, qs, pos["take_p"], pos["final"], pos["debates"],
                                    challenges_by, responses_by, takes, self.locator(),
                                    int(pairing.get("gap_min") or debate.GAP_MIN_DEFAULT), red_team=red_in,
-                                   crux_check=crux, ledger=ledger)
+                                   crux_check=crux, ledger=ledger,
+                                   unpaired=[u["question_id"] for u in pairing.get("unpaired") or []])
         self.check_artifact("split_sheet", sheet, "split sheet")
         rendered = debate.render_split_sheet(sheet)
         notes = debate.lens_notes(takes, [a for a in self.active if a in takes], self.locator())

@@ -658,7 +658,14 @@ def pair(questions: list[dict], p: dict, evq: dict, active: list[str], depth: st
     base = {"depth": depth, "target": target, "gap_min": gap_min, "candidates_considered": len(cands),
             "eligible": elig}
     if out_pairs:
-        return {"day_type": "debate", "pairs": out_pairs, "unpaired": [], "red_team": None, **base}
+        # A question with a candidate pair that the load cap left out while slots remained (its debaters already
+        # argue two pairs) is unpaired, not 'more splits than slots': §11.1 gives it the split_unpaired bar.
+        paired = {c[3] for c in pairs}
+        unp = []
+        if len(pairs) < target:
+            for qid in sorted({c[3] for c in cands} - paired, key=lambda x: (-ranges[x], x)):
+                unp.append({"question_id": qid, "range": int(ranges[qid]), "reason": UNPAIRED_LOAD_CAP})
+        return {"day_type": "debate", "pairs": out_pairs, "unpaired": unp, "red_team": None, **base}
     wide = sorted(((qid, r) for qid, r in ranges.items() if r >= gap_min), key=lambda x: (-x[1], x[0]))
     if off_reason:
         if wide:
@@ -677,6 +684,33 @@ def pair(questions: list[dict], p: dict, evq: dict, active: list[str], depth: st
     top = sorted(qs, key=lambda q: (-int(q.get("weight", 1) or 1), -ranges.get(q["id"], 0), q["id"]))[0]
     rt = pick_red_team(top, p, evq, active)
     return {"day_type": "consensus", "pairs": [], "unpaired": [], "red_team": rt, **base}
+
+
+UNPAIRED_LOAD_CAP = "load cap: its debaters already argue two pairs"
+
+
+def dropped_unpaired(res: dict, full: dict, why: str, p: dict | None = None) -> list[dict]:
+    """§4.3/§11.1. The questions whose candidate pair the depth target would have debated but the day did not:
+    `res` is pair() at the budgeted target, `full` pair() at the depth target, `why` 'budget' or 'ceiling'.
+    Returns res's own unpaired (load cap) plus every question paired, or load-capped, in `full` that `res`
+    left without a pair, one entry each, `range` the take range from `p` ({agent: {qid: int}}; the pair's gap
+    without it) (fifth review: budget_pairs(12, 24, 2, 3) gives up the last pair on a
+    normal day, and its split vanished from the brief when the take range was under 40)."""
+    paired = {x["question_id"] for x in res.get("pairs") or []}
+    out = {u["question_id"]: u for u in res.get("unpaired") or [] if u["question_id"] not in paired}
+    reason = ("the call ceiling leaves no pair" if why == "ceiling" else
+              "the call budget gave up this pair (depth target would have debated it)")
+    def rng(qid, fallback):
+        vals = [v[qid] for v in (p or {}).values() if qid in v]
+        return int(max(vals) - min(vals)) if vals else int(fallback)
+    for x in full.get("pairs") or []:
+        if x["question_id"] not in paired and x["question_id"] not in out:
+            out[x["question_id"]] = {"question_id": x["question_id"], "range": rng(x["question_id"], x["gap"]),
+                                     "reason": reason}
+    for u in full.get("unpaired") or []:
+        if u["question_id"] not in paired and u["question_id"] not in out:
+            out[u["question_id"]] = dict(u)
+    return sorted(out.values(), key=lambda u: (-u["range"], u["question_id"]))
 
 
 # ── §5.2 excerpts ──────────────────────────────────────────────────────────────────────
@@ -1984,11 +2018,16 @@ def _crux_block(crux_check: dict | None, qid: str) -> dict | None:
 def split_sheet(day: str, run_id: str, day_type: str, questions: list[dict], take_p: dict, finals: dict,
                 debates: list[dict], challenges: dict, responses: dict, takes: dict, locator, gap_min: int,
                 red_team: dict | None = None, red_team_agent: str | None = None, crux_check: dict | None = None,
-                ledger: list[dict] | None = None) -> dict:
-    """§11.1-11.2. challenges: {(challenger, qid): record}; responses: {(agent, qid): record};
+                ledger: list[dict] | None = None, unpaired: list[str] | None = None) -> dict:
+    """§11.1-11.2. unpaired: question ids pairing.json lists as unpaired (no pair formed although a candidate
+    pair existed: budget, ceiling or load cap); they get the split_unpaired bar on any day type. challenges: {(challenger, qid): record}; responses: {(agent, qid): record};
     takes: {agent: TAKE}; crux_check: {question_id, data, quote_status} when §8 ran (shown only when
     crux_check_usable(); otherwise the block falls back to the question's resolves_on and settles_with)."""
     ledger = ledger or []
+    unp = set(unpaired or [])
+
+    def low_bar(qid):
+        return day_type == "split_unpaired" or qid in unp
     qby = {q["id"]: q for q in questions}
     dby = {d["question_id"]: d for d in debates}
 
@@ -2043,7 +2082,7 @@ def split_sheet(day: str, run_id: str, day_type: str, questions: list[dict], tak
         if st_take["n"] < 3:
             continue
         rng = st_take["range"] or 0
-        if day_type == "split_unpaired":
+        if low_bar(q["id"]):
             ok = rng >= gap_min and (st_fin["minority_count"] >= 1 or rng >= gap_min)
         else:
             ok = st_fin["minority_count"] >= 2 and rng >= 40
@@ -2062,7 +2101,7 @@ def split_sheet(day: str, run_id: str, day_type: str, questions: list[dict], tak
         typ = "direction" if st["minority_count"] >= 1 else "degree"
         if typ == "degree":
             rng = st["range"] or 0
-            need = gap_min if day_type == "split_unpaired" else 30
+            need = gap_min if low_bar(qid) else 30
             dd = dby.get(qid)
             if rng < need and not (dd and dd.get("gap_before", 0) >= gap_min):
                 continue

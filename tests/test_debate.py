@@ -1456,3 +1456,49 @@ class MarketQuestionLineTests(unittest.TestCase):
                 self.assertEqual([n for n in qs if debate.ev_class(loc.locate(lines[n - 1].strip()), loc) != "market"], [])
         lines = debate.market_lines(self.loc)
         self.assertIn(f"- {self.IRAN} — YES: 62% | 24h vol: $511,565 | total vol: $1,300,401 | liq: $59,632", lines)
+
+
+class DroppedPairTests(unittest.TestCase):
+    """§11.1 rule 2: a split whose candidate pair the budget, ceiling or load cap dropped keeps a block on the
+    split_unpaired bar (review 2026-10-04: budget_pairs(12, 24, 2, 3) gave up q3, and q3 left the brief)."""
+
+    def test_budget_dropped_pair_keeps_its_block(self):
+        self.assertEqual(debate.budget_pairs(12, 24, 2, 3), (2, True))
+        v1 = dict(zip(AG, [10, 20, 30, 70, 80, 90, 85, 15, 75]))
+        v2 = dict(zip(AG, [80, 25, 70, 20, 30, 85, 15, 75, 90]))
+        v3 = dict(zip(AG, [66, 70, 40, 62, 75, 68, 64, 72, 60]))        # one lens at 40, median 66, range 35
+        vals = {"q1": v1, "q2": v2, "q3": v3}
+        qs, p, e = setup(vals, weights={"q1": 3, "q2": 3, "q3": 2})
+        res = debate.pair(qs, p, e, list(AG), "normal", 2)
+        full = debate.pair(qs, p, e, list(AG), "normal", 3)
+        self.assertEqual(sorted(x["question_id"] for x in res["pairs"]), ["q1", "q2"])
+        self.assertIn("q3", [x["question_id"] for x in full["pairs"]])
+        unp = debate.dropped_unpaired(res, full, "budget", p)
+        self.assertEqual([(u["question_id"], u["range"]) for u in unp], [("q3", 35)])
+        self.assertIn("budget", unp[0]["reason"])
+        qrec = [{"id": qid, "text": f"Will {qid} happen by 10-11?", "weight": w, "resolves_on": "2026-10-11",
+                 "settles_with": "a print", "ledger_id": f"x-{qid}"} for qid, w in (("q1", 3), ("q2", 3), ("q3", 2))]
+        tp = {a: {qid: vals[qid][a] for qid in vals} for a in AG}
+        takes = {a: {"positions": [{"question_id": qid, "probability": tp[a][qid], "reason": f"r {qid}",
+                                    "evidence": [{"section": "", "quote": "- Current: $86,610,000,000"}]}
+                                   for qid in vals], "summary": "", "claims": []} for a in AG}
+        debates = [{"question_id": x["question_id"], "high": x["high"], "low": x["low"], "gap_before": x["gap"],
+                    "gap_after": x["gap"], "in_split": True, "live_split": True, "held_split": False,
+                    "crux_agreed": False, "narrowed_on_data": False} for x in res["pairs"]]
+        sh = debate.split_sheet("2026-10-04", "r", "debate", qrec, tp, tp, debates, {}, {}, takes, locator(), 20,
+                                unpaired=[u["question_id"] for u in unp])
+        self.assertEqual(sorted(b["question_id"] for b in sh["blocks"]), ["q1", "q2", "q3"])
+        b3 = next(b for b in sh["blocks"] if b["question_id"] == "q3")
+        self.assertEqual((b3["type"], b3["debated"]), ("direction", False))
+        schemas.validate(json.loads(json.dumps(sh)), schemas.ARTIFACTS["split_sheet"])
+        # a question that was never a candidate pair keeps the strict rule (range >= 40, minority >= 2)
+        sh = debate.split_sheet("2026-10-04", "r", "debate", qrec, tp, tp, debates, {}, {}, takes, locator(), 20)
+        self.assertNotIn("q3", [b["question_id"] for b in sh["blocks"]])
+
+    def test_load_cap_drop_is_unpaired(self):
+        vals = {qid: {"trader": 10, "analyst": 50, "skeptic": 90} for qid in ("q1", "q2", "q3")}
+        qs, p, e = setup(vals)
+        r = debate.pair(qs, p, e, list(p), "normal", 3)
+        self.assertEqual(len(r["pairs"]), 2)
+        self.assertEqual([(u["question_id"], u["reason"]) for u in r["unpaired"]], [("q3", debate.UNPAIRED_LOAD_CAP)])
+        self.assertEqual([u["question_id"] for u in debate.dropped_unpaired(r, r, "budget")], ["q3"])
