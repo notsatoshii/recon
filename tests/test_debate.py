@@ -878,6 +878,23 @@ class SplitSheetTests(unittest.TestCase):
         self.assertEqual(sh["blocks"][0]["count_phrase"], "7 of 9 lenses put it at 60–85%; 2 put it at 25–40%")
         self.assert_clean(sh)
 
+    def test_lone_outlier_gets_no_undebated_block(self):
+        # §4.2 / §20.7 #83: a range that reaches the bar only through one lens is no split; trimmed range 17 < 20,
+        # yet rule 2 (minority_count >= 2, range >= 40) built '7 of 9 lenses put it at 52-100%' with the outlier inside.
+        vals = dict(zip(AG, [45, 48, 52, 55, 58, 60, 62, 62, 100]))
+        self.assertTrue(debate.lone_lens(list(vals.values()), 20))
+        for dt in ("debate", "split_unpaired", "consensus"):
+            sh = self.sheet(vals, day_type=dt)
+            self.assertEqual([b for b in sh["blocks"] if b["type"] != "consensus"], [], dt)
+        qs = [{"id": "q1", "text": "Will TVL stay above 86B by 10-11?", "weight": 2, "resolves_on": "2026-10-11",
+               "settles_with": "DeFiLlama total TVL", "ledger_id": "2026-10-04-q1"}]
+        two = dict(zip(AG, [60, 65, 70, 75, 80, 85, 62, 25, 40]))   # two dissenters: still a block
+        tp = {a: {"q1": v} for a, v in two.items()}
+        sh = debate.split_sheet("2026-10-04", "2026-10-04", "debate", qs, tp, tp, [], {}, {}, mk_takes(two), locator(),
+                                20, lone_outliers=["q1"])
+        self.assertEqual(sh["blocks"], [])   # pairing.json's lone_outliers list is honoured as given
+        self.assertEqual(self.sheet(two)["blocks"][0]["type"], "direction")
+
     def test_degree_on_split_unpaired(self):
         vals = dict(zip(AG, [55, 60, 65, 70, 75, 80, 85, 90, 58]))
         sh = self.sheet(vals, day_type="split_unpaired")

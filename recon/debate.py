@@ -2372,14 +2372,18 @@ def _crux_block(crux_check: dict | None, qid: str) -> dict | None:
 def split_sheet(day: str, run_id: str, day_type: str, questions: list[dict], take_p: dict, finals: dict,
                 debates: list[dict], challenges: dict, responses: dict, takes: dict, locator, gap_min: int,
                 red_team: dict | None = None, red_team_agent: str | None = None, crux_check: dict | None = None,
-                ledger: list[dict] | None = None, unpaired: list[str] | None = None) -> dict:
+                ledger: list[dict] | None = None, unpaired: list[str] | None = None,
+                lone_outliers: list[str] | None = None) -> dict:
     """§11.1-11.2. unpaired: question ids pairing.json lists as unpaired (no pair formed although a candidate
     pair existed: budget, ceiling or load cap; or a split with no eligible pair at all); they get the
     split_unpaired bar on any day type. challenges: {(challenger, qid): record}; responses: {(agent, qid): record};
     takes: {agent: TAKE}; crux_check: {question_id, data, quote_status} when §8 ran (shown only when
-    crux_check_usable(); otherwise the block falls back to the question's resolves_on and settles_with)."""
+    crux_check_usable(); otherwise the block falls back to the question's resolves_on and settles_with).
+    lone_outliers: question ids pairing.json lists as lone outliers; like any question whose take range reaches
+    the bar only through one lens (lone_lens), they get no undebated block (§4.2, §20.7 #83)."""
     ledger = ledger or []
     unp = set(unpaired or [])
+    lone = set(lone_outliers or [])
 
     def low_bar(qid):
         return day_type == "split_unpaired" or qid in unp
@@ -2435,6 +2439,10 @@ def split_sheet(day: str, run_id: str, day_type: str, questions: list[dict], tak
         st_take = question_stats(list(tk(q["id"]).values()))
         st_fin = question_stats(list(fin(q["id"]).values()))
         if st_take["n"] < 3:
+            continue
+        # One lens carrying the range is not a split (§4.2): without this, rule 2 below (minority_count >= 2,
+        # range >= 40) built a direction block on 45..62 + 100 (trimmed range 17) with the outlier in the majority.
+        if q["id"] in lone or lone_lens(list(tk(q["id"]).values()), gap_min):
             continue
         rng = st_take["range"] or 0
         if low_bar(q["id"]):

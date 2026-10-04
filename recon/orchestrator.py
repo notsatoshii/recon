@@ -1553,7 +1553,8 @@ SECTOR CONTEXT (crypto and macro landscape; background, not today's data):
                                    challenges_by, responses_by, takes, self.locator(),
                                    int(pairing.get("gap_min") or debate.GAP_MIN_DEFAULT), red_team=red_in,
                                    crux_check=crux, ledger=ledger,
-                                   unpaired=[u["question_id"] for u in pairing.get("unpaired") or []])
+                                   unpaired=[u["question_id"] for u in pairing.get("unpaired") or []],
+                                   lone_outliers=[x["question_id"] for x in pairing.get("lone_outliers") or []])
         self.check_artifact("split_sheet", sheet, "split sheet")
         rendered = debate.render_split_sheet(sheet)
         notes = debate.lens_notes(takes, [a for a in self.active if a in takes], self.locator())
