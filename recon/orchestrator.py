@@ -196,6 +196,14 @@ def expiry_note(text: str, made: str) -> str:
     return " (no expiry: no dated horizon)"
 
 
+def run_status(final: str, checks: dict) -> str:
+    """run.json status (§12.3): 'ok' only with a final brief whose §11.5 checks are clean: all sections in order, no
+    agent names, every printed 'N of M' on the sheet and every split-sheet block in WHERE THE VIEWS SPLIT."""
+    clean = (checks.get("sections_ok") and not checks.get("agent_names") and not checks.get("count_mismatch")
+             and not checks.get("split_missing"))
+    return "ok" if final and clean else ("partial" if final else "failed")
+
+
 class Run:
     def __init__(self, args: argparse.Namespace):
         self.args = args
@@ -1871,8 +1879,9 @@ RAW DATA (for cross-referencing numbers; every package section, each trimmed):
         self.log(f"  URLs: {urls['urls']} in the brief, {len(urls['missing'])} not in the raw data; "
                  f"numbers in 3+ sections: {len(rep)}; words {words}")
         self.log(f"  Agent names: {len(bc['agent_names'])}; count mismatches: {len(bc['count_mismatch'])}; "
-                 f"block issues: {len(bc['blocks'])}; process words: {len(bc['process_words'])}")
-        for k in ("agent_names", "count_mismatch", "blocks", "process_words"):
+                 f"block issues: {len(bc['blocks'])}; split blocks missing: {len(bc['split_missing'])}; "
+                 f"process words: {len(bc['process_words'])}")
+        for k in ("agent_names", "count_mismatch", "blocks", "split_missing", "process_words"):
             for v in bc[k][:5]:
                 self.log(f"    {k}: {v}")
         return {"sections_ok": not missing, "missing": missing, "words": words, "claims": claims,
@@ -2051,8 +2060,7 @@ RAW DATA (for cross-referencing numbers; every package section, each trimmed):
         tri_calls = [{"phase": "triage", "tier": c["tier"], "model": c["model"], "in_tok": c["in_tok"], "out_tok": c["out_tok"],
                       "seconds": c["seconds"]} for c in calls if c["phase"] == "triage"]
         final = read(self.dir / "07_daily_brief.md")
-        clean = checks.get("sections_ok") and not checks.get("agent_names") and not checks.get("count_mismatch")
-        status = "ok" if final and clean else ("partial" if final else "failed")
+        status = run_status(final, checks)
         red = next((r for r in chs.values() if r.get("type") == "redteam"), None)
         sheet = self.load("split_sheet") if self.art("split_sheet").exists() else None
         tri_art = self.load("triage") if self.art("triage").exists() else {}

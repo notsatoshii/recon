@@ -2048,3 +2048,64 @@ class ThresholdNumberNeedsCruxWordTests(unittest.TestCase):
                               [], [], [], self.terms, self.loc, kind="threshold")
         self.assertTrue(ok["new_evidence"][0]["qualifies"])
         self.assertEqual(ok["gated"], 47)
+
+
+class SplitCoverageTests(unittest.TestCase):
+    """09-11 c8: a second split-sheet block (6 of 9) left out of WHERE THE VIEWS SPLIT, or the whole section
+    replaced by 'The lenses broadly agree today.', gave no flags and run.json recorded 'ok'. Every block must
+    appear (its count phrase, else its majority 'N of M'); a missing one goes to split_missing and the run is
+    'partial'. The first block and the printed section are the real c8 ones."""
+
+    B1 = {"type": "direction", "question": "Will OpenAI resume new Pro subscription sign-ups by September 18?",
+          "counts": {"n": 9, "majority": 7, "minority": 2},
+          "count_phrase": "7 of 9 lenses put it at 35\u201343%; 2 put it at 58\u201370%"}
+    B2 = {"type": "direction", "question": "Will Bitcoin trade below $75,000 by 2026-09-18?",
+          "counts": {"n": 9, "majority": 6, "minority": 3},
+          "count_phrase": "6 of 9 lenses put it at 20\u201335%; 3 put it at 55\u201365%"}
+    C8 = ("### WHERE THE VIEWS SPLIT\n\n**Will OpenAI resume new Pro subscription sign-ups by September 18?**\n\n"
+          "7 of 9 lenses put it at 35\u201343%; 2 put it at 58\u201370%\n\nThe base case is that sign-ups remain paused.\n"
+          "### RISKS\n- none\n")
+
+    def sheet(self, *blocks):
+        return {"day_type": "debate", "blocks": list(blocks)}
+
+    def test_missing_block_flagged(self):
+        r = debate.brief_checks(self.C8, self.sheet(self.B1, self.B2))
+        self.assertEqual(len(r["split_missing"]), 1)
+        self.assertIn("block 2", r["split_missing"][0])
+        self.assertEqual(r["count_mismatch"], [])
+        self.assertEqual(debate.brief_checks(self.C8, self.sheet(self.B1))["split_missing"], [])
+
+    def test_broadly_agree_replacement_flagged(self):
+        brief = "### WHERE THE VIEWS SPLIT\n- The lenses broadly agree today.\n### RISKS\n- none\n"
+        r = debate.brief_checks(brief, self.sheet(self.B1, self.B2))
+        self.assertEqual(len(r["split_missing"]), 3)
+        self.assertTrue(any("broadly agree" in x for x in r["split_missing"]))
+        self.assertEqual(debate.brief_checks(brief, self.sheet())["split_missing"], [])
+
+    def test_majority_pair_and_dash_forms_cover(self):
+        brief = ("### WHERE THE VIEWS SPLIT\n7 of 9 lenses put it at 35-43%; 2 put it at 58-70%.\n"
+                 "On Bitcoin, 6 of 9 lenses see it below 35%.\n")
+        self.assertEqual(debate.brief_checks(brief, self.sheet(self.B1, self.B2))["split_missing"], [])
+
+    def test_one_printed_pair_covers_one_block(self):
+        twin = {**self.B2, "counts": {"n": 9, "majority": 7, "minority": 2}, "count_phrase": "7 of 9 lenses lean no"}
+        r = debate.brief_checks(self.C8, self.sheet(self.B1, twin))
+        self.assertEqual(len(r["split_missing"]), 1)
+
+    def test_consensus_block_and_broadly_agree(self):
+        cons = {"type": "consensus", "question": "Will the Fed cut in October?",
+                "counts": {"n": 9, "majority": 9, "minority": 0}, "count_phrase": "all 9 lenses within 6 points of 70%"}
+        ok = ("### WHERE THE VIEWS SPLIT\n- No real split today; the lenses broadly agree. The strongest case against "
+              "the consensus: a hot CPI print.\n- All 9 lenses within 6 points of 70%.\n")
+        self.assertEqual(debate.brief_checks(ok, {"day_type": "consensus", "blocks": [cons]})["split_missing"], [])
+        gone = "### WHERE THE VIEWS SPLIT\n- No real split today. The strongest case against it: a hot CPI print.\n"
+        self.assertEqual(len(debate.brief_checks(gone, {"day_type": "consensus", "blocks": [cons]})["split_missing"]), 1)
+
+    def test_run_status_partial_on_missing_block(self):
+        from recon.orchestrator import run_status
+        checks = debate.brief_checks(self.C8, self.sheet(self.B1, self.B2))
+        self.assertEqual(run_status(self.C8, {**checks, "sections_ok": True}), "partial")
+        good = debate.brief_checks(self.C8, self.sheet(self.B1))
+        self.assertEqual(run_status(self.C8, {**good, "sections_ok": True}), "ok")
+        self.assertEqual(run_status("", {**good, "sections_ok": True}), "failed")

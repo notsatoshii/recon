@@ -2639,6 +2639,41 @@ def brief_section(brief: str, name: str) -> str:
     return "\n".join(out)
 
 
+def _cov_norm(t: str) -> str:
+    t = re.sub(r"[*_`]", "", (t or "").lower())
+    t = re.sub(r"\s*[\u2010-\u2015\u2212-]\s*", "-", t)
+    return re.sub(r"\s+", " ", t).strip(" .")
+
+
+def split_missing(split: str, blocks: list[dict]) -> list[str]:
+    """§11.5 coverage: every split-sheet block must reach WHERE THE VIEWS SPLIT. A block is covered by its
+    count phrase as written, or else by its majority 'N of M' ('all N' on a consensus block or when every lens is on one side); each
+    printed 'N of M' / 'all N' covers one block only, so two 7-of-9 blocks need two. A 'broadly agree' line on a
+    sheet with a direction or degree block is flagged too (09-11 c8: a second block, or the whole section
+    replaced by 'The lenses broadly agree today.', went unflagged and run.json said 'ok')."""
+    body = _cov_norm(split)
+    out, keys = [], []
+    for i, bl in enumerate(blocks, 1):
+        cp = _cov_norm(bl.get("count_phrase", ""))
+        if cp and cp in body:
+            body = body.replace(cp, " ", 1)
+            continue
+        keys.append((i, bl))
+    for i, bl in keys:
+        c = bl.get("counts") or {}
+        n, maj = int(c.get("n", 0) or 0), int(c.get("majority", 0) or 0)
+        key = f"all {n}" if bl.get("type") == "consensus" or maj in (0, n) else f"{maj} of {n}"
+        m = re.search(rf"\b{re.escape(key)}\b", body)
+        if n and m:
+            body = body[:m.start()] + " " + body[m.end():]
+            continue
+        out.append(f"block {i} ({bl.get('type', '')}) not in WHERE THE VIEWS SPLIT: "
+                   f"{bl.get('count_phrase') or key} on \"{(bl.get('question') or '')[:80]}\"")
+    if any(bl.get("type") != "consensus" for bl in blocks) and re.search(r"\bbroadly agree", split or "", re.I):
+        out.append(f"'broadly agree' printed with {len(blocks)} split block(s) on the sheet")
+    return out
+
+
 def brief_checks(brief: str, sheet: dict | None) -> dict:
     whole = []
     for rx in (SNAKE_NAMES, UPPER_NAMES, HEAD_NAMES, LABEL_NAMES, USER_LABEL, THE_NAMES):
@@ -2676,6 +2711,7 @@ def brief_checks(brief: str, sheet: dict | None) -> dict:
     if (sheet or {}).get("day_type") == "split_unpaired" and "no real split" in split.lower():
         block_issues.append("split_unpaired day prints 'No real split'")
     return {"agent_names": agent_names, "count_mismatch": mism, "blocks": block_issues,
+            "split_missing": split_missing(split, blocks),
             "process_words": [m.group(0) for m in PROCESS.finditer(brief or "")]}
 
 
