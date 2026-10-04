@@ -10,6 +10,8 @@ Tiers map a role to a model + reasoning effort so call sites never name models:
     fast     votes, classification, memory/state updates, mechanical picks
     analyst  takes, challenges, responses, deep dives
     synth    environment classification, brief draft, hallucination pass
+    lens     per-lens override for takes (recon/debate.py LENS_TIER): the SYNTH model at medium effort,
+             the setting the Phase C spread probe measured (p3); RECON_MODEL_LENS / RECON_EFFORT_LENS
 
 Environment (all optional)
     RECON_HOME                 repo root (default: parent of this file's directory)
@@ -52,7 +54,7 @@ SLIM_DISABLE = ("apps", "browser_use", "computer_use", "image_generation", "mult
                 "goals", "shell_tool", "unified_exec", "view_image", "skill_search", "tool_suggest",
                 "sleep_tool", "personality", "code_mode_host")
 
-TIERS = ("fast", "analyst", "synth")
+TIERS = ("fast", "analyst", "synth", "lens")
 
 DEFAULT_CODEX = {
     "fast": ("gpt-5.6-luna", "low"),
@@ -122,6 +124,11 @@ def provider_name() -> str:
 
 
 def codex_model(tier: str) -> tuple[str, str]:
+    if tier == "lens":
+        # The SYNTH model (whatever RECON_MODEL_SYNTH says) at medium effort: what the spread probe measured
+        # as p3. Not sol at high effort, which no probe measured (phase-c-spec §15.0, §16).
+        return (os.environ.get("RECON_MODEL_LENS") or codex_model("synth")[0],
+                os.environ.get("RECON_EFFORT_LENS") or "medium")
     model, effort = DEFAULT_CODEX[tier]
     model = os.environ.get(f"RECON_MODEL_{tier.upper()}", model)
     effort = os.environ.get(f"RECON_EFFORT_{tier.upper()}", effort)
@@ -129,6 +136,8 @@ def codex_model(tier: str) -> tuple[str, str]:
 
 
 def claude_model(tier: str) -> str:
+    if tier == "lens":
+        return os.environ.get("RECON_CLAUDE_MODEL_LENS") or claude_model("synth")
     return os.environ.get(f"RECON_CLAUDE_MODEL_{tier.upper()}", DEFAULT_CLAUDE[tier])
 
 
@@ -430,11 +439,16 @@ def _log(agent: str, tier: str, model: str, provider: str, in_bytes: int, out_by
 
 
 def ask_ex(prompt: str, tier: str = "analyst", persona_path: str | None = None,
-           schema_path: str | None = None, agent: str | None = None, note: str = "") -> dict:
+           schema_path: str | None = None, agent: str | None = None, note: str = "",
+           on_failed_attempt=None, before_retry=None) -> dict:
     """Like ask(), but returns {text, usage, seconds, attempts, model, provider, tier, prompt_bytes}.
 
     Retries: a rate-limit or usage-window error waits 180 s x attempt; anything else retries after
     2 s (no fixed pauses between calls). Raises LLMError after all retries fail.
+
+    Every provider attempt is a call against the budget (phase-c-spec §1.1): `on_failed_attempt(meta)`
+    is called after each failed attempt ({attempt, error, seconds, usage, model, tier}), and
+    `before_retry(attempt)` before the next one starts (before any wait); it may raise to stop.
     """
     tier = resolve_tier(tier)
     provider = provider_name()
@@ -476,7 +490,12 @@ def ask_ex(prompt: str, tier: str = "analyst", persona_path: str | None = None,
         last_err = diag.strip()[-300:] or "empty output"
         _log(agent or "", tier, model, provider, len(full_prompt), 0, elapsed, usage,
              note=(note + " " if note else "") + f"attempt={attempt} FAILED: {last_err[:120]!r}")
+        if on_failed_attempt is not None:
+            on_failed_attempt({"attempt": attempt, "error": last_err, "seconds": elapsed, "usage": usage or {},
+                               "model": model, "tier": tier})
         if attempt < retries():
+            if before_retry is not None:
+                before_retry(attempt + 1)
             # Usage-window exhaustion needs a long pause; anything else retries almost at once.
             time.sleep(180 * attempt if _looks_rate_limited(last_err) else 2)
 

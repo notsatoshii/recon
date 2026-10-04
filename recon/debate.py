@@ -47,10 +47,12 @@ DOMAIN_LENSES = {"markets_crypto": ["trader", "analyst"], "macro_policy": ["macr
 LENS_LABEL = {"trader": "markets lens", "narrator": "narrative lens", "builder": "products lens",
               "analyst": "sector-model lens", "skeptic": "risk lens", "policy_analyst": "policy lens",
               "user_agent": "adoption lens", "macro_strategist": "macro lens", "ai_engineer": "AI tools lens"}
-# Per-agent tier override (§15.0). Spread probe 2026-10-04: on the SYNTH model the skeptic's and the macro
-# strategist's retest-adjusted distance from the median rose on 3/4 and 4/4 questions (high effort alone:
-# 2/4 each), so those two lenses take on the synth tier (+2 synth-tier calls a day, see spec §16).
-LENS_TIER: dict[str, str] = {"skeptic": "synth", "macro_strategist": "synth"}
+# Per-agent tier override (§15.0). Spread probe 2026-10-04: on the SYNTH model at the analyst tier's medium
+# effort (p3) the skeptic's and the macro strategist's retest-adjusted distance from the median rose on 3/4
+# and 4/4 questions (high effort alone: 2/4 each), so those two lenses take on the `lens` tier: the SYNTH
+# model at medium effort, the setting measured (recon/llm.py; not sol at high effort, which no probe measured).
+LENS_TIER: dict[str, str] = {"skeptic": "lens", "macro_strategist": "lens"}
+MARKET_SECTION = "PREDICTION MARKETS"   # SECTION 8 and the raw Polymarket / Kalshi blocks (evidence.RAW_BLOCKS)
 SPLIT_SHEET_CAP = 6000
 LENS_NOTES_CAP = 8000
 
@@ -308,10 +310,12 @@ def clamp_weight(w) -> tuple[int, bool]:
 
 
 def gate_questions(questions: list[dict], day: str, locator, open_ledger: list[dict] | None = None,
-                   active: list[str] | None = None, depth: str = "normal") -> dict:
+                   active: list[str] | None = None, depth: str = "normal", market: list[str] | None = None) -> dict:
     """Apply the §2.4 gate. Returns {kept, dropped, notes, needs_reask}. `locator` is an
     evidence.Locator over package, raw, view and social (rule 4). Kept questions get ids q1… in
-    order, clamped weights and cleaned lenses."""
+    order, clamped weights and cleaned lenses. `market`: the run's prediction-market odds lines
+    (market_lines()); a question one of them already prices is dropped (rule 7: the spread probe's
+    takes anchored on a quoted market price, 9 of 9 at 60 %)."""
     active = list(active or AGENTS)
     open_ledger = open_ledger or []
     dropped, notes = [], []
@@ -338,6 +342,10 @@ def gate_questions(questions: list[dict], day: str, locator, open_ledger: list[d
             st = evidence.locate(bq, locator)["status"] if bq else "empty"
             if st not in ("verified", "partial"):
                 reason = f"baseline_quote not found in the package ({st})"
+        if reason is None and market:
+            hit = market_match(text, market)
+            if hit:
+                reason = f"a prediction market already prices it: {hit[:100]!r}"
         if reason:
             dropped.append({"text": text, "reason": reason, "order": n})
             continue
@@ -464,9 +472,11 @@ def pick_red_team(q: dict, p: dict, evq: dict, active: list[str]) -> dict | None
 
 
 def pair(questions: list[dict], p: dict, evq: dict, active: list[str], depth: str, target: int,
-         gap_min: int = GAP_MIN_DEFAULT, yesterday_pairs: set | None = None) -> dict:
+         gap_min: int = GAP_MIN_DEFAULT, yesterday_pairs: set | None = None, off_reason: str | None = None) -> dict:
     """§4.2-4.3. p: {agent: {qid: int}}; evq: {agent: {qid: [EV_CHECKED]}}. Returns the PAIRING
-    fields except positions_evidence and budget."""
+    fields except positions_evidence and budget. `off_reason`: the debate is switched off (the §0.1 spread
+    gate has not passed): no pairs and no red team; a split is split_unpaired (undebated blocks, §11.1)
+    with that reason, anything else a consensus day without the red-team call."""
     yesterday_pairs = yesterday_pairs or set()
     active = sorted(a for a in active if a in p)
     elig = {q: [] for q in ("q1", "q2", "q3", "q4", "q5")}
@@ -511,6 +521,8 @@ def pair(questions: list[dict], p: dict, evq: dict, active: list[str], depth: st
                 score -= 5
             cands.append((round(score, 2), gap, vcount(a, qid) + vcount(b, qid), qid, lo, hi, both, rep))
     cands.sort(key=lambda c: (-c[0], -c[1], -c[2], c[3], c[4], c[5]))
+    if off_reason:
+        target = 0
     pairs, used_q, load = [], set(), Counter()
     for cap in (1, 2):
         for c in cands:
@@ -529,6 +541,12 @@ def pair(questions: list[dict], p: dict, evq: dict, active: list[str], depth: st
     if out_pairs:
         return {"day_type": "debate", "pairs": out_pairs, "unpaired": [], "red_team": None, **base}
     wide = sorted(((qid, r) for qid, r in ranges.items() if r >= gap_min), key=lambda x: (-x[1], x[0]))
+    if off_reason:
+        if wide:
+            return {"day_type": "split_unpaired", "pairs": [], "red_team": None,
+                    "unpaired": [{"question_id": qid, "range": int(r), "reason": off_reason} for qid, r in wide[:3]],
+                    **base}
+        return {"day_type": "consensus", "pairs": [], "unpaired": [], "red_team": None, **base}
     if cands or wide:
         unp = []
         for qid, r in wide[:3]:
@@ -844,15 +862,21 @@ def shares_specific(quote: str, terms: dict) -> bool:
     return bool(h["entities"]) and bool(evidence.numbers(quote or ""))
 
 
-def drop_frequent_entities(terms: dict, docs: dict[str, str], max_share: float = 0.02) -> dict:
+def drop_frequent_entities(terms: dict, docs: dict[str, str], max_share: float = 0.02, keep_always=()) -> dict:
     """Entities that sit on more than `max_share` of the corpus's non-empty lines ('BTC', 'ETF', 'Fed',
-    'DeFi' on hundreds of package lines) say nothing specific about a crux: drop them from the terms."""
+    'DeFi' on hundreds of package lines) say nothing specific about a crux: drop them from the terms.
+    `keep_always`: entities of the question itself ('South Korea', 'Hormuz' on an event question) stay
+    however often they occur: on an event question they are what a line has to be about (§7.2)."""
     lines = [l for d in docs.values() for l in (d or "").split("\n") if l.strip()]
     if not lines or not terms.get("entities"):
         return terms
+    pinned = {str(x).lower() for x in keep_always or ()}
     limit = max(3, int(max_share * len(lines)))
     keep, dropped = [], []
     for e in terms["entities"]:
+        if e.lower() in pinned:
+            keep.append(e)
+            continue
         if _HANGUL.fullmatch(e):
             n = sum(1 for l in lines if e in l)
         else:
@@ -893,7 +917,7 @@ def crux_search(terms: dict, docs: dict[str, str], exclude_quotes, locator=None,
                 sec, cls = locator.label(doc, n)
             else:
                 sec, cls = "", ("social" if doc == "social" or evidence.social_line(s) else "data")
-            if cls == "social":
+            if cls == "social" or is_market_line(sec, s):
                 continue
             seen.add(ns)
             ctx = [lines[i].strip()[:300] for i in (n - 2, n) if 0 <= i < len(lines) and lines[i].strip()]
@@ -916,6 +940,61 @@ def crux_search(terms: dict, docs: dict[str, str], exclude_quotes, locator=None,
             "hits": hits, "block": block(block_bytes), "referee_block": block(referee_bytes)}
 
 
+# ── prediction-market lines (phase-e SECTION 8) ────────────────────────────────────────
+
+_PROB = re.compile(r"(?<![\d.])\d{1,3}(?:\.\d)?%|\d{1,2}(?:\.\d)?¢")
+MARKET_STOP = STOP | {"above", "below", "more", "less", "than", "before", "after", "over", "under", "least", "most",
+                      "into", "their", "there", "about", "again", "still", "close", "next", "week", "month", "year",
+                      "contracts", "leading", "total", "ends", "polymarket", "kalshi", "markets"}  # + the odds-line boilerplate
+
+
+def is_market_line(section: str, line: str) -> bool:
+    """A prediction-market odds line: in the PREDICTION MARKETS section (package SECTION 8, raw Polymarket and
+    Kalshi blocks) and carrying a probability. Market odds are what traders believe, not data about the crux:
+    they never qualify a move (§7.2) and are not crux hits (§6)."""
+    return (section or "").upper().startswith(MARKET_SECTION) and bool(_PROB.search(line or ""))
+
+
+def market_lines(locator) -> list[str]:
+    """The odds lines of the run folder (package and raw) for the question gate's market rule."""
+    if locator is None or not hasattr(locator, "labels"):
+        return []
+    out = []
+    for doc in ("package", "raw"):
+        if doc not in getattr(locator, "lines", {}):
+            continue
+        for (sec, _), line in zip(locator.labels(doc), locator.lines[doc]):
+            if line.strip().startswith("- ") and is_market_line(sec, line):
+                out.append(line.strip())
+    return list(dict.fromkeys(out))
+
+
+def _stems(text: str) -> set[str]:
+    return {w[:4] for w in re.findall(r"[a-z]{4,}", (text or "").lower()) if w not in MARKET_STOP}
+
+
+def market_match(question: str, lines: list[str]) -> str:
+    """The first odds line that prices this question, or ''. A line prices it when it carries a probability
+    and shares at least one entity of the question plus a second specific term: another entity, one of the
+    question's numbers (same figure, §6 rules), or two content words ('Fed' + 'hike' + 'rate')."""
+    if not lines:
+        return ""
+    q_ents = [e for e in entities(question) if e.lower() not in MARKET_STOP]
+    if not q_ents:
+        return ""
+    q_nums = evidence.numbers(question)
+    ent_stems = {w[:4] for e in q_ents for w in re.findall(r"[a-z]{4,}", e.lower())}
+    q_words = _stems(question) - ent_stems
+    for line in lines:
+        ents = {e.lower() for e in q_ents if re.search(rf"(?<!\w){re.escape(e)}(?!\w)", line, re.I)}
+        if not ents:
+            continue
+        nums = _num_match(evidence.numbers(line), q_nums) if q_nums else []
+        if len(ents) >= 2 or nums or len(q_words & _stems(line)) >= 2:
+            return line
+    return ""
+
+
 # ── §7.2 the evidence gate ─────────────────────────────────────────────────────────────
 
 EVIDENCE_MOVE_PER_ITEM = 10   # points beyond FREE_MOVE that one qualifying quote (one line) allows
@@ -931,7 +1010,8 @@ def quote_positions(quotes, locator) -> set:
 
 
 def gate_move(agent: str, take_p: int, requested, own_take_values, other_take_p: int, verdict: str,
-              new_evidence: list[dict], own_quotes, other_quotes, crux_hits, terms: dict, locator) -> dict:
+              new_evidence: list[dict], own_quotes, other_quotes, crux_hits, terms: dict, locator,
+              kind: str = "", shared_lines=None) -> dict:
     """The gated move of one side (SIDE_MOVE fields plus `flags`).
 
     own_quotes: this side's take and challenge quotes; other_quotes: the other side's; crux_hits: this
@@ -941,10 +1021,15 @@ def gate_move(agent: str, take_p: int, requested, own_take_values, other_take_p:
 
     An item qualifies when Locator.strict passes (single verbatim line, no '...', every number found,
     40+ characters or a number), its line is data (social by content counts as social), its source is
-    crux_data or other, and it carries a crux number, or a crux entity together with a number
-    (shares_specific). Qualifying items only extend the move beyond FREE_MOVE: +EVIDENCE_MOVE_PER_ITEM
-    per distinct qualifying line, at most EVIDENCE_MOVE_MAX (5 + 10 per line, 25 in total; spec §7.2,
-    response.md step 3)."""
+    crux_data or other, it is not a prediction-market odds line, and it carries a crux number, or a crux
+    entity together with a number (shares_specific); on an event or judgment question (`kind`) a crux
+    entity alone is enough, since headlines about events carry no number. Qualifying items only extend the
+    move beyond FREE_MOVE: +EVIDENCE_MOVE_PER_ITEM per distinct qualifying line, at most EVIDENCE_MOVE_MAX
+    (5 + 10 per line, 25 in total; spec §7.2, response.md step 3).
+
+    The allowance belongs to the pair, not to each side: a line that the other side's response also
+    qualified on (`shared_lines`, {(doc, line)}, set by the responses phase once both sides answered) gives
+    each side half (5 points), so one copied crux line closes a split by at most 5 + 5 + 10 = 20 points."""
     new_p, nflags = norm_p(requested, own_take_values)
     flags: list[str] = []
     if new_p is None:
@@ -974,17 +1059,24 @@ def gate_move(agent: str, take_p: int, requested, own_take_values, other_take_p:
         else:
             src = "other"
         st = locator.strict(q) if q else {"ok": False, "reason": "empty", "cls": ""}
-        qual = bool(st["ok"] and st.get("cls") == "data" and src in ("crux_data", "other")
-                    and shares_specific(q, terms))
+        market = bool(st.get("ok")) and is_market_line(st.get("section", ""), locator.line_text(st["doc"], st["line"]) or q)
+        specific = shares_specific(q, terms) or (kind in ("event", "judgment") and bool(term_hits(q, terms)["entities"]))
+        qual = bool(st["ok"] and st.get("cls") == "data" and src in ("crux_data", "other") and not market and specific)
         why = "" if qual else (st.get("reason") or ("social line" if st.get("cls") == "social" else
-                               f"cited before ({src})" if src in ("own", "challenger") else "no crux number or entity"))
+                               f"cited before ({src})" if src in ("own", "challenger") else
+                               "prediction-market odds line" if market else
+                               "no crux entity" if kind in ("event", "judgment") else "no crux number or entity"))
         if qual:
             qual_lines.add((st["doc"], st["line"]))
         items.append({"section": e.get("section", ""), "quote": q[:300], "status": loc["status"],
                       "cls": loc.get("cls") or "", "new_evidence_source": src, "qualifies": qual,
                       **({"why_not": why} if not qual else {})})
     qualifying = [x for x in items if x["qualifies"]]
-    allowed = FREE_MOVE + min(EVIDENCE_MOVE_MAX, EVIDENCE_MOVE_PER_ITEM * len(qual_lines))
+    shared = qual_lines & set(shared_lines or ())
+    extra = EVIDENCE_MOVE_PER_ITEM * len(qual_lines - shared) + (EVIDENCE_MOVE_PER_ITEM // 2) * len(shared)
+    allowed = FREE_MOVE + min(EVIDENCE_MOVE_MAX, extra)
+    if shared:
+        flags.append("shared evidence line, allowance split")
     if abs(d) <= allowed:
         gated = new_p
     else:
@@ -993,6 +1085,9 @@ def gate_move(agent: str, take_p: int, requested, own_take_values, other_take_p:
             flags.append(f"evidence move capped at {allowed}")
         elif any(x["new_evidence_source"] in ("crux_data", "other") and x["cls"] == "social" for x in items):
             flags.append("social evidence only, capped")
+        elif any(x["new_evidence_source"] in ("crux_data", "other") and x["status"] in ("verified", "partial")
+                 for x in items):
+            flags.append("evidence not qualifying, capped")
         elif any(x["new_evidence_source"] == "challenger" for x in items):
             flags.append("argument only, capped")
         else:
@@ -1006,8 +1101,13 @@ def gate_move(agent: str, take_p: int, requested, own_take_values, other_take_p:
         flags.append("hold but moved")
     if verdict in ("narrow", "concede") and moved and toward and (moved > 0) != (toward > 0):
         flags.append("moved away")
-    if toward and moved and (moved > 0) == (toward > 0) and abs(moved) >= 5 and not qualifying:
+    # A soft move is more than the free move towards the opponent without qualifying evidence (§7.2, §15.5 d).
+    # The gate makes it impossible on the gated value, so it is an invariant check; `soft request` records the
+    # behaviour the gate cut back: the agent asked for more than the free move without qualifying evidence.
+    if toward and moved and (moved > 0) == (toward > 0) and abs(moved) > FREE_MOVE and not qualifying:
         flags.append("soft move")
+    if toward and d and (d > 0) == (toward > 0) and abs(d) > FREE_MOVE and not qualifying:
+        flags.append("soft request")
     src = "none"
     if any(x["new_evidence_source"] == "crux_data" for x in qualifying):
         src = "crux_data"
@@ -1019,6 +1119,19 @@ def gate_move(agent: str, take_p: int, requested, own_take_values, other_take_p:
             "new_evidence_verified": sum(1 for x in items if x["status"] in ("verified", "partial")),
             "new_data_evidence": sum(1 for x in items if x["status"] in ("verified", "partial") and x["cls"] == "data"),
             "evidence_source": src, "flags": flags}
+
+
+def qualifying_lines(move: dict, new_evidence: list[dict], locator) -> set:
+    """{(doc, line)} of a gated move's qualifying items; `new_evidence` is the response's own list (the
+    move stores quotes cut to 300 characters), in the same order as move['new_evidence']."""
+    out = set()
+    for x, e in zip((move or {}).get("new_evidence") or [], new_evidence or []):
+        q = (e.get("quote") or "").strip()
+        if x.get("qualifies") and q:
+            st = locator.strict(q)
+            if st.get("ok"):
+                out.add((st["doc"], st["line"]))
+    return out
 
 
 # ── §9.1 per-debate scores ─────────────────────────────────────────────────────────────
@@ -1187,6 +1300,43 @@ def agent_run_score(agent: str, run_id: str, day: str, takes_p: dict, debates: l
     }
 
 
+# ── citation overlap per question and lens-quote share (§15.5, review 2026-10-04) ─────────
+
+def question_overlap(takes: dict) -> dict:
+    """Per question, the mean pairwise Jaccard overlap of the quotes the takes cite for it. Takes now answer
+    the same 4-5 questions, so whole-take number overlap is not comparable with the free-form v1 takes;
+    this compares like with like. {per_question: {qid: x}, mean: x}."""
+    from itertools import combinations as _comb
+    per = {}
+    qids = sorted({p.get("question_id") for t in takes.values() for p in (t or {}).get("positions") or []
+                   if p.get("question_id")})
+    for qid in qids:
+        sets = {}
+        for a, t in takes.items():
+            for p in (t or {}).get("positions") or []:
+                if p.get("question_id") == qid:
+                    sets[a] = {qnorm(e.get("quote")) for e in p.get("evidence") or [] if len(qnorm(e.get("quote"))) >= 12}
+        pairs = [(a, b) for a, b in _comb(sorted(sets), 2) if sets[a] or sets[b]]
+        if pairs:
+            per[qid] = round(sum(len(sets[a] & sets[b]) / len(sets[a] | sets[b]) for a, b in pairs) / len(pairs), 3)
+    return {"per_question": per, "mean": round(sum(per.values()) / len(per), 3) if per else None}
+
+
+def lens_quote_share(takes: dict, lens: dict) -> dict:
+    """Per agent, the share of its positions that cite at least one quote from its own YOUR LENS DATA
+    block (take.md asks for one per position). {per_agent: {agent: x}, mean: x}."""
+    per = {}
+    for a, t in takes.items():
+        body = evidence.norm((lens.get(a) or {}).get("text") or "")
+        pos = (t or {}).get("positions") or []
+        if not pos:
+            continue
+        hit = sum(1 for p in pos if body and any(len(qnorm(e.get("quote"))) >= 12 and qnorm(e.get("quote")) in body
+                                                 for e in p.get("evidence") or []))
+        per[a] = round(hit / len(pos), 3)
+    return {"per_agent": per, "mean": round(sum(per.values()) / len(per), 3) if per else None}
+
+
 # ── §11 split sheet ────────────────────────────────────────────────────────────────────
 
 def _rng(vals) -> str:
@@ -1316,7 +1466,10 @@ def split_sheet(day: str, run_id: str, day_type: str, questions: list[dict], tak
     blocks = []
     for _, _, qid in cands[:3]:
         q = qby[qid]
-        f = fin(qid)
+        # A debated block is about the split the debate was on: its type, counts and count phrase come from
+        # the take values (gap_before), not from post-debate finals, so a direction split two responders
+        # narrowed never prints as 'all 9 lenses lean yes' beside a minority view (§11.2, review 2026-10-04).
+        f = tk(qid) if qid in dby else fin(qid)
         st = question_stats(list(f.values()))
         typ = "direction" if st["minority_count"] >= 1 else "degree"
         if typ == "degree":
@@ -1334,13 +1487,22 @@ def split_sheet(day: str, run_id: str, day_type: str, questions: list[dict], tak
             hi, lo = d["high"], d["low"]
             med = st["median"]
             if typ == "direction":
-                min_agent = hi if not on_maj(f.get(hi, 50)) else lo
+                # Pairs straddle the median, not 50: a debater is the minority voice only when its take sits
+                # on the minority side of 50 (90 vs 55 with two lenses at 30 has none: undebated rule below).
+                on_min = [a for a in (hi, lo) if a in f and not on_maj(f[a]) and f[a] != 50]
+                min_agent = on_min[0] if on_min else None
             else:
                 min_agent = hi if abs(take_p[hi][qid] - med) >= abs(take_p[lo][qid] - med) else lo
-            maj_agent = lo if min_agent == hi else hi
-            ch_min = challenges.get((min_agent, qid))
-            ch_maj = challenges.get((maj_agent, qid))
-            if ch_min and not ({"persona leakage", "over length"} & set(ch_min.get("checks", {}).get("flags", []))):
+            maj_agent = (lo if min_agent == hi else hi) if min_agent else None
+            ch_min = challenges.get((min_agent, qid)) if min_agent else None
+            ch_maj = challenges.get((maj_agent, qid)) if maj_agent else None
+            if min_agent is None:
+                mins = [a for a, v in f.items() if not on_maj(v) and v != 50]
+                ext = sorted(mins, key=lambda a: (-abs(f[a] - med), a))[0] if mins else None
+                min_text, ev = reason_of(ext, qid) if ext else ("", [])
+                min_quote = _first_quote(ev, locator, data_only=False)
+                min_src = "reason"
+            elif ch_min and not ({"persona leakage", "over length"} & set(ch_min.get("checks", {}).get("flags", []))):
                 min_text = ch_min["data"].get("rebuttal", "")
                 min_quote = _first_quote(ch_min["data"].get("evidence"), locator, data_only=False)
                 min_src = "rebuttal"
@@ -1357,8 +1519,10 @@ def split_sheet(day: str, run_id: str, day_type: str, questions: list[dict], tak
             rb = responses.get((maj_agent, qid))
             agreed = d.get("crux_agreed")
             src_ch = ch_maj if agreed and not ch_min else (ch_min or ch_maj)
+            if src_ch is None:
+                src_ch = challenges.get((hi, qid)) or challenges.get((lo, qid))
             crux = ((src_ch or {}).get("data", {}).get("crux") or {}).get("claim", "")
-            for ch in (ch_min, ch_maj):
+            for ch in (ch_min, ch_maj) if min_agent else (challenges.get((hi, qid)), challenges.get((lo, qid))):
                 dt = ((ch or {}).get("data", {}).get("would_change_my_mind") or {}).get("by_date", "")
                 if dt and _DATE.match(dt):
                     wcm_dates.append(dt)
@@ -1552,7 +1716,17 @@ def lens_notes(takes: dict, active: list[str], locator, cap: int = LENS_NOTES_CA
 
 # ── §11.5 checks before delivery ───────────────────────────────────────────────────────
 
-SNAKE_NAMES = re.compile(r"\b(policy_analyst|user_agent|macro_strategist|ai_engineer)\b")
+SNAKE_NAMES = re.compile(r"(?i)\b(policy_analyst|user_agent|macro_strategist|ai_engineer)\b")
+# Checked across the whole brief: upper-case names ('MACRO_STRATEGIST', 'ANALYST'), '### NAME' headings,
+# 'Analyst: WRONG' labels, and 'the macro strategist' (multi-word names with 'the'). Title-case single names
+# and bare spaced names stay limited to the two debate-fed sections, where real news cannot hit them.
+UPPER_NAMES = re.compile(r"\b(TRADER|NARRATOR|BUILDER|ANALYST|SKEPTIC|POLICY[ _]ANALYST|USER[ _]AGENT|MACRO[ _]STRATEGIST"
+                         r"|AI[ _]ENGINEER)\b(?!S\b)")
+HEAD_NAMES = re.compile(r"(?im)^#{1,6}\s*\**\s*(trader|narrator|builder|analyst|skeptic|policy[ _]analyst|user[ _]agent"
+                        r"|macro[ _]strategist|ai[ _]engineer)\b")
+LABEL_NAMES = re.compile(r"(?m)^\s*(?:[-*•]\s*)?(?:\*\*)?(Trader|Narrator|Builder|Analyst|Skeptic|Policy Analyst|User Agent"
+                         r"|Macro Strategist|AI Engineer)(?:\*\*)?\s*(?:\*\*)?:")
+THE_NAMES = re.compile(r"(?i)\bthe (policy analyst|user agent|macro strategist|ai engineer)\b(?!s\b)")
 SPACED_NAMES = re.compile(r"(?i)\b(policy analyst|user agent|macro strategist|ai engineer)\b(?!s\b)")
 TITLE_NAMES = re.compile(r"\b(Trader|Narrator|Builder|Analyst|Skeptic|Policy Analyst|User Agent|Macro Strategist|AI Engineer)"
                          r"\b(?!s)(?!\.ai)(?! [A-Z][a-z])")
@@ -1574,7 +1748,15 @@ def brief_section(brief: str, name: str) -> str:
 
 
 def brief_checks(brief: str, sheet: dict | None) -> dict:
-    agent_names = [m.group(0) for m in SNAKE_NAMES.finditer(brief or "")]
+    whole = []
+    for rx in (SNAKE_NAMES, UPPER_NAMES, HEAD_NAMES, LABEL_NAMES, THE_NAMES):
+        whole += [(m.start(), m.group(0).strip()) for m in rx.finditer(brief or "")]
+    seen_at, agent_names = set(), []
+    for st, g in sorted(whole):
+        if any(abs(st - s0) < 3 for s0 in seen_at):
+            continue
+        seen_at.add(st)
+        agent_names.append(g)
     for sec in ("WHAT IT MEANS", "WHERE THE VIEWS SPLIT"):
         body = brief_section(brief, sec)
         hits = [(m.start(), m.group(0)) for m in TITLE_NAMES.finditer(body)]

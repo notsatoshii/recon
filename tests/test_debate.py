@@ -336,7 +336,48 @@ class GateMoveTests(unittest.TestCase):
         m = self.gm(48, [], verdict="hold")
         self.assertEqual(m["gated"], 45)
         self.assertIn("hold but moved", m["flags"])
-        self.assertIn("soft move", m["flags"])
+        # the free move is not a soft move (§15.5 d: more than FREE_MOVE); the request beyond it is recorded
+        self.assertNotIn("soft move", m["flags"])
+        self.assertIn("soft request", m["flags"])
+
+    def test_shared_line_splits_the_allowance(self):
+        alone = self.gm(65, [{"section": "", "quote": HIT_A}])
+        self.assertEqual(alone["gated"], 55)
+        shared = debate.gate_move("trader", 40, 65, {"q1": 40}, 80, "narrow", [{"section": "", "quote": HIT_A}], [], [],
+                                  self.hits, self.terms, self.loc, shared_lines={("package", 5)})
+        self.assertEqual(shared["gated"], 50)             # 5 free + half of the shared line's 10
+        self.assertIn("shared evidence line, allowance split", shared["flags"])
+        lines = debate.qualifying_lines(alone, [{"section": "", "quote": HIT_A}], self.loc)
+        self.assertEqual(lines, {("package", 5)})
+        # both responders cite the one crux line: a split of 40 closes by at most 5 + 5 + 10 = 20
+        hi = debate.gate_move("skeptic", 80, 40, {"q1": 80}, 40, "concede", [{"section": "", "quote": HIT_A}], [], [],
+                              self.hits, self.terms, self.loc, shared_lines=lines)
+        self.assertEqual(hi["gated"] - shared["gated"], 20)
+
+    def test_event_question_entity_line_qualifies(self):
+        line = "- South Korea weighs role in Hormuz security after Macron talks, contribution options under review"
+        loc = locator("# SECTION 4: NEWS INTELLIGENCE\n" + line + "\n")
+        terms = debate.crux_terms(["South Korea commits naval support to Hormuz security"])
+        ev = [{"section": "", "quote": line}]
+        thr = debate.gate_move("user_agent", 30, 50, {"q1": 30}, 60, "narrow", ev, [], [], [], terms, loc, kind="threshold")
+        self.assertEqual(thr["gated"], 35)
+        self.assertIn("evidence not qualifying, capped", thr["flags"])
+        self.assertEqual(thr["new_evidence"][0]["why_not"], "no crux number or entity")
+        evt = debate.gate_move("user_agent", 30, 50, {"q1": 30}, 60, "narrow", ev, [], [], [], terms, loc, kind="event")
+        self.assertTrue(evt["new_evidence"][0]["qualifies"])
+        self.assertEqual(evt["gated"], 45)
+
+    def test_market_odds_line_never_qualifies(self):
+        mk = "# SECTION 8: PREDICTION MARKETS\n- Total 24h DEX volume above $11,121,712,895 on Friday? YES 62% (1d +3 pts)\n"
+        loc = locator(mk)
+        m = debate.gate_move("trader", 40, 65, {"q1": 40}, 80, "narrow",
+                             [{"section": "", "quote": "- Total 24h DEX volume above $11,121,712,895 on Friday? YES 62% (1d +3 pts)"}],
+                             [], [], [], self.terms, loc)
+        self.assertFalse(m["new_evidence"][0]["qualifies"])
+        self.assertEqual(m["new_evidence"][0]["why_not"], "prediction-market odds line")
+        self.assertEqual(m["gated"], 45)
+        self.assertIn("- Total 24h DEX volume above $11,121,712,895 on Friday? YES 62% (1d +3 pts)",
+                      debate.market_lines(loc))
 
     def test_own_quote(self):
         m = self.gm(65, [{"section": "", "quote": HIT_A}], own=[HIT_A])
@@ -437,6 +478,20 @@ class CruxSearchTests(unittest.TestCase):
         t = debate.drop_frequent_entities({"numbers": [], "entities": ["BTC", "Kalshi"], "metrics": []}, docs)
         self.assertEqual(t["entities"], ["Kalshi"])
 
+    def test_question_entities_stay(self):
+        docs = {"raw": "\n".join([f"- Hormuz line {i}" for i in range(200)] + ["- Kalshi lists a market"])}
+        t = debate.drop_frequent_entities({"numbers": [], "entities": ["Hormuz", "Kalshi"], "metrics": []}, docs,
+                                          keep_always=["Hormuz"])
+        self.assertEqual(t["entities"], ["Hormuz", "Kalshi"])
+
+    def test_market_lines_are_not_crux_hits(self):
+        mk = ("# SECTION 8: PREDICTION MARKETS\n- Kalshi DEX volume above $11,121,712,895 market YES 62% (1d +3 pts)\n")
+        pkg = PACKAGE + mk
+        loc = evidence.Locator({"package": pkg})
+        terms = debate.crux_terms(["Kalshi says DEX volume stays above $11,121,712,895"])
+        res = debate.crux_search(terms, {"package": pkg, "raw": "", "social": ""}, [], loc)
+        self.assertFalse([h for h in res["hits"] if "YES 62%" in h["text"]])
+
     def test_entity_alone_does_not_qualify(self):
         t = debate.crux_terms(["Kalshi volume rises"])
         self.assertFalse(debate.shares_specific("- Kalshi announced a new office in Seoul today", t))
@@ -444,6 +499,27 @@ class CruxSearchTests(unittest.TestCase):
 
 
 # ── stats, split sheet, notes, checks, adapters ─────────────────────────────────────────
+
+class MarketGateTests(unittest.TestCase):
+    LINES = ['- [fed-rates] Fed Decision in October? — 24h vol $189K | leading: "No change" YES 82% · "25 bps increase" YES 18%',
+             '- [Economics] Fed decision in Oct 2026? (On Oct 28, 2026) — top: "Fed maintains rate" 83% · "Hike 25bps" 18%',
+             '- [crypto] Bitcoin above ___ on October 4? — leading: "74,000" YES 99.9% · "84,000" YES 88%',
+             '- [Crypto] Bitcoin price at the end of 2026 — 24h vol 136,753 contracts | top: "80,000 to 84,999.99" 13%']
+
+    def test_market_match(self):
+        self.assertTrue(debate.market_match("Will the Fed hike rates at its October 28 meeting?", self.LINES))
+        self.assertTrue(debate.market_match("Will Bitcoin trade above $84,000 on October 4?", self.LINES))
+        self.assertFalse(debate.market_match("Will Bitcoin ETF inflows exceed $500M this week?", self.LINES))
+        self.assertFalse(debate.market_match("Will Uniswap V3 daily volume stay above $1.2B by October 10?", self.LINES))
+
+    def test_gate_drops_a_priced_question(self):
+        qs = [q("Will Bitcoin trade above $84,000 on October 11?", lenses=["trader", "analyst"]),
+              q("Will total DeFi TVL stay above $85B by October 11?", lenses=["trader", "analyst"]),
+              q("Will the Fed hike rates at its October 28 meeting?", kind="event", bq="", domain="macro_policy")]
+        r = debate.gate_questions(qs, "2026-10-04", locator(), market=self.LINES)
+        self.assertEqual([k["text"][:20] for k in r["kept"]], ["Will total DeFi TVL "])
+        self.assertTrue(all("prediction market already prices it" in d["reason"] for d in r["dropped"]))
+
 
 class StatsTests(unittest.TestCase):
     def test_fifties_count_with_neither(self):
@@ -520,6 +596,40 @@ class SplitSheetTests(unittest.TestCase):
         sh = self.sheet(vals, debates=[d], challenges=flagged)
         self.assertEqual(sh["blocks"][0]["minority_case"]["source"], "steelman")
 
+    def test_debated_block_counts_from_takes(self):
+        takes_v = dict(zip(AG, [60, 65, 70, 75, 80, 85, 62, 25, 40]))
+        finals = {**{a: {"q1": v} for a, v in takes_v.items()}, "macro_strategist": {"q1": 55}, "ai_engineer": {"q1": 55}}
+        qs = [{"id": "q1", "text": "Will TVL stay above 86B by 10-11?", "weight": 2, "resolves_on": "2026-10-11",
+               "settles_with": "DeFiLlama total TVL", "ledger_id": "2026-10-04-q1"}]
+        d = {"question_id": "q1", "high": "policy_analyst", "low": "macro_strategist", "gap_before": 60, "live_split": True,
+             "crux_agreed": False, "narrowed_on_data": False}
+        tp = {a: {"q1": v} for a, v in takes_v.items()}
+        sh = debate.split_sheet("2026-10-04", "2026-10-04", "debate", qs, tp, finals, [d], {}, {}, mk_takes(takes_v),
+                                locator(), 20)
+        bl = sh["blocks"][0]
+        self.assertEqual(bl["type"], "direction")                     # not 'all 9 lenses lean yes'
+        self.assertEqual(bl["count_phrase"], "7 of 9 lenses put it at 60–85%; 2 put it at 25–40%")
+        self.assertEqual((bl["counts"]["majority"], bl["counts"]["minority"]), (7, 2))
+
+    def test_minority_voice_on_the_minority_side(self):
+        # the pair straddles the median (55-90), not 50: two lenses at 30 are the minority, neither debated
+        vals = dict(zip(AG, [55, 90, 70, 75, 30, 72, 30, 68, 66]))
+        reasons = {"skeptic": "Outflows break the floor.", "user_agent": "Users are leaving.", "trader": "Holds near 55."}
+        d = {"question_id": "q1", "high": "narrator", "low": "trader", "gap_before": 35, "live_split": True,
+             "crux_agreed": False, "narrowed_on_data": False}
+        chs = {("trader", "q1"): {"data": {"rebuttal": "It holds, barely.", "steelman": "s", "evidence": [],
+                                           "crux": {"claim": "outflows"}}, "checks": {"flags": []}},
+               ("narrator", "q1"): {"data": {"rebuttal": "It rises.", "steelman": "s", "evidence": [],
+                                             "crux": {"claim": "outflows"}}, "checks": {"flags": []}}}
+        qs = [{"id": "q1", "text": "Will TVL stay above 86B by 10-11?", "weight": 2, "resolves_on": "2026-10-11",
+               "settles_with": "DeFiLlama total TVL", "ledger_id": "2026-10-04-q1"}]
+        tp = {a: {"q1": v} for a, v in vals.items()}
+        sh = debate.split_sheet("2026-10-04", "2026-10-04", "debate", qs, tp, tp, [d], chs, {},
+                                mk_takes(vals, reason_of=reasons), locator(), 20)
+        mc = sh["blocks"][0]["minority_case"]
+        self.assertEqual(mc["source"], "reason")
+        self.assertIn(mc["text"], ("Outflows break the floor.", "Users are leaving."))
+
     def test_debated_down_on_argument_still_a_block(self):
         vals = dict(zip(AG, [55, 58, 60, 62, 57, 59, 61, 56, 50]))
         d = {"question_id": "q1", "high": "builder", "low": "user_agent", "gap_before": 30, "live_split": True,
@@ -543,6 +653,26 @@ class LedgerTests(unittest.TestCase):
                                   from_phase=None, resume=False)
         r = Run(args)
         self.assertEqual(r.ledger_path, r.dir / "state" / "questions" / "ledger.jsonl")
+
+    def test_daily_run_debate_off_by_default(self):
+        import argparse
+        import os
+        from recon.orchestrator import Run
+        keep = os.environ.pop("RECON_DEBATE", None)
+        try:
+            daily = Run(argparse.Namespace(as_of=None, dry_run=False, replay=None, run_id=None, state_dir=None,
+                                           from_phase=None, resume=False))
+            self.assertFalse(daily.debate_on)                 # §0.1 gate failed: production does not debate
+            tagged = Run(argparse.Namespace(as_of="2026-10-04", dry_run=False, replay=None, run_id="2026-10-04-c3",
+                                            state_dir=None, from_phase=None, resume=False))
+            self.assertTrue(tagged.debate_on)                 # validation runs (c3/c4) and replays do
+            os.environ["RECON_DEBATE"] = "1"
+            self.assertTrue(Run(argparse.Namespace(as_of=None, dry_run=False, replay=None, run_id=None, state_dir=None,
+                                                   from_phase=None, resume=False)).debate_on)
+        finally:
+            os.environ.pop("RECON_DEBATE", None)
+            if keep is not None:
+                os.environ["RECON_DEBATE"] = keep
 
 
 class AdapterAndTextTests(unittest.TestCase):
@@ -600,6 +730,95 @@ class AdapterAndTextTests(unittest.TestCase):
         self.assertTrue(any("policy analyst" in x.lower() for x in r["agent_names"]))
         self.assertEqual(len(r["process_words"]), 2)
         self.assertEqual(r["count_mismatch"], ["6 of 9"])
+
+    def test_brief_checks_whole_brief(self):
+        for leak in ("### SCORECARD\n- Analyst: WRONG on TVL\n", "### RISKS\n- the macro strategist sees a hike\n",
+                     "### SCORECARD\n### MACRO_STRATEGIST\n- [2026-10-01] call\n", "### RISKS\nMACRO_STRATEGIST flagged it.\n",
+                     "### KOREA\nThe SKEPTIC view.\n"):
+            with self.subTest(leak=leak):
+                self.assertTrue(debate.brief_checks("# RECON DAILY BRIEF\n" + leak, None)["agent_names"], leak)
+        news = ("### KOREA\n- A policy analyst at KDI said exports rose.\n### AI NEWSLETTER\n- Builder.ai relaunched; "
+                "Analysts expect more.\n")
+        self.assertEqual(debate.brief_checks(news, None)["agent_names"], [])
+
+
+class OverlapTests(unittest.TestCase):
+    def test_question_overlap_and_lens_share(self):
+        takes = {"trader": {"positions": [{"question_id": "q1", "evidence": [{"quote": "- Current: $86,610,000,000"}]}]},
+                 "skeptic": {"positions": [{"question_id": "q1", "evidence": [{"quote": "- Current: $86,610,000,000"},
+                                                                               {"quote": "- Aave lending TVL rose to $31.2B"}]}]}}
+        qo = debate.question_overlap(takes)
+        self.assertEqual(qo["per_question"]["q1"], 0.5)
+        ls = debate.lens_quote_share(takes, {"trader": {"text": "## X\n- Current: $86,610,000,000"}, "skeptic": {"text": ""}})
+        self.assertEqual(ls["per_agent"], {"trader": 1.0, "skeptic": 0.0})
+
+
+class PairOffTests(unittest.TestCase):
+    def test_debate_off(self):
+        p = {"trader": {"q1": 20}, "analyst": {"q1": 50}, "skeptic": {"q1": 80}}
+        ev = [{"section": "", "quote": "q", "status": "verified", "cls": "data", "doc": "package", "line": 3}]
+        evq = {a: {"q1": ev} for a in p}
+        qs = [{"id": "q1", "text": "t", "kind": "threshold", "weight": 2, "lenses": []}]
+        r = debate.pair(qs, p, evq, list(p), "normal", 3, off_reason="debate off")
+        self.assertEqual((r["day_type"], r["pairs"], r["unpaired"][0]["reason"]), ("split_unpaired", [], "debate off"))
+        c = debate.pair(qs, {"trader": {"q1": 60}, "analyst": {"q1": 62}, "skeptic": {"q1": 65}}, evq, list(p), "normal", 3,
+                        off_reason="debate off")
+        self.assertEqual((c["day_type"], c["red_team"]), ("consensus", None))
+
+
+class LedgerReplaceTests(unittest.TestCase):
+    def test_newest_attempt_wins(self):
+        from recon.orchestrator import Run
+        with tempfile.TemporaryDirectory() as tmp:
+            p = Path(tmp) / "ledger.jsonl"
+            old = [{"type": "question", "ledger_id": "r-q1", "run_id": "r", "question": {"text": "old"}},
+                   {"type": "question", "ledger_id": "x-q1", "run_id": "x"}, {"type": "resolution", "ledger_id": "r-q1", "run_id": "r"}]
+            Run.replace_jsonl(p, old, lambda l: False)
+            Run.replace_jsonl(p, [{"type": "question", "ledger_id": "r-q1", "run_id": "r", "question": {"text": "new"}}],
+                              lambda l: l.get("type") == "question" and l.get("run_id") == "r")
+            got = [json.loads(l) for l in p.read_text(encoding="utf-8").splitlines()]
+            self.assertEqual([(g["type"], g["run_id"]) for g in got], [("question", "x"), ("resolution", "r"), ("question", "r")])
+            self.assertEqual(got[-1]["question"]["text"], "new")
+
+
+class LensTierTests(unittest.TestCase):
+    def test_lens_tier_is_synth_model_at_medium(self):
+        import os
+        from recon import llm
+        keep = {k: os.environ.pop(k, None) for k in ("RECON_MODEL_LENS", "RECON_EFFORT_LENS", "RECON_MODEL_SYNTH")}
+        try:
+            self.assertEqual(llm.codex_model("lens"), (llm.DEFAULT_CODEX["synth"][0], "medium"))
+            os.environ["RECON_MODEL_SYNTH"] = "m-synth"
+            self.assertEqual(llm.codex_model("lens"), ("m-synth", "medium"))
+            self.assertEqual(llm.resolve_tier("lens"), "lens")
+            self.assertEqual(set(debate.LENS_TIER.values()), {"lens"})
+        finally:
+            for k, v in keep.items():
+                os.environ.pop(k, None)
+                if v is not None:
+                    os.environ[k] = v
+
+    def test_every_attempt_is_reported(self):
+        import os
+        from recon import llm
+        calls, retries = [], []
+        real, sleep = llm._call_dry_run, llm.time.sleep
+        seq = iter(["", "", "ok"])
+        llm._call_dry_run = lambda *a, **k: (next(seq), {}, "boom")
+        llm.time.sleep = lambda s: None
+        old = os.environ.get("RECON_LLM_PROVIDER")
+        os.environ["RECON_LLM_PROVIDER"] = "dry-run"
+        try:
+            res = llm.ask_ex("p", on_failed_attempt=calls.append, before_retry=retries.append)
+        finally:
+            llm._call_dry_run, llm.time.sleep = real, sleep
+            if old is None:
+                os.environ.pop("RECON_LLM_PROVIDER", None)
+            else:
+                os.environ["RECON_LLM_PROVIDER"] = old
+        self.assertEqual((res["text"], res["attempts"]), ("ok", 3))
+        self.assertEqual([c["attempt"] for c in calls], [1, 2])
+        self.assertEqual(retries, [2, 3])
 
 
 if __name__ == "__main__":

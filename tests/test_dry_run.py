@@ -62,7 +62,8 @@ class DryRunEndToEnd(unittest.TestCase):
 
     def run_orch(self, run_id, *extra, env=None, day="2026-10-04", guard=False):
         e = {**os.environ, "RECON_HOME": str(self.tmp), "PYTHONIOENCODING": "utf-8", **(env or {})}
-        for k in ("RECON_DRY_SPREAD", "RECON_CALL_BUDGET", "RECON_CALL_CEILING", "RECON_STOP_AFTER", "RECON_PAIR_GAP"):
+        for k in ("RECON_DRY_SPREAD", "RECON_CALL_BUDGET", "RECON_CALL_CEILING", "RECON_STOP_AFTER", "RECON_PAIR_GAP",
+                  "RECON_DEBATE"):
             if k not in (env or {}):
                 e.pop(k, None)
         args = ["--dry-run", "--as-of", day, "--run-id", run_id, *extra]
@@ -184,6 +185,47 @@ class DryRunEndToEnd(unittest.TestCase):
         if fx:
             self.assertNotIn("# Changelogs Intelligence", fx["AI_RAW"])
             self.assertNotIn("# ZDNet Korea Intelligence", fx["KR_RAW"])
+
+    def test_debate_off(self):
+        self.run_orch("off1", env={"RECON_DEBATE": "0"})
+        pr = self.load("off1", "pairing")
+        self.assertEqual((pr["pairs"], pr["red_team"], pr["debate"]["enabled"]), ([], None, False))
+        self.assertIn(pr["day_type"], ("split_unpaired", "consensus"))
+        self.assertFalse(list((self.rd("off1") / "phases" / "challenges").glob("*.json")))
+        self.assertFalse(list((self.rd("off1") / "phases" / "responses").glob("*.json")))
+        calls = [json.loads(l)["phase"] for l in
+                 (self.rd("off1") / "phases" / "calls.jsonl").read_text(encoding="utf-8").splitlines()]
+        self.assertFalse({"challenges", "responses", "cruxcheck"} & set(calls))
+        heads, _ = self.brief_heads("off1")
+        self.assertEqual(heads, schemas.BRIEF_SECTIONS)
+        if pr["day_type"] == "split_unpaired":
+            self.assertTrue(self.load("off1", "split_sheet")["blocks"])
+
+    def test_rerun_from_takes_restores_memory_and_replaces_the_ledger(self):
+        self.run_orch("m1")
+        st = self.rd("m1") / "state"
+        after_first = {f.name: f.read_text(encoding="utf-8") for f in (st / "agent_state").glob("*.md")}
+        self.assertTrue((self.rd("m1") / "phases" / "state_before_memory.json").exists())
+        out = self.run_orch("m1", "--from-phase", "triage")
+        self.assertIn("Memory and state restored", out)
+        after_second = {f.name: f.read_text(encoding="utf-8") for f in (st / "agent_state").glob("*.md")}
+        self.assertEqual(after_first, after_second)          # today's entry written once, not twice
+        led = [json.loads(l) for l in (st / "questions" / "ledger.jsonl").read_text(encoding="utf-8").splitlines()]
+        tri = self.load("m1", "triage")["data"]["questions"]
+        self.assertEqual(len(led), len(tri))
+        self.assertEqual([l["question"]["text"] for l in led], [q["text"] for q in tri])
+        sc = (st / "agent_scores" / "trader.jsonl").read_text(encoding="utf-8").splitlines()
+        self.assertEqual(len(sc), 1)
+
+    def test_crux_check_planned_from_staged_pairs(self):
+        self.run_orch("k1", env={"RECON_CALL_BUDGET": "22"})
+        pr = self.load("k1", "pairing")
+        cc = self.load("k1", "cruxcheck")
+        staged = 4 * len(pr["pairs"])
+        self.assertEqual(pr["budget"]["crux_check_planned"], 22 - pr["budget"]["used"] - 2 - staged >= 1)
+        if cc.get("question_id") and not cc.get("ran"):
+            self.assertNotEqual(cc.get("reason"), "dropped by the call budget (§1.1)",
+                                "skipped by budget although it fit") if pr["budget"]["crux_check_planned"] else None
 
     def test_stop_after_takes(self):
         out = self.run_orch("s1", env={"RECON_STOP_AFTER": "takes"})

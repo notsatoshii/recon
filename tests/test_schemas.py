@@ -145,10 +145,11 @@ class ArtifactTests(unittest.TestCase):
                           list(p), "normal", 3)
         res["positions_evidence"] = evq           # builder, narrator ... inactive: absent
         res["budget"] = {"used": 10, "budget": 24, "ceiling": 32, "target_before_budget": 3, "crux_check_planned": False}
+        res["debate"] = {"enabled": True, "reason": ""}
         schemas.validate(json.loads(json.dumps(res)), schemas.ARTIFACTS["pairing"])
         cons = debate.pair([{"id": "q1", "text": "t", "kind": "threshold", "weight": 2, "lenses": []}],
                            {"trader": {"q1": 60}, "analyst": {"q1": 62}, "skeptic": {"q1": 65}}, evq, list(p), "normal", 3)
-        cons["positions_evidence"], cons["budget"] = evq, res["budget"]
+        cons["positions_evidence"], cons["budget"], cons["debate"] = evq, res["budget"], res["debate"]
         schemas.validate(json.loads(json.dumps(cons)), schemas.ARTIFACTS["pairing"])
 
     def test_stats_and_scores(self):

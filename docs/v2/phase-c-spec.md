@@ -65,6 +65,16 @@ Phase B dry run). So Phase C is built in this order:
    and the probe rerun **before** any pairing, challenge or response code is written.
 3. Everything else in this spec, then the replays (§15).
 
+**Production gate (fourth review, 2026-10-04).** Phase C landed in the same `orchestrator.py` the 05:00
+cron already ran for Phase B, so cron picked up the debate with nothing gating it while the probe had
+failed twice. The debate is now behind `RECON_DEBATE`: off for the daily run (untagged, not dry, not
+replay) unless the env says `1`, on for replays, dry runs and tagged validation runs (`<date>-c3`).
+`scripts/cron_run.sh` exports `RECON_DEBATE=${RECON_DEBATE:-0}`. Off, pairing stages no pair and no red
+team: a day with a split ≥ `GAP_MIN` is `split_unpaired` (undebated blocks from the takes, reason "debate
+off …"), any other day a consensus day without the red-team call; no challenge, response or crux-check
+code runs. Triage, the takes (measured by the probe) and the split sheet still run. The §18 cutover is
+`RECON_DEBATE=1`.
+
 ---
 
 ## 1. Flow and artifacts
@@ -114,7 +124,14 @@ else:                              target, crux_check = with_crux, True         
 ```
 
 So the order of sacrifice is the crux check, then the triage re-ask (made only when ≤ 1 question
-survives the gate, §2.4), then pairs (the lowest-scoring first). With clean takes a normal day
+survives the gate, §2.4), then pairs (the lowest-scoring first). `crux_check_planned` is computed after
+`pair()` returns, from the pairs that actually formed (`budget − used − synth − 4 × pairs − red team ≥ 1`),
+not from the depth target, and `ph_cruxcheck` decides again from the calls actually made
+(`used + 1 + synth ≤ budget`): a day with fewer pairs than the target, or a consensus day, gets the crux
+check (fourth review: the 09-11 replay formed 2 pairs, ended at 20 of 24 calls and logged a false budget
+skip). Every provider attempt is one `calls.jsonl` line: `llm.ask_ex` reports each failed attempt
+(`RECON_LLM_RETRIES`, default 3) as it happens, and an optional call stops retrying once the ceiling is
+reached, so the ceiling bounds provider calls, not only logical items. With clean takes a normal day
 gets 3 pairs and no crux check (24 calls); one take re-ask brings it to 2 pairs with the crux
 check; after Phase D a normal day gets 3 pairs and the crux check.
 
@@ -202,7 +219,12 @@ recorded under `triage.json → gate.dropped[]`, when:
    `01_filtered.md` (triage reads the view, where X lines are re-rendered) and `01_social.md`;
 5. word-set Jaccard ≥ 0.6 with a question kept earlier today, or with an open ledger question
    while `carried_from` is empty (a silent repeat);
-6. more than 2 questions have `carried_from` set (keep the higher weight).
+6. more than 2 questions have `carried_from` set (keep the higher weight);
+7. a prediction-market odds line of the run folder (package SECTION 8, raw Polymarket and Kalshi blocks,
+   with a probability) prices it: the line shares an entity of the question plus a second specific term
+   (another entity, one of its numbers, or two content words: "Fed" + "hike" + "rate"). `debate.market_match`;
+   reason "a prediction market already prices it". The prompt rule of §13.2 had no programmatic check, and
+   the probe's measured failure was takes anchoring on a quoted market price (9 of 9 at 60 %).
 
 `lenses` is cleaned to valid active agents; if fewer than 2 remain it is filled from the
 domain's default lenses (`DOMAIN_LENSES` in `recon/debate.py`: markets_crypto → trader, analyst;
@@ -233,10 +255,11 @@ explicitly, so a validation run cannot collide with that day's cron run. Schema 
 (§12.3).
 
 `ledger_id = "<run_id>-<qid>"`, which equals `<day>-<qid>` for the daily run (its run id is the
-date). Appends are idempotent: before writing, the phase reads the file and skips a line whose
-`(type, ledger_id)` already exists, so `--from-phase split` or `--from-phase positions` does not
-duplicate it. The same rule keys `config/agent_scores/<agent>.jsonl` on `(run_id, agent)`
-(§9.2). Lines are never edited;
+date). The newest attempt of a run wins: before writing, the `split` phase removes this run id's
+`question` lines (resolution lines stay) and appends the new ones, so `--from-phase split` does not
+duplicate them and `--from-phase triage|takes|pairing` (new q1..q5 under the same ids) does not leave
+the first attempt's text, finals and take values behind for Phase D/F to score. The same rule replaces
+this run id's line in `config/agent_scores/<agent>.jsonl` (§9.2). Other runs' lines are never edited;
 the Phase D resolver appends `{"type": "resolution", "ledger_id", "outcome": "yes|no|void",
 "value", "source", "resolved_at"}` lines to the same file. Brier scores (Phase F) join on
 `ledger_id`.
@@ -545,6 +568,11 @@ other side's challenge still goes to its target; the pair is marked `one-sided`.
 
 ## 6. Crux search (programmatic, between C and R)
 
+Fourth review: prediction-market odds lines (`debate.is_market_line`: PREDICTION MARKETS section with a
+probability) are never crux hits (they are what traders believe, not data on the crux), and the entities of
+the question itself are kept however frequent they are (`drop_frequent_entities(keep_always=…)`), so an
+event question about South Korea and Hormuz can still find lines about South Korea and Hormuz.
+
 Written to `phases/cruxsearch.json` at the start of the responses phase (so `--from-phase
 responses` re-runs it). On a consensus day it runs after the red-team call instead, on the red
 team's `crux.claim`, `crux.observable` and `would_change_my_mind.observable`, and is stored in
@@ -644,8 +672,22 @@ gated = min(100, max(0, gated))
 
 **Evidence cap (§20.2).** A qualifying quote no longer allows the whole requested move: each distinct
 qualifying line adds `EVIDENCE_MOVE_PER_ITEM = 10` points to the free 5, up to `EVIDENCE_MOVE_MAX = 20`
-(25 in all). One copied crux line therefore moves an agent at most 15 points, and a split of 30 cannot
-close on one quote. `response.md` states the same numbers, and `moves_capped` counts the
+(25 in all). One copied crux line therefore moves an agent at most 15 points.
+
+**The allowance belongs to the pair (fourth review).** Both responders get the same crux-data block and
+answer in parallel, so both could cite one crux line and move 15 each: a split of 30 closed to 0 on one
+quote. Once both responses are in, the responses phase intersects the two sides' qualifying lines; a line
+both qualified on gives each side half its allowance (5 points) and both moves are gated again (flag
+`shared evidence line, allowance split`). One shared line now closes a split by at most 5 + 5 + 10 = 20
+points, so a split of 30 cannot close on one quote.
+
+**Event and judgment questions (fourth review).** Headlines about events carry no number, so on the two
+replays not one of 10 new-evidence items qualified ("South Korea weighs role in Hormuz security after
+Macron talks" was rejected as "no crux number or entity"). On a question of kind `event` or `judgment` a
+verified data line from the crux data or elsewhere qualifies with a crux entity alone; threshold and
+direction questions keep the number rule. Prediction-market odds lines never qualify (`prediction-market
+odds line`). When verified items were given but none qualified, the cap flag says `evidence not qualifying,
+capped`, not `update without evidence, capped`. `response.md` states the same numbers, and `moves_capped` counts the
 `evidence move capped at N` flags with the other `… capped` flags. An entity alone does not qualify a
 quote: it needs a crux number, or a crux entity together with a number of its own.
 
@@ -662,8 +704,12 @@ Further flags (recorded, never blocking):
 - `verbal concession`: verdict `concede` and |gated − take_p| < 5 (F10: conceding by politeness);
 - `hold but moved`: verdict `hold` and |d| > FREE_MOVE;
 - `moved away`: verdict `narrow`/`concede` but the move goes away from the opponent's take value;
-- `soft move`: a move of ≥ 5 points towards the opponent without qualifying evidence, whatever the
-  verdict label (this is what the pass bar counts, §15.5 d);
+- `soft move`: a gated move of **more than** `FREE_MOVE` (5) points towards the opponent without
+  qualifying evidence, whatever the verdict label (§15.5 d). Fourth review: the threshold was "≥ 5", the
+  same as the free move, so every free move counted as soft (09-10: 2 of 6, failing the bar on free moves
+  alone). The gate makes a soft move impossible on the gated value, so (d) is now an invariant check;
+- `soft request`: the agent *asked* for more than `FREE_MOVE` towards the opponent without qualifying
+  evidence (the behaviour the gate cut back); reported next to (d) in the replay report;
 - `rejected steelman`: `steelman_fair == "no"` (the challenger failed to state this side fairly;
   scored against the challenger, §9).
 
@@ -678,7 +724,7 @@ array and its "update on everything" noise.
 After the responses. Programmatic pick, then 0 or 1 ANALYST call (template `crux_check.md`,
 schema `CRUX_CHECK`, no persona: the referee is neutral). It is the first call dropped when the
 budget is short (§1.1), which with the filter call still in place is a normal day with 3 clean
-pairs.
+pairs; the decision is made from the calls actually used, after the responses (§1.1).
 
 - **Pick**: for each debate, `gap_before = p_high − p_low` (take values). Take the debate with the
   largest `gap_before` (ties: the larger `gap_after`, then question id), if `gap_before` is ≥ 15
@@ -786,11 +832,11 @@ sheet holds one **consensus** block. With neither, the sheet says `no split toda
 | field | built from |
 |---|---|
 | `question`, `resolves_on`, `settles_with` | the question |
-| `counts` | final values: `{"n": 9, "majority": 7, "minority": 2, "median": 68, "range": [25, 85]}` |
+| `counts` | final values for an undebated block; **take values for a debated block** (the split the debate was on, `gap_before`; fourth review: post-debate finals could print a debated direction split as "all 9 lenses lean yes" beside a minority view): `{"n": 9, "majority": 7, "minority": 2, "median": 68, "range": [25, 85]}` |
 | `count_phrase` | rendered by code from `counts`, the only form the brief may use: "7 of 9 lenses put it at 60–85%; 2 put it at 25–40%" (direction) or "all 9 lenses lean yes, from 55% to 90%" (degree) |
 | `debated` | whether a pair debated the question |
 | `base_case` | the majority debater's rebuttal if a majority-side agent debated it, else the `reason` of the majority agent closest to the majority median with the most verified data evidence; plus one verified data quote |
-| `minority_case` | the minority debater's **rebuttal** (≤ 120 words) with its verified quote, `source: rebuttal`. Fallback when the rebuttal is missing or flagged (`persona leakage`, `over length`): the majority debater's **steelman** of the minority, `source: steelman`. Undebated: the most extreme minority agent's reason, `source: reason`. The minority states its own case; the opponent's softened summary is only the fallback |
+| `minority_case` | the minority debater's **rebuttal** (≤ 120 words) with its verified quote, `source: rebuttal`. In a direction block a debater is the minority voice only when its take sits on the minority side of 50 (pairs straddle the median, not 50: 90 vs 55 with two lenses at 30 has no minority debater, and the undebated rule applies). Fallback when the rebuttal is missing or flagged (`persona leakage`, `over length`): the majority debater's **steelman** of the minority, `source: steelman`. Undebated: the most extreme minority agent's reason, `source: reason`. The minority states its own case; the opponent's softened summary is only the fallback |
 | `crux` | the agreed crux (both `crux_agreed == yes`), else the minority side's crux; empty for undebated blocks |
 | `crux_check` | `resolved`, `what_the_data_says`, `quote` when §8 ran on this question, else `null` |
 | `settles_on` | crux check `settles_on`, else the question's `resolves_on`/`settles_with`, else the earlier of the two `would_change_my_mind` dates |
@@ -845,11 +891,17 @@ synthesizer. Draft input drops from ~50 KB of record to ≤ 14 KB.
   SPLIT, with the count phrase given."
 - WHAT TO WATCH: the prompt tells the draft to take dated `settles_on` items from the split sheet
   first.
+- No agent name reaches the synthesizer (fourth review): the draft's environment line carries
+  `ENVIRONMENT:` only (no `WEIGHT: trader, …` list), and the SCORECARD raw section is the scorecard
+  without its `### ANALYST`-style agent headers and its "Agents: review your predictions" line
+  (`Run.synth_scorecard`).
 
 ### 11.5 Checks before delivery (added to `ph_checks`, no LLM)
 
-- **No agent names**: the snake-case names (`policy_analyst`, `user_agent`, `macro_strategist`,
-  `ai_engineer`) anywhere in the brief. Case-sensitive whole-word title-case names
+- **No agent names**: across the whole brief, the snake-case names in any case (`policy_analyst`,
+  `MACRO_STRATEGIST`), upper-case names (`ANALYST`, `MACRO STRATEGIST`), `### NAME` headings,
+  `Analyst: WRONG`-style labels at the start of a line, and "the macro strategist" (the four multi-word
+  names with "the"; fourth review: SCORECARD and RISKS were unchecked). Case-sensitive whole-word title-case names
   `\b(Trader|Narrator|Builder|Analyst|Skeptic|Policy Analyst|User Agent|Macro Strategist|AI Engineer)\b(?!s)(?!\.ai)(?! [A-Z][a-z])`
   only inside WHAT IT MEANS and WHERE THE VIEWS SPLIT, the two sections written from the lens
   notes and the split sheet. The lookaheads let through plurals ("Analysts expect"), product names
@@ -1268,7 +1320,9 @@ Answer:
 3. verdict and new_probability (a whole number 0-100). The rule: you may move up to 5 points on
    argument alone, and the other view's argument and its quotes count as argument. Each new fact allows
    10 points more, up to 25 points in total: a new fact is one verbatim line that neither side has cited,
-   from the crux data above or the excerpts, carrying a number about what the disagreement turns on.
+   from the crux data above or the excerpts, carrying a number about what the disagreement turns on (on an
+   event or judgment question, naming what it turns on is enough). Prediction-market odds are not new
+   facts. If the other view's response cites the same new fact, it counts half for each of you.
    A program enforces this: a move larger than your new facts allow is cut back and recorded.
    Social-media quotes do not justify a larger move. Hold when the challenge brings no new fact; there
    is no credit for agreeing.
@@ -1502,6 +1556,17 @@ before the rerun: triage drops questions a quoted market probability already ans
 one pure price threshold (§13.2); the take task says quoted odds are evidence, not the answer (§13.8);
 `LENS_TIER` puts skeptic and macro_strategist on the synth tier. The rerun is reported in the model log.
 
+**Lens tier (fourth review).** p3 measured the SYNTH model at the analyst tier's medium effort; run 2
+then ran skeptic and macro_strategist on the synth tier (sol at high effort, unmeasured, output 51.7 K →
+76.7 K tokens). `LENS_TIER` now maps them to a `lens` tier: `RECON_MODEL_LENS` (default: the SYNTH
+model) at `RECON_EFFORT_LENS` (default medium), the setting the probe measured (§16).
+
+**Phase E (fourth review).** No probe has run on a package with SECTION 8 (e1 was collection only), and
+SECTION 8 puts 50-80 market probabilities into the shared view. Before the debate is switched on in
+production (§18), the probe is rerun on the e1 package (`briefs/2026-10-04-e1`); meanwhile the question
+gate drops market-priced questions (§2.4 rule 7) and odds lines never qualify a move or become crux hits.
+SECTION 8 stays in the shared view until that probe says otherwise.
+
 Gate: at least one question per package must clear `GAP_MIN` against the retest noise. If not,
 the inputs are fixed first (lens extras, the take task, triage's "contestable" rule, per-lens
 model) and the probe is rerun; pairing, challenge and response code is not written until it
@@ -1558,6 +1623,11 @@ droplet worktree is at `a585ef1` today, behind Phase B).
 `RECON_STOP_AFTER=<phase>` is a small new switch: the driver returns after that phase. The
 stability check is on the top pair, so the rerun needs only `pairing.json`.
 
+The memory phase snapshots every agent's memory and state file first (`phases/state_before_memory.json`),
+and `--from-phase` at or before `memory` (or a fresh rerun of the same run id) restores that snapshot
+before running: a copy of `c1` rerun from the takes reads the pre-run memory, not c1's own finals,
+moves and lessons, so pass-bar item (e) is not biased towards stability (fourth review).
+
 ### 15.3 Report
 
 `scripts/replay_report.py <run_id> --old ~/innovlabs/recon-exports/runs/<date>.json` (runs
@@ -1603,22 +1673,32 @@ The three replays (09-10, 09-11, 10-04) together:
 - (b) **a live split**: at least one `live_split` across the three packages;
 - (c) **no closure by politeness**: for debates without crux-data evidence, median
   `gap_after / gap_before ≥ 0.6`;
-- (d) **soft moves**: moves of 5 or more points towards the opponent without qualifying (crux-data
-  or other new verified data) evidence in ≤ 30 % of responses, whatever the verdict label says;
+- (d) **soft moves**: gated moves of more than `FREE_MOVE` (5) points towards the opponent without
+  qualifying (crux-data or other new verified data) evidence in ≤ 30 % of responses, whatever the verdict
+  label says (fourth review: the free move itself no longer counts; the gate makes this an invariant, and
+  the report shows the `soft request` count beside it);
 - (e) **stability**: in the `2026-10-04-c1s` rerun, the top pair lands on the same question as in
   `2026-10-04-c1`;
 - (f) **hindsight**: the minority-debater Brier vs the median is reported for every resolved
   question (a number, not a threshold; with few questions it is a signal, not a verdict);
 - lens extras: `lens_extra_bytes ≥ 2 KB` for at least 7 of 9 agents in the 09-11 and in the 10-04
   replay, every agent above 0 in the 09-10 replay (its package predates the KOREA, AI EDUCATION
-  and fundraising blocks; measured 5/9 at 2 KB), and `citation_overlap` lower than the old run's
-  (§3 item 3, phase-e §4.5b);
+  and fundraising blocks; measured 5/9 at 2 KB), and a **lens-quote share** of at least 0.5 (the share
+  of positions citing a quote from the agent's own YOUR LENS DATA block, mean over agents). Fourth
+  review: whole-take `citation_overlap` failed on both replays (0.34 vs 0.13, 0.29 vs 0.19) because the
+  new takes answer the same 4-5 questions; it is not comparable with the free-form v1 takes. It is still
+  reported, with the per-question overlap beside it (§3 item 3, phase-e §4.5b);
 - evidence verification rate (verified + partial) ≥ 80 % on debate evidence;
 - persona leakage flags ≤ 1 per run;
 - calls never exceed `RECON_CALL_CEILING`, every budget skip is logged, and ≤ 0.6 M input tokens
   per replay;
 - the brief has the 11 sections in order with WHERE THE VIEWS SPLIT, no agent names, no count
   mismatch; a `split_unpaired` day does not print "No real split";
+- reported, not a bar item: debate endpoints per agent and per take tier. On the two replays
+  macro_strategist (lens tier) was an endpoint in 4 of 5 debates and skeptic in the fifth. Decision
+  (fourth review): model diversity is an accepted source of spread only through the measured `lens`
+  tier; if more than 60 % of the replays' endpoints sit off the analyst tier, the next lever is a third
+  model or a different lens on the lens tier, decided on the report numbers;
 - the F13 claim is not the basis of any debate on a measurable question (no pair on a
   non-judgment question whose endpoints' evidence is social-only — enforced by eligibility,
   verified in the report).
@@ -1654,7 +1734,7 @@ drops the filter, a normal day has 3 pairs and the crux check.
 | Stage | Phase B today (as built) | Phase C, normal day (3 pairs, 9 agents, budget 24) | Phase C, consensus day | Output tokens (C, normal) |
 |---|---|---|---|---|
 | Triage (questions) | 1 FAST / ~27 K | 1 FAST / ~28 K (+ ledger lines ~1 K); re-ask only if ≤ 1 question survives | same | ~1.2 K |
-| Takes | 9 ANALYST / ~300 K (~200 K cached) | 7 ANALYST + 2 SYNTH (skeptic, macro_strategist: `LENS_TIER`, §15.0) / ~315 K (lens extras +1.6 K each; cached from take 6 on) | same | ~9 K (`take` ≤ 150 words, was ~14 K) |
+| Takes | 9 ANALYST / ~300 K (~200 K cached) | 7 ANALYST + 2 LENS (skeptic, macro_strategist on the SYNTH model at medium effort: `LENS_TIER`, §15.0) / ~315 K (lens extras +1.6 K each; cached from take 6 on) | same | ~9 K (`take` ≤ 150 words, was ~14 K); probe run 2 on sol at high effort: 76.7 K for 36 calls vs 51.7 K, the gap the `lens` tier removes |
 | Pairing | 0 (wildcard is programmatic) | 0 | 0 | — |
 | Challenges | 11 ANALYST / ~70 K (both full takes in each) | 6 ANALYST / ~38 K (~6.3 K each) | 1 red team / ~7 K | ~3 K |
 | Crux search | — | 0 | 0 | — |
@@ -1827,7 +1907,10 @@ schema before any replay spends calls on it.
   marked done with the measured numbers.
 - **Cutover**: after the two live runs pass, `scripts/cron_run.sh` switches from `run_recon.sh`
   to `python3 recon/orchestrator.py` (one line; bash stays on disk as the fallback for a week).
-  This is a droplet write made from the session (decision 6).
+  This is a droplet write made from the session (decision 6). As built, cron already runs the
+  orchestrator (Phase B cutover, `c16f92a`) with the debate off (§0.1 production gate); the Phase C
+  cutover is `RECON_DEBATE=1` in `cron_run.sh` or the env file, after the probe passes (on the e1
+  package too, §15.0), the replays meet §15.5 and the two live runs pass.
 - **Roster (decision 5, deferred to Phase C)**: after the replays and the first 5 orchestrator
   runs, compute each agent's mean `distinctness`, endpoint share, `data_share` and
   `unique_numbers` from `config/agent_scores/`. An agent goes inactive when it is in the bottom two
@@ -1927,3 +2010,21 @@ schema before any replay spends calls on it.
 | 34 | medium | Tracked `config/agent_memory` and `config/agent_state` dirty on the droplet; a replay could mix months | Both gitignored and untracked (the droplet keeps its files); replays and tagged runs keep state under `<run>/state` | §2.6, §15.1 |
 
 Path: `docs/v2/phase-c-spec.md`.
+
+### 20.3 Fourth review (2026-10-04, production and the replays)
+
+| # | Severity | Finding | Change | Where |
+|---|---|---|---|---|
+| 35 | high | Cron ran the Phase C debate in production with the probe failed and no replay or live run passed | `RECON_DEBATE`: off for the daily run, on for replays, dry and tagged runs; `cron_run.sh` exports 0; off = no pairs, no red team, undebated blocks | §0.1, §18 |
+| 36 | high | Per-side evidence allowance: both responders citing one crux line closed a 30-point split to 0; finals-based count phrases mislabelled debated direction splits; market lines could qualify | Allowance shared per pair (a shared line half each); debated blocks counted from take values; odds lines never qualify and are not crux hits | §6, §7.2, §11.2 |
+| 37 | high | Crux check planned from the depth target, so it was skipped on every day with fewer pairs and every consensus day | Planned from the pairs that formed; re-planned in `ph_cruxcheck` from calls used | §1.1, §8 |
+| 38 | medium | Agent names reached the synthesizer (WEIGHT list, `### ANALYST` scorecard headers); the name check missed upper case and most sections | No WEIGHT in the env line; scorecard headers stripped for the synthesizer; whole-brief checks for upper case, headings, labels, "the macro strategist" | §11.4, §11.5 |
+| 39 | medium | Direction-block minority voice could be a majority-side debater | Debater is the minority voice only on the minority side of 50; else the undebated rule | §11.2 |
+| 40 | medium | Resume left the ledger and agent scores with the first attempt's questions and values | Newest attempt replaces this run id's question and score lines | §2.6 |
+| 41 | medium | `--from-phase takes` after memory fed the takes today's own outcome (c1s biased) | Memory/state snapshot before the memory phase, restored on rerun | §15.2 |
+| 42 | medium | `LENS_TIER` ran sol at high effort, which no probe measured | `lens` tier: SYNTH model at medium effort (p3), env-overridable | §15.0, §16 |
+| 43 | medium | Budget and ceiling counted logical calls, not provider attempts | One `calls.jsonl` line per attempt; ceiling checked before each retry | §1.1 |
+| 44 | medium | SECTION 8 market odds in the shared view and the crux corpus, unprobed | Gate rule 7 drops market-priced questions; odds lines excluded from qualifying evidence and crux hits; probe rerun on e1 required before the cutover | §2.4, §6, §7.2, §15.0 |
+| 45 | medium | Evidence path dead on event questions; soft-move threshold equal to the free move | Entity-only qualification on event/judgment questions, question entities kept; `evidence not qualifying, capped`; soft move > FREE_MOVE, `soft request` reported | §6, §7.2, §15.5 |
+| 46 | medium | Spread came mostly from the two lens-tier agents | Replay report: endpoints per agent and per tier; decision on model diversity recorded | §15.5 |
+| 47 | medium | Citation overlap bar not comparable with the v1 takes | Per-question overlap and lens-quote share measured; bar item is lens-quote share ≥ 0.5 | §15.5 |

@@ -221,6 +221,7 @@ PAIRING = obj(
     eligible=obj(**{q: arr(enum(AGENTS)) for q in QIDS}),
     positions_evidence=free("{agent: {question_id: [EV_CHECKED]}}; active agents only, so §18 can retire agents"),
     budget=obj(used=i(), budget=i(), ceiling=i(), target_before_budget=i(), crux_check_planned=b()),
+    debate=obj(enabled=b(), reason=s("why the debate is off (RECON_DEBATE, §0.1/§18); empty when on")),
 )
 EV_NEW = obj(section=s(), quote=s(), status=enum(EV_STATUS), cls=enum(["data", "social", ""]),
              new_evidence_source=enum(["crux_data", "challenger", "own", "other"]), qualifies=b())

@@ -11,6 +11,9 @@
 # Pipeline: the Python orchestrator (recon/orchestrator.py, Phase B) since 2026-10-04, after two
 # live validation runs; if it fails and no brief landed, the bash pipeline (run_recon.sh) runs once
 # on the same day's package. RECON_PIPELINE=bash in the env file goes back to bash only.
+# The Phase C debate (pairs, challenges, responses, crux check) is OFF here: the spread probe failed twice
+# (phase-c-spec §0.1, model log) and no replay or c3/c4 run has passed (§15.5, §17.5). Triage, takes and the
+# split sheet from the takes still run. The §18 cutover is RECON_DEBATE=1 below (or in the env file).
 # Arguments go to the pipeline. --no-telegram (validation runs) also silences the alert.
 #
 set -uo pipefail
@@ -25,6 +28,9 @@ exec >>"$RECON_HOME/logs/cron.log" 2>&1
 for _f in "${RECON_ENV:-}" "$RECON_HOME/.recon.env" "$RECON_HOME/../.recon.env" "$HOME/.recon.env" /home/recon/.recon.env; do
     [ -n "$_f" ] && [ -f "$_f" ] && { set -a; source "$_f"; set +a; break; }
 done
+
+# Debate gate (see above): the env file may set RECON_DEBATE=1 once the gate and the validation runs pass.
+export RECON_DEBATE="${RECON_DEBATE:-0}"
 
 stamp() { date '+%Y-%m-%d %H:%M:%S'; }
 quiet=0
@@ -61,7 +67,7 @@ BRIEF="$RECON_HOME/briefs/$TODAY/07_daily_brief.md"
 DAY_LOG="$RECON_HOME/logs/$TODAY.log"
 started=$(date +%s)
 PIPELINE="${RECON_PIPELINE:-orchestrator}"
-echo "[$(stamp)] cron_run: start $PIPELINE $*"
+echo "[$(stamp)] cron_run: start $PIPELINE (debate ${RECON_DEBATE}) $*"
 
 brief_landed() {
     [ -f "$BRIEF" ] && [ "$(stat -c %Y "$BRIEF")" -ge "$started" ] && head -c 400 "$BRIEF" | grep -q '^# RECON DAILY BRIEF'

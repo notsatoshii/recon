@@ -76,6 +76,18 @@ def report(root: Path, run_id: str, old: dict | None, gap_min_probe: int | None)
     no_crux = [dd for dd in debates if not dd.get("closed_on_data") and dd.get("gap_after") is not None and dd["gap_before"]]
     ratio = statistics.median([dd["gap_after"] / dd["gap_before"] for dd in no_crux]) if no_crux else None
     soft = sum(1 for f in flags if f == "soft move")
+    soft_req = sum(1 for f in flags if f == "soft request")
+    # Debate endpoints per agent and per take tier (review 2026-10-04: is the spread the lenses or the models?)
+    tier_of = {a: ((t.get("calls") or [{}])[0].get("tier") or debate.LENS_TIER.get(a, "analyst")) for a, t in takes.items()}
+    endpoints: dict[str, int] = {}
+    for x in pairing.get("pairs", []):
+        for a in (x["high"], x["low"]):
+            endpoints[a] = endpoints.get(a, 0) + 1
+    by_tier: dict[str, int] = {}
+    for a, n in endpoints.items():
+        by_tier[tier_of.get(a, "analyst")] = by_tier.get(tier_of.get(a, "analyst"), 0) + n
+    n_end = sum(endpoints.values())
+    other_tier = sum(v for k, v in by_tier.items() if k != "analyst")
     lens = {a: (t.get("fed") or {}).get("lens_extra_bytes", 0) for a, t in takes.items()}
     lens_ok = sum(1 for v in lens.values() if v >= 2000)
     ev = run.get("evidence") or {}
@@ -111,11 +123,15 @@ def report(root: Path, run_id: str, old: dict | None, gap_min_probe: int | None)
         "evidence_rate": ev.get("rate"), "data_share": round(ev.get("data", 0) / max(1, ev.get("verified", 0) + ev.get("partial", 0)), 3) if ev else None,
         "debate_evidence_rate": dbs.get("debate_evidence_rate"),
         "concede": sum(1 for x in rl if x["data"].get("verdict") == "concede"), "responses": len(rl),
-        "verbal_concessions": flags.count("verbal concession"), "soft_moves": soft,
+        "verbal_concessions": flags.count("verbal concession"), "soft_moves": soft, "soft_requests": soft_req,
+        "endpoints": endpoints, "endpoints_by_tier": by_tier,
+        "endpoint_share_off_analyst_tier": round(other_tier / n_end, 2) if n_end else None,
         "moves_capped": sum(1 for f in flags if f.endswith("capped") or f.startswith("evidence move capped")),
         "new_evidence_source": {k: srcs.count(k) for k in ("crux_data", "challenger", "own", "other")},
         "leakage": ch_flags.count("persona leakage"), "agreement_openers": ch_flags.count("opens by agreeing"),
         "challenges": len(chs), "citation_overlap": (ev.get("citation_overlap") or {}).get("mean_jaccard"),
+        "overlap_per_question": (ev.get("citation_overlap") or {}).get("mean_per_question"),
+        "lens_quote_share": (ev.get("citation_overlap") or {}).get("lens_quote_share_mean"),
         "polymarket_mentions": len(re.findall(r"Polymarket", brief)), "f13_social_endpoints": f13,
         "sections_ok": heads[:11] == [s for s in schemas.BRIEF_SECTIONS] or bool(checks.get("sections_ok")),
         "words": len(brief.split()), "agent_names": checks.get("agent_names", []),
@@ -129,7 +145,7 @@ def report(root: Path, run_id: str, old: dict | None, gap_min_probe: int | None)
     bar = {
         "b live split": m["live_splits"] >= 1,
         "c gap_after/gap_before >= 0.6 (no crux data)": ratio is None or ratio >= 0.6,
-        "d soft moves <= 30%": (soft / len(rl) <= 0.3) if rl else True,
+        "d soft moves (> FREE_MOVE without qualifying evidence) <= 30%": (soft / len(rl) <= 0.3) if rl else True,
         "lens >= 2 KB for 7/9": lens_ok >= 7,
         "debate evidence >= 80%": (dbs.get("debate_evidence_rate") or 0) >= 0.8 if rl or chs else True,
         "leakage <= 1": m["leakage"] <= 1,
@@ -138,8 +154,9 @@ def report(root: Path, run_id: str, old: dict | None, gap_min_probe: int | None)
         "brief 11 sections, no names, no mismatch": m["sections_ok"] and not m["agent_names"] and not m["count_mismatch"],
         "split_unpaired does not print No real split": not any("No real split" in x for x in m["blocks_issues"]),
         "F13: no social-only endpoint on a measurable question": not f13,
-        "citation overlap lower than old": (o.get("citation_overlap") is None or m["citation_overlap"] is None
-                                            or m["citation_overlap"] < o["citation_overlap"]),
+        # §15.5 as revised 2026-10-04: whole-take number overlap is not comparable with the free-form v1 takes
+        # (the new takes answer the same questions); the bar is that takes cite their own lens data
+        "lens-quote share >= 0.5": m["lens_quote_share"] is None or m["lens_quote_share"] >= 0.5,
     }
     m["bar"] = bar
     lines = [f"# Replay report — {run_id} (day {m['day']}, status {m['status']})", "",
@@ -154,10 +171,15 @@ def report(root: Path, run_id: str, old: dict | None, gap_min_probe: int | None)
              f"| closure without evidence; median gap_after/gap_before (no crux data) | {m['closure_without_evidence']}; "
              f"{m['gap_ratio_no_crux'] if m['gap_ratio_no_crux'] is None else round(m['gap_ratio_no_crux'], 2)} | — |",
              f"| evidence verification rate (all / debate), data share | {m['evidence_rate']} / {m['debate_evidence_rate']}, {m['data_share']} | not measured |",
-             f"| concessions, verbal concessions, soft moves | {m['concede']}/{m['responses']}, {m['verbal_concessions']}, {m['soft_moves']} | updating: {o.get('updating', '—')} |",
+             f"| concessions, verbal concessions, soft moves (soft requests cut by the gate) | {m['concede']}/{m['responses']}, "
+             f"{m['verbal_concessions']}, {m['soft_moves']} ({m['soft_requests']}) | updating: {o.get('updating', '—')} |",
+             f"| debate endpoints per agent; by take tier (share off the analyst tier) | "
+             f"{', '.join(f'{a} {n}' for a, n in sorted(endpoints.items())) or '—'}; {by_tier or '—'} "
+             f"({m['endpoint_share_off_analyst_tier']}) | — |",
              f"| moves capped; new evidence sources | {m['moves_capped']}; {m['new_evidence_source']} | — |",
              f"| persona leakage, agreement openers | {m['leakage']}, {m['agreement_openers']} of {m['challenges']} | openers {o.get('agreement_openers', '—')} |",
-             f"| citation overlap (mean Jaccard) | {m['citation_overlap']} | {o.get('citation_overlap', '—')} |",
+             f"| citation overlap (mean Jaccard; per question; lens-quote share) | {m['citation_overlap']}; "
+             f"{m['overlap_per_question']}; {m['lens_quote_share']} | {o.get('citation_overlap', '—')} |",
              f"| Polymarket mentions in the brief (F14) | {m['polymarket_mentions']} | {o.get('polymarket_mentions', '—')} |",
              f"| F13: social-only endpoints on measurable questions | {', '.join(f13) or 'none'} | — |",
              "| hindsight Brier (§15.4) | pending: needs the Phase D resolver | — |",
@@ -193,7 +215,8 @@ def main(argv=None) -> int:
         (root / rid / "replay_report.md").write_text(text, encoding="utf-8")
         allm.append(m)
         print(f"| {day} | **Phase C replay {rid}** ({m['day_type']}): {m['questions_kept']} questions, {m['pairs']} pairs, "
-              f"live splits {m['live_splits']}, useful {m['useful']}, soft moves {m['soft_moves']}/{m['responses']}, "
+              f"live splits {m['live_splits']}, useful {m['useful']}, soft moves {m['soft_moves']}/{m['responses']} "
+              f"(requests {m['soft_requests']}), endpoints by tier {m['endpoints_by_tier']}, "
               f"evidence {m['evidence_rate']}, overlap {m['citation_overlap']}, brief {m['words']} words, status {m['status']} "
               f"| {m['calls']} | {(m['in_tok'] or 0) / 1e6:.2f} M ({(m['cached_tok'] or 0) / 1e6:.2f} M cached) | "
               f"{(m['out_tok'] or 0) / 1e3:.1f} K | {m['wall']} s |")
@@ -205,7 +228,13 @@ def main(argv=None) -> int:
                  if ratios else "- (c) no debates without crux data")
         soft = sum(m["soft_moves"] for m in allm)
         nresp = sum(m["responses"] for m in allm)
-        s.append(f"- (d) soft moves: {soft}/{nresp} ({'PASS' if not nresp or soft / nresp <= 0.3 else 'FAIL'})")
+        s.append(f"- (d) soft moves: {soft}/{nresp} ({'PASS' if not nresp or soft / nresp <= 0.3 else 'FAIL'}); "
+                 f"soft requests cut by the gate: {sum(m['soft_requests'] for m in allm)}")
+        ends = sum(sum(m["endpoints"].values()) for m in allm)
+        off = sum(sum(v for k, v in m["endpoints_by_tier"].items() if k != "analyst") for m in allm)
+        if ends:
+            s.append(f"- endpoints off the analyst tier: {off}/{ends} ({off / ends:.0%})"
+                     + (" — most of the spread comes from the model, not the lens" if off / ends > 0.6 else ""))
         if a.stability:
             r1 = jload(root / a.stability[0] / "phases" / "pairing.json", {}) or {}
             r2 = jload(root / a.stability[1] / "phases" / "pairing.json", {}) or {}

@@ -31,6 +31,10 @@ Usage
                historical context, and nothing read from data-sources/.
   --state-dir  where memory, state, ledger and agent scores live (default config/ for the daily run).
   RECON_STOP_AFTER=<phase>  return after that phase (spread probe: takes; stability rerun: pairing).
+  RECON_DEBATE=0|1  the debate (pairs, red team, challenges, responses, crux check). Default: off for the daily
+               run (untagged, not dry, not replay) until the §0.1 spread gate and the §15.5/§17.5 runs pass
+               (§18 cutover; cron_run.sh sets it), on for replays, dry runs and tagged validation runs. Off,
+               a split prints as undebated blocks from the takes (split_unpaired).
 Exit code 0 when a brief was written (or the run stopped where RECON_STOP_AFTER said), 1 otherwise.
 """
 from __future__ import annotations
@@ -220,6 +224,16 @@ class Run:
         self.inflight = 0
         self.stop_after = os.environ.get("RECON_STOP_AFTER", "").strip()
         self.active = self.roster()
+        sw = os.environ.get("RECON_DEBATE", "").strip().lower()
+        if sw in ("1", "on", "true", "yes"):
+            self.debate_on = True
+        elif sw in ("0", "off", "false", "no"):
+            self.debate_on = False
+        else:
+            # The daily run debates only after the §18 cutover: the spread probe has failed twice (§0.1, model log)
+            self.debate_on = bool(self.dry or self.replay or self.tagged)
+        self.debate_off_reason = ("debate off until the spread gate and the validation runs pass "
+                                  "(phase-c-spec §0.1, §18; RECON_DEBATE)")
 
     # ── logging and artifacts ──────────────────────────────
     def log(self, msg: str) -> None:
@@ -313,10 +327,15 @@ class Run:
             if "split" in self.forced:
                 (self.pdir / "split_sheet.json").unlink(missing_ok=True)
             self.log(f"Resuming {self.run_id} from phase '{a.from_phase}'")
+            if "memory" in self.forced and self.restore_state():
+                self.log("  Memory and state restored to before this run's memory phase")
         elif a.resume:
             self.log(f"Resuming {self.run_id}: phases with artifacts are reused")
         else:
-            # fresh run: clear earlier artifacts of this run id (00_* inputs stay for --skip-collect)
+            # fresh run: clear earlier artifacts of this run id (00_* inputs stay for --skip-collect); an earlier
+            # attempt's memory writes are undone first
+            if self.restore_state():
+                self.log(f"  Memory and state restored to before the earlier attempt of {self.run_id}")
             shutil.rmtree(self.pdir, ignore_errors=True)
             for pat in ("03_take_*.md", "04a_*.md", "04c_*.md", "05_resp_*.md", "05_5_*.md", "06_vote_*.md",
                         "07_*.md", "07_*.json", "run.json"):
@@ -342,7 +361,10 @@ class Run:
              agent: str | None = None, persona_path: str | None = None, optional: bool = True):
         """One model call. With a schema the reply is parsed and validated; one re-ask on a bad reply.
         An optional call (everything but the first triage call, the takes and the synthesis) is skipped
-        once calls.jsonl reaches RECON_CALL_CEILING; so is a schema re-ask outside takes and synthesis."""
+        once calls.jsonl reaches RECON_CALL_CEILING; so is a schema re-ask outside takes and synthesis.
+        Every provider attempt is one calls.jsonl line (§1.1: failed attempts count): llm.ask_ex retries
+        up to RECON_LLM_RETRIES times, each failed attempt is recorded as it happens, and an optional
+        call stops retrying once the ceiling is reached."""
         sp = self.schema_paths.get(schema) if schema else None
         reask_optional = phase not in ("takes", "synthesis")
         attempts = 0
@@ -359,19 +381,30 @@ class Run:
             if blocked:
                 self.skip(phase, key if attempts == 1 else f"{key} (schema re-ask)", "ceiling")
                 raise BudgetSkip(f"{phase}/{key}: call ceiling {self.ceiling} reached")
+
+            def failed_attempt(m, _key=key):
+                u0 = m.get("usage") or {}
+                self.record_call({"phase": phase, "key": _key, "agent": agent, "tier": m.get("tier", tier),
+                                  "model": m.get("model", ""), "in_tok": u0.get("input_tokens", 0),
+                                  "cached_tok": u0.get("cached_input_tokens", 0), "out_tok": u0.get("output_tokens", 0),
+                                  "seconds": m.get("seconds", 0), "attempt": m.get("attempt"), "ok": False,
+                                  "error": f"attempt {m.get('attempt')}: {m.get('error', '')}"[:300], "at": now()})
+
+            def before_retry(n, _opt=opt, _key=key):
+                with self.lock:
+                    # this call is still counted in inflight; its failed attempts are in ncalls already
+                    blocked_retry = _opt and self.ncalls + self.inflight - 1 >= self.ceiling
+                if blocked_retry:
+                    self.skip(phase, f"{_key} (retry {n})", "ceiling")
+                    raise BudgetSkip(f"{phase}/{_key}: call ceiling {self.ceiling} reached before retry {n}")
             try:
-                try:
-                    res = llm.ask_ex(p, tier=tier, persona_path=persona_path, schema_path=sp, agent=agent or key,
-                                     note=f"phase={phase}")
-                except llm.LLMError as e:
-                    self.record_call({"phase": phase, "key": key, "agent": agent, "tier": tier, "ok": False,
-                                      "error": str(e)[:300], "at": now()})
-                    raise
+                res = llm.ask_ex(p, tier=tier, persona_path=persona_path, schema_path=sp, agent=agent or key,
+                                 note=f"phase={phase}", on_failed_attempt=failed_attempt, before_retry=before_retry)
                 u = res["usage"] or {}
                 meta = {"phase": phase, "key": key, "agent": agent, "tier": res["tier"], "model": res["model"],
                         "in_tok": u.get("input_tokens", 0), "cached_tok": u.get("cached_input_tokens", 0),
                         "out_tok": u.get("output_tokens", 0), "seconds": res["seconds"],
-                        "prompt_bytes": res["prompt_bytes"], "ok": True, "at": now()}
+                        "prompt_bytes": res["prompt_bytes"], "attempt": res.get("attempts", 1), "ok": True, "at": now()}
                 if not schema:
                     self.record_call(meta)
                     return res["text"], meta
@@ -514,6 +547,64 @@ SECTOR CONTEXT (crypto and macro landscape; background, not today's data):
                 for l in new:
                     f.write(json.dumps(l, ensure_ascii=False) + "\n")
         return len(new)
+
+    @staticmethod
+    def replace_jsonl(path: Path, lines: list[dict], drop) -> int:
+        """Rewrite the file without the lines `drop` matches, then append `lines`; returns len(lines)."""
+        keep = []
+        for l in read(path).splitlines():
+            if not l.strip():
+                continue
+            try:
+                if drop(json.loads(l)):
+                    continue
+            except (json.JSONDecodeError, TypeError, AttributeError):
+                pass
+            keep.append(l)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_suffix(path.suffix + ".tmp")
+        tmp.write_text("".join(x + "\n" for x in keep + [json.dumps(l, ensure_ascii=False) for l in lines]),
+                       encoding="utf-8")
+        tmp.replace(path)
+        return len(lines)
+
+    # ── memory snapshot (a rerun never reads its own outcome) ──
+    def snapshot_path(self) -> Path:
+        return self.pdir / "state_before_memory.json"
+
+    def snapshot_state(self) -> None:
+        """Before the memory phase first writes: each agent's memory and state file as it was (None = absent)."""
+        sp = self.snapshot_path()
+        if sp.exists():
+            return
+        snap = {"memory": {}, "state": {}}
+        for a in AGENTS:
+            m = self.mem_dir / f"{a}.md"
+            s = self.state_dir / f"{agentmem.state_name(a)}_state.md"
+            snap["memory"][m.name] = read(m) if m.exists() else None
+            snap["state"][s.name] = read(s) if s.exists() else None
+        sp.parent.mkdir(parents=True, exist_ok=True)
+        sp.write_text(json.dumps(snap, ensure_ascii=False), encoding="utf-8")
+
+    def restore_state(self) -> bool:
+        """Put memory and state back as they were before this run's memory phase (rerun from takes, or a fresh
+        rerun of the same run id): the takes must not read today's own finals, moves and lessons."""
+        sp = self.snapshot_path()
+        if not sp.exists():
+            return False
+        try:
+            snap = json.loads(sp.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            return False
+        for key, base in (("memory", self.mem_dir), ("state", self.state_dir)):
+            for name, body in (snap.get(key) or {}).items():
+                f = base / name
+                if body is None:
+                    f.unlink(missing_ok=True)
+                else:
+                    f.parent.mkdir(parents=True, exist_ok=True)
+                    f.write_text(body, encoding="utf-8")
+        return True
 
     # ── phases: inputs ─────────────────────────────────────
     def env(self) -> dict:
@@ -717,7 +808,9 @@ SECTOR CONTEXT (crypto and macro landscape; background, not today's data):
             data, from_model = {"environment": "QUIET", "depth": "normal", "reason": "triage failed",
                                 "weight_agents": [], "questions": []}, False
         depth = data.get("depth") if data.get("depth") in debate.QUESTIONS_BY_DEPTH else "normal"
-        gate = debate.gate_questions(data.get("questions") or [], self.day, self.locator(), open_q, self.active, depth)
+        market = debate.market_lines(self.locator())
+        gate = debate.gate_questions(data.get("questions") or [], self.day, self.locator(), open_q, self.active, depth,
+                                     market=market)
         reask = None
         if from_model and gate["needs_reask"]:
             reasons = "\n".join(f"- \"{d['text'][:120]}\": {d['reason']}" for d in gate["dropped"]) or "- (no questions)"
@@ -730,7 +823,7 @@ SECTOR CONTEXT (crypto and macro landscape; background, not today's data):
                 calls.append(m2)
                 depth2 = data2.get("depth") if data2.get("depth") in debate.QUESTIONS_BY_DEPTH else depth
                 gate2 = debate.gate_questions(data2.get("questions") or [], self.day, self.locator(), open_q,
-                                              self.active, depth2)
+                                              self.active, depth2, market=market)
                 reask = {"kept_before": len(gate["kept"]), "kept_after": len(gate2["kept"])}
                 if len(gate2["kept"]) > len(gate["kept"]):
                     data, gate, depth = data2, gate2, depth2
@@ -880,15 +973,24 @@ SECTOR CONTEXT (crypto and macro landscape; background, not today's data):
         at_ceiling = used >= self.ceiling
         if at_ceiling:
             target, crux = 0, False
-        res = debate.pair(qs, p, evq, active, depth, target, gap_min, self.yesterday_pairs())
-        full = debate.pair(qs, p, evq, active, depth, depth_target, gap_min, self.yesterday_pairs())
-        kept = {(x["question_id"], x["high"], x["low"]) for x in res["pairs"]}
-        for x in full["pairs"]:
-            if (x["question_id"], x["high"], x["low"]) not in kept:
-                self.skip("pairing", f"pair {x['question_id']} {x['high']}-{x['low']}", "ceiling" if at_ceiling else "budget")
+        off = None if self.debate_on else self.debate_off_reason
+        if off:
+            self.log(f"  {off}")
+        res = debate.pair(qs, p, evq, active, depth, target, gap_min, self.yesterday_pairs(), off_reason=off)
+        if not off:
+            full = debate.pair(qs, p, evq, active, depth, depth_target, gap_min, self.yesterday_pairs())
+            kept = {(x["question_id"], x["high"], x["low"]) for x in res["pairs"]}
+            for x in full["pairs"]:
+                if (x["question_id"], x["high"], x["low"]) not in kept:
+                    self.skip("pairing", f"pair {x['question_id']} {x['high']}-{x['low']}", "ceiling" if at_ceiling else "budget")
+        # The crux check is planned from the pairs that actually formed, not from the depth target: a day with
+        # fewer pairs than the target (or a consensus day: 1 red-team call) has room for it (§1.1).
+        staged = 4 * len(res["pairs"]) + (1 if res.get("red_team") else 0)
+        crux = bool(not off and not at_ceiling and self.budget - used - SYNTH_CALLS - staged >= 1)
         res["positions_evidence"] = evq
         res["budget"] = {"used": used, "budget": self.budget, "ceiling": self.ceiling,
                          "target_before_budget": depth_target, "crux_check_planned": bool(crux)}
+        res["debate"] = {"enabled": not off, "reason": off or ""}
         self.check_artifact("pairing", res, "pairing.json")
         self.log(f"  Day type: {res['day_type']}; gap_min {gap_min}; target {target} of {depth_target} "
                  f"(calls used {used}, budget {self.budget}); {res['candidates_considered']} candidate pairs")
@@ -1001,17 +1103,20 @@ SECTOR CONTEXT (crypto and macro landscape; background, not today's data):
         d = self.docs()
         return {"raw": d["raw"], "package": d["package"], "social": d["social"]}
 
-    def search_terms(self, texts: list[str]) -> dict:
+    def search_terms(self, texts: list[str], question: str = "") -> dict:
         docs = self.corpus_docs()
         vocab = debate.lowercase_vocab(docs.values())
-        return debate.drop_frequent_entities(debate.crux_terms(texts, vocab), docs)
+        keep = debate.entities(question, vocab) if question else []
+        return debate.drop_frequent_entities(debate.crux_terms(texts, vocab), docs, keep_always=keep)
 
     def redteam_search(self, rec: dict, takes: dict) -> dict:
         """§6 on a consensus day: the crux search on the red team's crux, stored under 'redteam'."""
         dd = rec["data"]
         texts = [(dd.get("crux") or {}).get("claim", ""), (dd.get("crux") or {}).get("observable", ""),
                  (dd.get("would_change_my_mind") or {}).get("observable", "")]
-        terms = self.search_terms(texts)
+        tri = (self.load("triage") if self.art("triage").exists() else {}).get("data") or {}
+        qrec = next((x for x in tri.get("questions", []) if x.get("id") == rec["question_id"]), {})
+        terms = self.search_terms(texts, qrec.get("text", ""))
         excl = [q for t in takes.values() for q in take_quotes(t)] + rec_quotes(rec)
         res = debate.crux_search(terms, self.corpus_docs(), excl, self.locator(),
                                  exclude_positions=debate.quote_positions(excl, self.locator()))
@@ -1037,7 +1142,7 @@ SECTOR CONTEXT (crypto and macro landscape; background, not today's data):
                 dd = (rec or {}).get("data") or {}
                 texts += [(dd.get("crux") or {}).get("claim", ""), (dd.get("crux") or {}).get("observable", ""),
                           (dd.get("would_change_my_mind") or {}).get("observable", "")]
-            terms = self.search_terms(texts)
+            terms = self.search_terms(texts, (qm.get(qid) or {}).get("text", ""))
             excl = take_quotes(takes[hi]) + take_quotes(takes[lo]) + rec_quotes(by_hi) + rec_quotes(by_lo)
             res = debate.crux_search(terms, self.corpus_docs(), excl, self.locator(),
                                      exclude_positions=debate.quote_positions(excl, self.locator()))
@@ -1047,6 +1152,16 @@ SECTOR CONTEXT (crypto and macro landscape; background, not today's data):
         csq = {e["question_id"]: e for e in cs["pairs"]}
         d = self.pdir / "responses"
         d.mkdir(parents=True, exist_ok=True)
+
+        def gate(rec, data, shared=None):
+            agent, other, qid = rec["target"], rec["challenger"], rec["question_id"]
+            entry = csq.get(qid) or {"hits": [], "crux_terms": {}}
+            own_q = take_quotes(takes[agent]) + rec_quotes(chs.get(f"{agent}__{other}__{qid}"))
+            oth_q = take_quotes(takes[other]) + rec_quotes(rec)
+            return debate.gate_move(agent, p[agent][qid], data.get("new_probability"), debate.take_values(takes[agent]),
+                                    p[other][qid], data.get("verdict", "hold"), data.get("new_evidence"), own_q, oth_q,
+                                    entry.get("hits"), entry.get("crux_terms") or {}, self.locator(),
+                                    kind=(qm.get(qid) or {}).get("kind", ""), shared_lines=shared)
 
         def job(rec):
             agent, other, qid = rec["target"], rec["challenger"], rec["question_id"]
@@ -1073,18 +1188,29 @@ SECTOR CONTEXT (crypto and macro landscape; background, not today's data):
                 excerpts=debate.excerpts([my_ev, their_ev], self.locator()), crux_data=entry["block"])
             data, meta = self.call("responses", f"{agent}__{qid}", "analyst", prompt, schema="debate_response", agent=agent)
             data["question_id"] = qid
-            own_rec = chs.get(f"{agent}__{other}__{qid}")
-            own_q = take_quotes(takes[agent]) + rec_quotes(own_rec)
-            oth_q = take_quotes(takes[other]) + rec_quotes(rec)
-            move = debate.gate_move(agent, p[agent][qid], data.get("new_probability"), debate.take_values(takes[agent]),
-                                    p[other][qid], data.get("verdict", "hold"), data.get("new_evidence"), own_q, oth_q,
-                                    entry.get("hits"), entry.get("crux_terms") or {}, self.locator())
+            move = gate(rec, data)
             out = {"agent": agent, "question_id": qid, "opponent": other, "data": data, "move": move, "calls": [meta]}
             f.write_text(json.dumps(out, ensure_ascii=False, indent=1), encoding="utf-8")
             return out
 
         recs = [r for r in chs.values() if r.get("type") == "pair"]
         res = self.parallel([(f"{r['target']}__{r['question_id']}", (lambda r=r: job(r))) for r in recs])
+        # The evidence allowance belongs to the pair (§7.2): both sides answered without seeing each other, so
+        # a crux line both qualified on is shared (half each) and the two moves are gated again.
+        by_key = {f"{r['target']}__{r['question_id']}": r for r in recs}
+        for x in pairing.get("pairs") or []:
+            kh, kl = f"{x['high']}__{x['question_id']}", f"{x['low']}__{x['question_id']}"
+            rh, rl = res.get(kh), res.get(kl)
+            if not (isinstance(rh, dict) and isinstance(rl, dict)):
+                continue
+            shared = (debate.qualifying_lines(rh["move"], rh["data"].get("new_evidence"), self.locator())
+                      & debate.qualifying_lines(rl["move"], rl["data"].get("new_evidence"), self.locator()))
+            if not shared:
+                continue
+            for k, r in ((kh, rh), (kl, rl)):
+                r["move"] = gate(by_key[k], r["data"], shared)
+                (d / f"{k}.json").write_text(json.dumps(r, ensure_ascii=False, indent=1), encoding="utf-8")
+            self.log(f"  [{x['question_id']}] {len(shared)} crux line(s) qualified for both sides: allowance shared")
         ok = []
         for k, r in res.items():
             if isinstance(r, BudgetSkip):
@@ -1135,9 +1261,12 @@ SECTOR CONTEXT (crypto and macro landscape; background, not today's data):
             return {"ran": False, "reason": why}
         c = cand[1]
         qid = c["question_id"]
-        if not pairing.get("budget", {}).get("crux_check_planned"):
+        # Re-planned from the calls actually made (§1.1): the crux check runs when it and the synthesis still
+        # fit the planning budget, whatever pairing planned before the challenges and responses ran.
+        if self.ncalls + 1 + SYNTH_CALLS > self.budget:
             self.skip("cruxcheck", qid, "budget")
-            return {"ran": False, "reason": "dropped by the call budget (§1.1)", "question_id": qid}
+            return {"ran": False, "reason": "dropped by the call budget (§1.1)", "question_id": qid,
+                    "planned": bool(pairing.get("budget", {}).get("crux_check_planned"))}
         q = qm[qid]
         if c["kind"] == "pair":
             hi, lo = c["high"], c["low"]
@@ -1246,6 +1375,10 @@ SECTOR CONTEXT (crypto and macro landscape; background, not today's data):
         debate_items = [i for v in items.values() for i in v if not i["where"].startswith("take")]
         texts = {a: "\n".join([t.get("take", ""), t.get("summary", "")] + take_quotes(t)) for a, t in takes.items()}
         overlap = evidence.citation_overlap(texts)
+        qo = debate.question_overlap(takes)
+        ls = debate.lens_quote_share(takes, self.lens())
+        overlap = {**overlap, "per_question": qo["per_question"], "mean_per_question": qo["mean"],
+                   "lens_quote_share": ls["per_agent"], "lens_quote_share_mean": ls["mean"]}
         nums = {a: {f"{x['scaled']:.4g}" for x in evidence.numbers(tx) if x["value"] >= 100 or x["pct"]
                     or x["scaled"] != x["value"]} for a, tx in texts.items()}
         flags = [f for dd in debates for f in dd["flags"]]
@@ -1260,19 +1393,22 @@ SECTOR CONTEXT (crypto and macro landscape; background, not today's data):
             scores[a] = sc
         appended = 0
         for a, sc in scores.items():
-            appended += self.append_jsonl(self.scores_dir / f"{a}.jsonl", [sc], lambda l: (l["run_id"], l["agent"]))
+            # newest attempt wins: a resumed run replaces its own line instead of keeping the first attempt's
+            appended += self.replace_jsonl(self.scores_dir / f"{a}.jsonl", [sc], lambda l: l.get("run_id") == self.run_id)
         moves = {a: debate.legacy_moves(a, resp_list) for a in takes}
         cwe = [dd["closure_without_evidence"] for dd in debates]
         soft = sum(1 for r in resp_list if "soft move" in r["move"].get("flags", []))
+        soft_req = sum(1 for r in resp_list if "soft request" in r["move"].get("flags", []))
         summ = {"closure_without_evidence": {"sum": sum(cwe), "median": statistics.median(cwe) if cwe else None},
-                "soft_moves": {"count": soft, "responses": len(resp_list)},
+                "soft_moves": {"count": soft, "requests": soft_req, "responses": len(resp_list)},
                 "live_splits": sum(1 for dd in debates if dd["live_split"]),
                 "useful_debates": sum(1 for dd in debates if dd["useful"]),
                 "debate_evidence_rate": summary(debate_items)["rate"]}
         self.log(f"  Evidence quotes: {overall['verified']} verified, {overall['partial']} partial, "
                  f"{overall['unverified']} unverified of {overall['total']} ({overall['data']} data)")
         self.log(f"  Debates: {len(debates)}, live splits {summ['live_splits']}, useful {summ['useful_debates']}; "
-                 f"soft moves {soft}/{len(resp_list)}; citation overlap {overlap.get('mean_jaccard')}; "
+                 f"soft moves {soft}/{len(resp_list)}; citation overlap {overlap.get('mean_jaccard')} "
+                 f"(per question {overlap.get('mean_per_question')}, lens-quote share {overlap.get('lens_quote_share_mean')}); "
                  f"agent score lines appended {appended}")
         for q in qstats:
             fs = q["final_stats"]
@@ -1305,7 +1441,7 @@ SECTOR CONTEXT (crypto and macro landscape; background, not today's data):
         (self.dir / "07_split_sheet.md").write_text(rendered, encoding="utf-8")
         (self.dir / "07_lens_notes.md").write_text(notes, encoding="utf-8")
         self.save("split_sheet", sheet)
-        # question ledger: one line per question, idempotent on (type, ledger_id)
+        # question ledger: one line per question; this run's lines are replaced, never duplicated
         types = {b["question_id"]: b["type"] for b in sheet["blocks"]}
         qstats = {q["id"]: q for q in pos["questions"]}
         lines = []
@@ -1320,7 +1456,10 @@ SECTOR CONTEXT (crypto and macro landscape; background, not today's data):
                     "debated": bool(st.get("debated")), "split_type": types.get(q["id"], "none")}
             self.check_artifact("ledger_line", line, f"ledger line {line['ledger_id']}")
             lines.append(line)
-        n = self.append_jsonl(self.ledger_path, lines, lambda l: (l.get("type"), l.get("ledger_id")))
+        # newest attempt wins: a run resumed --from-phase triage/takes/pairing writes new q1..q5 under the same
+        # ledger ids, so this run's earlier question lines go first (resolutions stay)
+        n = self.replace_jsonl(self.ledger_path, lines,
+                               lambda l: l.get("type") == "question" and l.get("run_id") == self.run_id)
         self.log(f"  Split sheet: {len(sheet['blocks'])} block(s) ({day_type}), {sheet['bytes']} B; lens notes "
                  f"{len(notes.encode('utf-8'))} B; ledger +{n} line(s) in {self.ledger_path}")
         return {"blocks": len(sheet["blocks"]), "bytes": sheet["bytes"], "lens_notes_bytes": len(notes.encode("utf-8")),
@@ -1329,6 +1468,7 @@ SECTOR CONTEXT (crypto and macro landscape; background, not today's data):
     # ── memory (§14.1 adapters) ────────────────────────────
     def ph_memory(self, triage: dict, takes: dict, resps: dict, pos: dict):
         self.log("PHASE 6.5: Agent memory and state written from the typed outputs (no LLM)...")
+        self.snapshot_state()
         qtext = {q["id"]: q["text"] for q in triage.get("questions", [])}
         resp_list = list(resps.values())
         out = {}
@@ -1421,6 +1561,20 @@ SECTOR CONTEXT (crypto and macro landscape; background, not today's data):
                                               section_text(raw, "## RECENT FUNDRAISING ROUNDS", 2500)) if x),
         }
 
+    def synth_scorecard(self) -> str:
+        """The scorecard as the synthesizer reads it: no '### ANALYST' agent headers and no 'Agents: review
+        your predictions' line, so no agent name reaches the brief through SCORECARD."""
+        names = {a.upper() for a in AGENTS} | {a.upper().replace("_", " ") for a in AGENTS}
+        out = []
+        for line in self.scorecard().splitlines():
+            s = line.strip()
+            if s.startswith("#") and s.lstrip("#").strip().upper() in names:
+                continue
+            if re.search(r"(?i)\bagents?\b.*\breview your predictions\b", s):
+                continue
+            out.append(line)
+        return re.sub(r"\n{3,}", "\n\n", "\n".join(out)).strip()
+
     def questions_line(self, pos: dict, triage: dict) -> str:
         qs = sorted(pos.get("questions") or [], key=lambda q: (-int(q.get("weight", 1)), q["id"]))
         for q in qs:
@@ -1436,8 +1590,9 @@ SECTOR CONTEXT (crypto and macro landscape; background, not today's data):
         raw = self.raw_sections()
         (self.dir / "07_raw_sections.json").write_text(json.dumps(raw, ensure_ascii=False), encoding="utf-8")
         social = read(self.dir / "01_social.md")
-        sc = self.scorecard()
-        env = f"ENVIRONMENT: {triage.get('environment', 'QUIET')} WEIGHT: {', '.join(triage.get('weight_agents', []))}"
+        sc = self.synth_scorecard()
+        # No WEIGHT list: it names agents, and the synthesizer must not see agent names (§11.4, §11.5)
+        env = f"ENVIRONMENT: {triage.get('environment', 'QUIET')}"
         split_part = prompts.render("brief_split", split_sheet=read(self.dir / "07_split_sheet.md"),
                                     lens_notes=read(self.dir / "07_lens_notes.md"),
                                     questions_line=self.questions_line(pos, triage))

@@ -31,7 +31,9 @@ Answer:
 3. verdict and new_probability (a whole number 0-100). The rule: you may move up to 5 points on
    argument alone, and the other view's argument and its quotes count as argument. Each new fact allows
    10 points more, up to 25 points in total: a new fact is one verbatim line that neither side has cited,
-   from the crux data above or the excerpts, carrying a number about what the disagreement turns on.
+   from the crux data above or the excerpts, carrying a number about what the disagreement turns on (on an
+   event or judgment question, naming what it turns on is enough). Prediction-market odds are not new
+   facts. If the other view's response cites the same new fact, it counts half for each of you.
    A program enforces this: a move larger than your new facts allow is cut back and recorded.
    Social-media quotes do not justify a larger move. Hold when the challenge brings no new fact; there
    is no credit for agreeing.
