@@ -285,7 +285,7 @@ class Locator:
         self._doc_sh: dict[str, set] = {}
         self._line_sh: dict[str, list[set]] = {}
         self._cache: dict[str, dict] = {}
-        self._strict: dict[str, dict] = {}
+        self._strict: dict[tuple[str, bool], dict] = {}
 
     def order(self) -> list[str]:
         return [d for d in DOC_ORDER if d in self.lines] + [d for d in self.lines if d not in DOC_ORDER]
@@ -409,14 +409,32 @@ class Locator:
         return {"status": "unverified", "section": "", "cls": "", "doc": None, "line": None,
                 "overlap": round(best, 2), **base}
 
-    def strict(self, quote: str) -> dict:
-        """§7.2 gate check: {ok, reason, doc, line, section, cls}."""
-        key = quote or ""
+    def strict(self, quote: str, item: bool = False) -> dict:
+        """§7.2 gate check: {ok, reason, doc, line, section, cls}. `item=True` (the referee's quote check, §8) also
+        accepts a quote that runs from a list item's headline into its indented body and stays inside that item
+        ('- [Thu, 10 Sep 2026] OpenAI puts Pro subscriptions on hold due to Astra demand' + '  The company said
+        ...'); `line` is then the first line it covers. The gate keeps one line."""
+        key = (quote or "", bool(item))
         if key not in self._strict:
-            self._strict[key] = self._strict_check(key)
+            self._strict[key] = self._strict_check(*key)
         return dict(self._strict[key])
 
-    def _strict_check(self, quote: str) -> dict:
+    def _item_occurrences(self, name: str, part: str, span: int = 3, limit: int = 8) -> list[int]:
+        """1-based first lines of the occurrences of a normalised part that cross a line break but stay inside one
+        list item: every line after the first is an indented, non-empty continuation (no blank line between),
+        at most `span` lines below the first (debate._same_item's item)."""
+        text, starts, idx, lens = self._normed(name)
+        raw = self.lines[name]
+        out, pos = [], text.find(part) if part else -1
+        while pos >= 0 and len(out) < limit and idx:
+            k0 = max(0, bisect.bisect_right(starts, pos) - 1)
+            k1 = max(0, bisect.bisect_right(starts, pos + len(part) - 1) - 1)
+            if 0 < k1 - k0 <= span and idx[k1] - idx[k0] == k1 - k0                     and all(raw[idx[k]][:1] in (" ", "	") for k in range(k0 + 1, k1 + 1)):
+                out.append(idx[k0] + 1)
+            pos = text.find(part, pos + 1)
+        return out
+
+    def _strict_check(self, quote: str, item: bool = False) -> dict:
         q = norm(quote).strip(" .\"'")
         out = {"ok": False, "reason": "", "doc": None, "line": None, "section": "", "cls": ""}
         if len(q) < 8:
@@ -431,6 +449,9 @@ class Locator:
         hits = []
         for name in self.order():
             hits += [(name, n) for n, single in self._occurrences(name, q) if single]
+        if not hits and item:
+            for name in self.order():
+                hits += [(name, n) for n in self._item_occurrences(name, q)]
         if not hits:
             return {**out, "reason": "not a single verbatim line"}
         name, line, sec, cls = self._pick(hits)

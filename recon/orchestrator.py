@@ -1385,8 +1385,8 @@ SECTOR CONTEXT (crypto and macro landscape; background, not today's data):
         if data.get("resolved") != "no" and loc.get("status") != "verified":
             data["resolved"] = "no"
             flags.append("referee quote not found")
-        # Only a quote that would qualify a move can confirm a closure (§8, §9.1): a single verbatim data line,
-        # not social, not a prediction-market odds line, and about the crux: a crux number, or a crux entity
+        # Only a quote that would qualify a move can confirm a closure (§8, §9.1): a single verbatim data line (or a
+        # headline and its body inside one list item, which the referee reads together, §20.7 #77), not social, not a prediction-market odds line, and about the crux: a crux number, or a crux entity
         # (not frequent, not the question's subject) with a number, or on an event or judgment question alone
         # (shares_specific against the pair's crux terms, as for a move). Otherwise the verdict stands but
         # confirms nothing, and the split sheet does not show it (debate.crux_check_usable).

@@ -1593,10 +1593,11 @@ def market_at(locator, doc, line, section=None) -> bool:
 
 def quote_qualifies(quote: str, terms: dict, kind: str, locator) -> dict:
     """The referee's quote check (§8, §9.1; orchestrator crux check): a quote confirms a closure only when it
-    would qualify a move: Locator.strict passes, the line is data, it is not a market line (market_at, so a
-    POLYMARKET LIVE MARKETS question line or its CROSS-SOURCE copy is market), and it is about the crux
-    (shares_specific). {qualifies, market, about, strict}."""
-    st = locator.strict(quote) if quote and locator is not None else {"ok": False}
+    would qualify a move: Locator.strict passes (item=True: one line, or a headline and its body inside one list
+    item, which the referee reads together; 09-11 c9 q5, §20.7 #77), the line is data, it is not a market line
+    (market_at, so a POLYMARKET LIVE MARKETS question line or its CROSS-SOURCE copy is market), and it is about the
+    crux (shares_specific). {qualifies, market, about, strict}."""
+    st = locator.strict(quote, item=True) if quote and locator is not None else {"ok": False}
     market = bool(st.get("ok")) and (market_at(locator, st["doc"], st["line"], st.get("section", ""))
                                      or is_market_line(st.get("section", ""), quote))
     about = shares_specific(quote, terms or {}, kind) if quote else False

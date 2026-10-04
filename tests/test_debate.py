@@ -1533,7 +1533,7 @@ class SharedCruxPoolTests(unittest.TestCase):
         self.assertEqual([h["text"] for h in res["hits"]], [fresh])
         self.assertEqual(res["shared"], [])
 
-    def _cruxcheck(self, gap_after_low):
+    def _cruxcheck(self, gap_after_low, quote="OpenAI puts Pro subscriptions on hold due to Astra demand"):
         """Run.ph_cruxcheck on the c8 pair (70 / 35 takes, low side moved to `gap_after_low`) with a canned referee."""
         from types import SimpleNamespace
         from recon.orchestrator import Run
@@ -1545,7 +1545,7 @@ class SharedCruxPoolTests(unittest.TestCase):
         def call(phase, qid, tier, prompt, schema=None, agent=None):
             prompts.append(prompt)
             return ({"resolved": "partly", "what_the_data_says": "Sign-ups paused while capacity is added.",
-                     "quote": "OpenAI puts Pro subscriptions on hold due to Astra demand", "section": "NEWS",
+                     "quote": quote, "section": "NEWS",
                      "remaining_uncertainty": "When capacity lands.",
                      "settles_on": {"observable": "Pro sign-up page", "by_date": "2026-09-18"}, "leans": "lower"},
                     {"tier": "analyst"})
@@ -1569,6 +1569,29 @@ class SharedCruxPoolTests(unittest.TestCase):
         self.assertEqual(cc["quote_status"], "verified")
         self.assertTrue(cc["data"]["quote_qualifies"])
         self.assertTrue(debate.crux_check_usable(cc))
+
+    def test_referee_quote_of_headline_and_body_qualifies(self):
+        # 09-11 c9 q5: the referee read shared_block and quoted the Pro-hold headline with its body. quote_status was
+        # verified but the strict check said 'not a single verbatim line', so a correct answer confirmed nothing.
+        quote = self.HEAD[2:] + " " + self.BODY.strip()
+        cc, _ = self._cruxcheck(38, quote=quote)
+        self.assertEqual(cc["quote_status"], "verified")
+        self.assertTrue(cc["data"]["quote_qualifies"])
+        self.assertEqual(cc["flags"], [])
+        self.assertTrue(debate.crux_check_usable(cc))
+        st = debate.quote_qualifies(quote, self.terms, "event", self.loc)["strict"]
+        self.assertEqual((st["doc"], st["line"]), ("package", self.loc.lines["package"].index(self.HEAD) + 1))
+        # the gate (§7.2) keeps one line
+        self.assertEqual(self.loc.strict(quote)["reason"], "not a single verbatim line")
+
+    def test_referee_quote_across_two_list_items_fails(self):
+        # body of the Pro-hold item run into the next item's headline: two items, not one
+        quote = self.BODY.strip() + " " + self.LAUNCH
+        st = self.loc.strict(quote, item=True)
+        self.assertFalse(st["ok"])
+        self.assertEqual(st["reason"], "not a single verbatim line")
+        cc, _ = self._cruxcheck(38, quote=self.HEAD[2:] + " " + self.BODY.strip() + " " + self.LAUNCH)
+        self.assertFalse(cc["data"]["quote_qualifies"])
 
     def test_no_shared_crux_check_once_the_split_closed(self):
         cc, prompts = self._cruxcheck(60)            # gap 10 < GAP_MIN: nothing held for the referee to read
