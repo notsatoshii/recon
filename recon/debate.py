@@ -35,7 +35,7 @@ from recon import evidence
 AGENTS = ["trader", "narrator", "builder", "analyst", "skeptic", "policy_analyst",
           "user_agent", "macro_strategist", "ai_engineer"]
 
-GAP_MIN_DEFAULT = 20          # set by the spread probe (§15.0: max(20, 2 x median retest |dp|)); env RECON_PAIR_GAP
+GAP_MIN_DEFAULT = 20          # measured by the spread probe (§15.0: max(20, 2 x median retest |dp| 2-3) = 20, 2026-10-04); env RECON_PAIR_GAP
 FREE_MOVE = 5                 # points an agent may move on argument alone (§7.2)
 CRUX_GAP = int(os.environ.get("RECON_CRUX_GAP", "15"))
 QUESTIONS_BY_DEPTH = {"quiet": 3, "normal": 4, "risk": 5}
