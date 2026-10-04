@@ -1931,6 +1931,52 @@ class CrossSourceMarketCopyTests(unittest.TestCase):
                 self.assertIsNone(debate._HEADLINE_ODDS.search(line))
         self.assertEqual(debate.ev_class(loc.locate("- Kalshi: $481,547,487 (+3.3% 7d)"), loc), "data")
 
+    BELIEF_PHRASINGS = (
+        "- [Sat, 3 Oct 2026] Traders see 78 percent chance of an October Fed cut after soft payrolls",
+        "- [Sat, 3 Oct 2026] Fed funds futures imply 72% for an October rate cut by the Fed",
+        "- [Sat, 3 Oct 2026] Market sees October Fed cut at 85% after the jobs data",
+        "- [Sat, 3 Oct 2026] Traders are pricing an October Fed cut at 85% as Treasury yields slide",
+        "- [Sat, 3 Oct 2026] Polymarket: October Fed cut contract trades at 64 cents",
+        "- [Sat, 3 Oct 2026] Swaps fully price an October Fed cut and 90% for December",
+        "- [Sat, 3 Oct 2026] Investors put the odds of an October Fed cut at 80 per cent",
+        "- [Sat, 3 Oct 2026] An October Fed cut is at 71¢ on Kalshi",
+    )
+    DATA_LINES = (
+        "- Kalshi: $481,547,487 (+3.3% 7d)", "- BTC 30-day implied volatility at 52%",
+        "- BTC futures implied volatility rose to 55%", "- Oil prices rose 5% on the week", "- US payrolls rose 254,000 as unemployment fell to 4.1 percent",
+        "- Producer prices rose at a 0.3% pace in September", "- Home prices grew at 4.5 percent over the year",
+        "- Corn futures fell 5 cents a bushel on harvest pressure",
+        "- The Treasury priced the 10-year note at 99.5% of par",
+    )
+
+    def test_more_market_belief_phrasings_are_market_not_qualifying(self):
+        # Phase C (2026-10-04): 'percent' spelled out, 'imply', 'sees', 'pricing ... at 85%', 'trades at 64 cents'
+        # and swaps 'fully price ... 90%' were data and qualified; each moved the skeptic 40 -> 55 on an October
+        # Fed cut crux (synthetic package).
+        pkg = ("# SECTION 4: NEWS INTELLIGENCE\n## NEWS MEDIA\n" + "\n".join(self.BELIEF_PHRASINGS) + "\n"
+               + "\n".join(self.DATA_LINES) + "\n")
+        loc = evidence.Locator({"package": pkg})
+        terms = debate.crux_terms(["The Fed cuts rates at the October 2026 FOMC meeting"])
+        for line in self.BELIEF_PHRASINGS:
+            with self.subTest(line=line):
+                self.assertIsNotNone(debate._HEADLINE_ODDS.search(line))
+                self.assertEqual(debate.ev_class(loc.locate(line), loc), "market")
+                qq = debate.quote_qualifies(line, terms, "event", loc)
+                self.assertTrue(qq["market"])
+                self.assertFalse(qq["qualifies"])
+                self.assertNotIn(line, debate.market_lines(loc))
+                m = debate.gate_move("skeptic", 40, 55, {"q1": 40}, 80, "narrow", [{"section": "", "quote": line}],
+                                     [], [], [], terms, loc, kind="event")
+                self.assertEqual(m["new_evidence"][0]["cls"], "market")
+                self.assertFalse(m["new_evidence"][0]["qualifies"])
+                self.assertEqual(m["gated"], 45)                           # the free move only
+        res = debate.crux_search(terms, {"package": pkg}, [], loc)
+        self.assertFalse([h for h in res["hits"] if h["text"].strip() in self.BELIEF_PHRASINGS])
+        for line in self.DATA_LINES:
+            with self.subTest(line=line):
+                self.assertIsNone(debate._HEADLINE_ODDS.search(line))
+                self.assertEqual(debate.ev_class(loc.locate(line), loc), "data")
+
 
 class ScorecardExpiryTests(unittest.TestCase):
     """09-11 c9 SCORECARD: the synthesizer computed the expiries itself and shipped 'Over the next session, ...'

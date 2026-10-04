@@ -1529,18 +1529,34 @@ _ODDS = re.compile(r"\bYES:?\s*\d{1,3}(?:\.\d+)?\s?%|\bNO:\s*\d{1,3}(?:\.\d+)?\s
 # to an unsigned percentage that is not a period change, so DeFiLlama's '- Kalshi: $433,518,327 (+7.0% 7d)' volume
 # line stays data; bare 'implied' does not count ('30-day implied volatility at 52%' is options data), only
 # 'implied at 78%' or '78% implied'.
-_HO_PCT = r"\d{1,3}(?:\.\d+)?\s?%"
+# Phase C (2026-10-04, second pass): 'Traders see 78 percent chance' (AP style, no '%'), 'futures imply 72%',
+# 'Market sees ... at 85%', 'Traders are pricing an October Fed cut at 85%', 'Polymarket: ... contract trades at
+# 64 cents' and swaps 'fully price ... 90% for December' were still data, and each moved the skeptic 40 -> 55 on
+# an October-cut crux. The percentage may be spelled out (percent, per cent, pct); a belief subject (traders,
+# market(s), investors, forecasters, futures, swaps, bettors) takes put/see/give/assign/imply/price in any form; the
+# verbs 'pricing'/'priced' count with 'at N%' a few words on (not the noun: 'Producer prices rose at a 0.3% pace'
+# and 'priced the note at 99.5% of par' stay data); a price in cents counts next to Polymarket or Kalshi or after
+# 'contract trades at' ('Corn futures fell 5 cents a bushel' stays data).
+_HO_PCT = r"\d{1,3}(?:\.\d+)?\s?(?:%|percent\b|per\s?cent\b|pct\b)"
+_HO_CENTS = r"\d{1,3}(?:\.\d+)?\s?(?:¢|cents?\b)"
 _HO_WORD = r"(?:odds|chances?|probabilit(?:y|ies)|likelihood|bets?|bettors?|betting)"
 _HO_VENUE = r"(?:FedWatch|Polymarket|Kalshi)"
+_HO_SUBJ = r"(?:traders|markets?|investors|forecasters|futures|swaps|bettors)"
+_HO_VERB = (r"(?:puts?|putting|sees?|seeing|saw|gives?|giving|gave|assigns?|assigning|assigned"
+            r"|impl(?:y|ies|ying|ied)|pric(?:e|es|ed|ing))")
 _HEADLINE_ODDS = re.compile(
     rf"\b{_HO_WORD}\b(?:\W+\w+){{0,5}}?\W+{_HO_PCT}"                            # 'Hike Odds Reach 64%'
     rf"|{_HO_PCT}\s+(?:\w+\s+)?(?:{_HO_WORD}|{_HO_VENUE}|implied)\b"            # '78% probability', '54.5% Polymarket odds'
     rf"|\b{_HO_VENUE}\b(?:\W+\w+){{0,5}}?\W+(?<![+\-−.\d]){_HO_PCT}"       # 'Polymarket bettors give 64%'
     r"(?!\s*\(?\s*(?:7d|24h|1d|30d|wow|yoy|mom)\b)"                              # ... not '(+7.0% 7d)'
     rf"|\b(?:price[sd]?|pricing)\s+(?:in\s+)?(?:an?\s+|about\s+|around\s+|roughly\s+|nearly\s+)?{_HO_PCT}"
-    rf"|\bimplied\s+(?:at\s+)?{_HO_PCT}"                                       # 'a cut is implied at 80%'
-    rf"|\b(?:traders|markets?|investors|forecasters)\s+(?:now\s+)?(?:put|see|give|assign)\b"
-    rf"(?:\W+\w+){{0,6}}?\W+{_HO_PCT}",                                          # 'traders put a cut at 90%'
+    rf"|\b(?:pricing|priced)\b(?:\W+\w+){{0,6}}?\s+at\s+{_HO_PCT}(?!\s+of\s+par)"  # 'pricing an October cut at 85%'
+    rf"|\bimpl(?:y|ies|ying|ied)\s+(?:at\s+|an?\s+|about\s+|around\s+)?{_HO_PCT}"  # 'implied at 80%', 'imply 72%'
+    rf"|\b{_HO_SUBJ}\s+(?:(?:now|are|were|is|still|fully|also|have|had|largely|mostly)\s+){{0,2}}{_HO_VERB}\b(?!\s+vol)"
+    rf"(?:\W+\w+){{0,8}}?\W+{_HO_PCT}"                                          # 'traders put a cut at 90%'
+    rf"|\b{_HO_VENUE}\b(?:\W+\w+){{0,8}}?\W+{_HO_CENTS}"                       # 'Polymarket: ... at 64 cents'
+    rf"|{_HO_CENTS}\s+(?:\w+\s+){{0,2}}?(?:on\s+|at\s+)?{_HO_VENUE}\b"          # 'at 71¢ on Kalshi'
+    rf"|\bcontracts?\s+(?:trades?|trading|traded|priced|sits?|is|at)\s+(?:at\s+|near\s+|around\s+)?{_HO_CENTS}",
     re.I)
 _LADDER = re.compile(r"\bmarket-implied\b")
 _ODDS_CONT = re.compile(r"^\s*(?:YES|NO):?\s*\d{1,3}(?:\.\d+)?\s?%")   # an odds line under its question line
