@@ -1,7 +1,9 @@
 """Programmatic evidence checks (no LLM).
 
 - verify_quote: is an agent's evidence quote really in the package?
-- NumberIndex / brief_claims: are the numbers in the brief in the package or the raw data?
+- NumberIndex / DateIndex / brief_claims: are the numbers and dates in the brief in the package, the raw
+  data or the scorecard?
+- prediction_expiry: a scorecard prediction's expiry, computed from its first stated horizon.
 - url_check, repeated_numbers, citation_overlap: cheap format and diversity checks.
 
 Matching is deliberately simple and explainable: normalised substring for quotes, then a
@@ -11,7 +13,10 @@ absolute below 10), so "$85K" matches 84,848 and "86.6B" matches 86.61B.
 from __future__ import annotations
 
 import bisect
+import calendar
+import math
 import re
+from datetime import date, timedelta
 from itertools import combinations
 
 _TRANS = str.maketrans({"‘": "'", "’": "'", "“": '"', "”": '"', "–": "-", "—": "-",
@@ -90,6 +95,143 @@ class NumberIndex:
         return None
 
 
+# ── dates ─────────────────────────────────────────────────────
+
+_MONTHS = {m.lower(): i for i, m in enumerate(calendar.month_name) if m}
+_MONTHS.update({m.lower(): i for i, m in enumerate(calendar.month_abbr) if m})
+_MONTHS["sept"] = 9
+_MON = (r"(?:January|February|March|April|May|June|July|August|September|October|November|December|"
+        r"Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sept|Sep|Oct|Nov|Dec)\b")
+# Capitalised month names only, so 'may 5' (the verb) is no date; a written day is 1-31, not followed by a digit.
+_DATE = re.compile(
+    r"(?<!\d)(?P<iy>(?:19|20)\d\d)-(?P<im>\d\d)-(?P<id>\d\d)(?!\d)"
+    r"|(?<!\w)(?P<m1>" + _MON + r")\.?\s+(?P<d1>[0-3]?\d)(?:st|nd|rd|th)?(?![\d:])(?:,?\s+(?P<y1>(?:19|20)\d\d)\b)?"
+    r"|(?<![\w:.$])(?P<d2>[0-3]?\d)(?:st|nd|rd|th)?\s+(?P<m2>" + _MON + r")\.?(?:,?\s+(?P<y2>(?:19|20)\d\d)\b)?")
+
+
+def dates(text: str) -> list[dict]:
+    """Calendar dates in text: [{raw, key 'MM-DD', year 'YYYY' or ''}]. ISO dates and written dates
+    ('September 24', 'Sept. 24, 2026', '24 September 2026'); a month without a day ('August 2026') is no date."""
+    t = re.sub(r"https?://\S+", " ", (text or "").translate(_TRANS))
+    out = []
+    for m in _DATE.finditer(t):
+        if m.group("iy"):
+            y, mo, d = m.group("iy"), int(m.group("im")), int(m.group("id"))
+        else:
+            mo = _MONTHS[(m.group("m1") or m.group("m2")).lower()]
+            d = int(m.group("d1") or m.group("d2"))
+            y = m.group("y1") or m.group("y2") or ""
+        if 1 <= mo <= 12 and 1 <= d <= 31:
+            out.append({"raw": m.group(0).strip(), "key": f"{mo:02d}-{d:02d}", "year": y})
+    return out
+
+
+class DateIndex:
+    """The dates in a set of named documents. A brief date with a year matches the same date, or the same
+    month and day written without a year; a brief date without a year matches that month and day in any year."""
+
+    def __init__(self, docs: dict[str, str]):
+        self.full: dict[str, str] = {}
+        self.md: dict[str, str] = {}
+        self.yearless: dict[str, str] = {}
+        for name, text in docs.items():
+            for x in dates(text):
+                self.md.setdefault(x["key"], name)
+                if x["year"]:
+                    self.full.setdefault(f"{x['year']}-{x['key']}", name)
+                else:
+                    self.yearless.setdefault(x["key"], name)
+
+    def find(self, x: dict) -> str | None:
+        if x["year"]:
+            return self.full.get(f"{x['year']}-{x['key']}") or self.yearless.get(x["key"])
+        return self.md.get(x["key"])
+
+
+def _add_months(d: date, n: int) -> date:
+    y, m = divmod(d.month - 1 + n, 12)
+    y, m = d.year + y, m + 1
+    return date(y, m, min(d.day, calendar.monthrange(y, m)[1]))
+
+
+_WORDNUM = {"one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7, "eight": 8, "nine": 9,
+            "ten": 10, "eleven": 11, "twelve": 12}
+_N = r"(?:\d+(?:\.\d+)?|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)"
+# 'over the next 3-6 months', 'within 90 days', 'Over 1-2 weeks', 'next 72 hours', 'a 6-month window' is no horizon
+_H_NUM = re.compile(r"(?i)\b(?:(?:over|within|in|for|during)\s+(?:the\s+)?(?:(?:next|coming|following)\s+)?|"
+                    r"(?:next|coming)\s+)(?:(?P<lo>" + _N + r")\s*(?:-|to)\s*)?(?P<n>" + _N + r")\s*-?\s*"
+                    r"(?P<unit>hours?|days?|sessions?|weeks?|months?|quarters?|years?)\b")
+# 'over the next session', 'within the next week', 'next month', 'this week'
+_H_ONE = re.compile(r"(?i)\b(?:(?:over|within|in|for|during|through)\s+)?(?:the\s+)?(?P<w>next|coming|this|following)\s+"
+                    r"(?P<unit>session|day|week|month|quarter|year)\b")
+_H_WORD = re.compile(r"(?i)\b(?P<w>tomorrow|today)\b")
+# 'by April 17', 'by August 2026', 'by Q3 2026', 'by year-end'
+_H_BY = re.compile(r"\b(?:[Bb]y|[Bb]efore|[Uu]ntil)\s+(?:(?:the\s+)?end\s+of\s+(?=[A-Z]))?(?:(?P<mon>" + _MON +
+                   r")\.?(?:\s+(?P<d>[0-3]?\d)(?:st|nd|rd|th)?(?!\d))?(?:,?\s+(?P<y>(?:19|20)\d\d))?"
+                   r"|(?P<q>Q[1-4])\s+(?P<qy>(?:19|20)\d\d)|(?P<ye>year[- ]end|(?:the\s+)?end\s+of\s+(?:the\s+)?year\b))")
+
+
+def _plus(made: date, n: float, unit: str) -> date:
+    u = unit.lower().rstrip("s")
+    if u == "hour":
+        return made + timedelta(days=max(1, math.ceil(n / 24)))
+    if u in ("day", "session"):
+        return made + timedelta(days=math.ceil(n))
+    if u == "week":
+        return made + timedelta(days=math.ceil(7 * n))
+    return _add_months(made, math.ceil({"month": 1, "quarter": 3, "year": 12}[u] * n))
+
+
+def _by_date(m: re.Match, made: date) -> date:
+    if m.group("q"):
+        y, mo = int(m.group("qy")), 3 * int(m.group("q")[1])
+        return date(y, mo, calendar.monthrange(y, mo)[1])
+    if m.group("ye"):
+        return date(made.year, 12, 31)
+    mo = _MONTHS[m.group("mon").lower()]
+    y = int(m.group("y")) if m.group("y") else made.year
+    day = int(m.group("d")) if m.group("d") else calendar.monthrange(y, mo)[1]
+    end = date(y, mo, day)
+    if not m.group("y") and end < made:
+        end = date(y + 1, mo, min(day, calendar.monthrange(y + 1, mo)[1]))
+    return end
+
+
+def prediction_expiry(text: str, made: str) -> dict:
+    """{horizon, expiry} for a scorecard prediction made on `made` (YYYY-MM-DD). The horizon is the first one
+    the prediction states, as written ('Over the next session'); a range counts to its upper end ('3-6 months'
+    -> +6 months); a session is a day; 'by April 17' is the first April 17 on or after `made`. No horizon ->
+    both ''. Computed here so the synthesizer copies an expiry instead of deriving one: 09-11 c9 printed
+    +3 years for 'Over the next session, ... over the next 2-3 years' (§20.7 #79)."""
+    t = (text or "").translate(_TRANS)
+    try:
+        d0 = date.fromisoformat(made)
+    except ValueError:
+        return {"horizon": "", "expiry": ""}
+    found = []
+    m = _H_NUM.search(t)
+    if m:
+        n = m.group("n").lower()
+        found.append((m.start(), m.group(0), _plus(d0, float(_WORDNUM.get(n, n)), m.group("unit"))))
+    m = _H_ONE.search(t)
+    if m:
+        today = m.group("w").lower() == "this" and m.group("unit").lower() in ("day", "session")
+        found.append((m.start(), m.group(0), d0 if today else _plus(d0, 1, m.group("unit"))))
+    m = _H_WORD.search(t)
+    if m:
+        found.append((m.start(), m.group(0), d0 + timedelta(days=int(m.group("w").lower() == "tomorrow"))))
+    for m in _H_BY.finditer(t):
+        try:
+            found.append((m.start(), m.group(0), _by_date(m, d0)))
+            break
+        except ValueError:
+            continue
+    if not found:
+        return {"horizon": "", "expiry": ""}
+    _, horizon, end = min(found, key=lambda f: f[0])
+    return {"horizon": horizon.strip(), "expiry": end.isoformat()}
+
+
 # ── quotes ────────────────────────────────────────────────────
 
 def _shingles(words: list[str], k: int = 4) -> set[tuple]:
@@ -154,24 +296,26 @@ def _segments(brief: str) -> list[tuple[str, str]]:
 
 def brief_claims(brief: str, source_docs: dict[str, str], debate_docs: dict[str, str],
                  takes: dict[str, str]) -> list[dict]:
-    """One claim per brief sentence or bullet that carries a significant number. found_in_source is
-    true when every number in it is in the package or the raw data the synthesizer read. A number
-    found only in the debate (an agent's own arithmetic) is reported as such."""
-    src = NumberIndex(source_docs)
-    deb = NumberIndex(debate_docs)
+    """One claim per brief sentence or bullet that carries a significant number or a calendar date.
+    found_in_source is true when every number and date in it is in the package, the raw data or the scorecard
+    the synthesizer read. A number or date found only in the debate (an agent's own arithmetic, a split
+    sheet's settles-on date) is reported as such. Dates count since 09-11 c9: the SCORECARD shipped an
+    expiry of 2029-09-10 that no source holds, and a numbers-only check passed it (§20.7 #79)."""
+    src, deb = NumberIndex(source_docs), NumberIndex(debate_docs)
+    src_d, deb_d = DateIndex(source_docs), DateIndex(debate_docs)
     take_idx = {a: NumberIndex({a: t}) for a, t in takes.items()}
     claims = []
     for section, seg in _segments(brief):
-        nums = numbers(seg)
-        if not nums:
+        nums, ds = numbers(seg), dates(seg)
+        if not nums and not ds:
             continue
         missing, where, debate_only = [], set(), []
-        for x in nums:
-            hit = src.find(x)
+        for x, idx, didx in [(x, src, deb) for x in nums] + [(x, src_d, deb_d) for x in ds]:
+            hit = idx.find(x)
             if hit:
                 where.add(hit)
                 continue
-            if deb.find(x):
+            if didx.find(x):
                 debate_only.append(x["raw"])
             else:
                 missing.append(x["raw"])
@@ -185,7 +329,8 @@ def brief_claims(brief: str, source_docs: dict[str, str], debate_docs: dict[str,
             action = "note: derived in the debate, not in the package: " + ", ".join(debate_only[:4])
         claims.append({"claim": seg[:300], "section": section, "found_in_source": found,
                        "source": ", ".join(sorted(where)) if where else ("debate" if debate_only and not missing else ""),
-                       "action": action, "agents": agents, "numbers": [x["raw"] for x in nums][:8]})
+                       "action": action, "agents": agents, "numbers": [x["raw"] for x in nums][:8],
+                       "dates": [x["raw"] for x in ds][:8]})
     return claims
 
 

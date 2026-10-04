@@ -1898,3 +1898,76 @@ class CrossSourceMarketCopyTests(unittest.TestCase):
         self.assertFalse(debate.quote_qualifies(line, terms, "threshold", loc)["qualifies"])
         self.assertNotIn(line, debate.market_lines(loc))                  # a headline is not a priced market
         self.assertFalse(debate.odds_line(line))
+
+
+class ScorecardExpiryTests(unittest.TestCase):
+    """09-11 c9 SCORECARD: the synthesizer computed the expiries itself and shipped 'Over the next session, ...'
+    (made 2026-09-10) as PENDING (expiry 2029-09-10), three years instead of one day; the claims check counted
+    numbers only, so the date passed. Expiries are computed in code and dates are claims (§11.4, §11.5, §20.7 #79)."""
+    ANALYST = ("- [2026-09-10] Over the next session, live ETF flows, entity-adjusted whale data, options positioning, "
+               "and stress-depth persistence will determine whether exposure changes; tokenized-asset value capture "
+               "will increasingly accrue to reliable trading surfaces rather than issuance chains over the next 2–3 years.")
+    CARD = ("## Market Snapshot\n- bitcoin: $76,933.00\n\n## Pending Predictions\n"
+            "*Agents: review your predictions below.*\n\n### ANALYST\n" + ANALYST + "\n\n### BUILDER\n"
+            "- [2026-09-10] Within the next MVP cycle, no regulated venue will validate live quotes.\n\n"
+            "### MACRO_STRATEGIST\n- [2026-09-10] Over the next 3–6 months, regulated rails should outperform.\n\n"
+            "### TRADER\n- [2026-09-10] Over the next 1–4 weeks, BTC realized volatility should remain elevated.\n"
+            "- [2026-09-10] Through the Fed/Hormuz window, expect elevated liquidation risk; spot demand remains "
+            "unconfirmed over the next 1–2 weeks.\n\n"
+            "### USER\n- [2026-09-10] Within the next week, incentive-driven volume will prove weaker.\n")
+
+    def synth(self, card=None):
+        import types
+        from recon import orchestrator
+        return orchestrator.Run.synth_scorecard(types.SimpleNamespace(scorecard=lambda: card or self.CARD))
+
+    def test_expiry_is_computed_from_the_first_horizon(self):
+        self.assertEqual(evidence.prediction_expiry(self.ANALYST[15:], "2026-09-10"),
+                         {"horizon": "Over the next session", "expiry": "2026-09-11"})
+        for text, exp in (("Over the next 3–6 months, x", "2027-03-10"), ("Over 3-6 months, x", "2027-03-10"),
+                          ("Over the next 1–4 weeks, x", "2026-10-08"), ("Within the next week, x", "2026-09-17"),
+                          ("Through the Fed window, y over the next 1–2 weeks.", "2026-09-24"),
+                          ("within 72 hours of the deadline", "2026-09-13"), ("within 90 days", "2026-12-09"),
+                          ("over the next 2–3 years", "2029-09-10"), ("legislation by August 2026", "2026-08-31"),
+                          ("Iran resolves by April 17", "2027-04-17"), ("tokenization by Q3 2026", "2026-09-30")):
+            self.assertEqual(evidence.prediction_expiry(text, "2026-09-10")["expiry"], exp, text)
+        for text in ("Within the next MVP cycle, no venue", "The narrative should accelerate short term", ""):
+            self.assertEqual(evidence.prediction_expiry(text, "2026-09-10")["expiry"], "", text)
+
+    def test_synthesizer_reads_the_computed_expiry(self):
+        out = self.synth()
+        line = next(l for l in out.splitlines() if "Over the next session" in l)
+        self.assertIn('expiry 2026-09-11, from "Over the next session"', line)
+        self.assertNotIn("2029", out)
+        self.assertIn("expiry 2027-03-10", out)
+        self.assertIn("expiry 2026-10-08", out)
+        self.assertIn("expiry 2026-09-24", out)
+        self.assertIn("expiry 2026-09-17", out)
+        mvp = next(l for l in out.splitlines() if "MVP cycle" in l)
+        self.assertIn("no expiry: no dated horizon", mvp)
+        self.assertNotIn("USER", out)                                  # the #67 header rule still holds
+
+    def test_sub_bullets_take_their_parent_date(self):
+        out = self.synth("## Pending Predictions\n### TRADER\n- [2026-06-20] **\n"
+                         "  - Strategy forced selling within 60 days if BTC drops\n  - no horizon here\n")
+        self.assertIn("within 60 days if BTC drops (expiry 2026-08-19", out)
+        self.assertIn("- [2026-06-20] **\n", out + "\n")             # a dated line with no text gets no note
+
+    def test_claims_check_covers_dates(self):
+        src = {"scorecard": self.CARD, "synth_scorecard": self.synth()}
+        bad = evidence.brief_claims("### SCORECARD\n- ETF, whale and options signals — **PENDING (expiry: 2029-09-10).**\n",
+                                    src, {}, {})
+        self.assertEqual(len(bad), 1)
+        self.assertFalse(bad[0]["found_in_source"])
+        self.assertIn("2029-09-10", bad[0]["action"])
+        self.assertEqual(bad[0]["dates"], ["2029-09-10"])
+        good = evidence.brief_claims("### SCORECARD\n- ETF, whale and options signals — **PENDING (expiry: 2026-09-11).**\n"
+                                     "- Volatility stays elevated — PENDING (expiry October 8, 2026).\n"
+                                     "- Liquidation risk elevated — PENDING until Sept. 24.\n", src, {}, {})
+        self.assertEqual([c["found_in_source"] for c in good], [True, True, True])
+        derived = evidence.brief_claims("### WHAT TO WATCH\n- The Fed decides on September 16.\n", src,
+                                        {"split": "settles on 2026-09-16"}, {})
+        self.assertTrue(derived[0]["action"].startswith("note"))
+        self.assertEqual(evidence.dates("May 5 may be late; the 2026-09-10 call; 17 September 2026"),
+                         [{"raw": "May 5", "key": "05-05", "year": ""}, {"raw": "2026-09-10", "key": "09-10", "year": "2026"},
+                          {"raw": "17 September 2026", "key": "09-17", "year": "2026"}])

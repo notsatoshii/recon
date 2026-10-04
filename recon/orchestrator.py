@@ -187,6 +187,15 @@ def plus_days(day: str, n: int) -> str:
     return (date.fromisoformat(day) + timedelta(days=n)).isoformat()
 
 
+def expiry_note(text: str, made: str) -> str:
+    """The note synth_scorecard appends to a prediction line: the expiry computed in code and the horizon it
+    comes from, as written."""
+    e = evidence.prediction_expiry(text, made)
+    if e["expiry"]:
+        return f' (expiry {e["expiry"]}, from "{e["horizon"]}")'
+    return " (no expiry: no dated horizon)"
+
+
 class Run:
     def __init__(self, args: argparse.Namespace):
         self.args = args
@@ -1667,9 +1676,12 @@ SECTOR CONTEXT (crypto and macro landscape; background, not today's data):
         """The scorecard as the synthesizer reads it: no '### ANALYST' agent headers and no 'Agents: review
         your predictions' line, so no agent name reaches the brief through SCORECARD. Under '## Pending
         Predictions' every '### <name>' line is an agent header (score_yesterday.py groups by agent, and a state
-        file's name is not always the agent's: 'user_state.md' printed '### USER'), so all of them go."""
+        file's name is not always the agent's: 'user_state.md' printed '### USER'), so all of them go.
+        Every prediction line ('- [YYYY-MM-DD] text', and an indented sub-bullet under one) carries its expiry,
+        computed here from its first stated horizon (`evidence.prediction_expiry`), so the synthesizer copies
+        the date instead of deriving it (09-11 c9: 'Over the next session' shipped as +3 years, §20.7 #79)."""
         names = {a.upper() for a in AGENTS} | {a.upper().replace("_", " ") for a in AGENTS} | {"USER"}
-        out, pending = [], False
+        out, pending, made = [], False, ""
         for line in self.scorecard().splitlines():
             s = line.strip()
             if re.match(r"^#{1,2}\s", s):
@@ -1680,6 +1692,17 @@ SECTOR CONTEXT (crypto and macro landscape; background, not today's data):
                 continue
             if re.search(r"(?i)\bagents?\b.*\breview your predictions\b", s):
                 continue
+            m = re.match(r"^[-*]\s*\[(\d{4}-\d\d-\d\d)\]\s*(.*)$", line)
+            if m:
+                made, text = m.group(1), m.group(2)
+            elif made and line[:1].isspace() and re.match(r"^[-*]\s", s):   # a sub-bullet of a dated line
+                text = s[1:].strip()
+            else:
+                text = ""
+                if s and not line[:1].isspace():
+                    made = ""
+            if text and re.search(r"\w{3}", text):
+                line += expiry_note(text, made)
             out.append(line)
         return re.sub(r"\n{3,}", "\n\n", "\n".join(out)).strip()
 
@@ -1736,7 +1759,7 @@ Start with the line '# RECON DAILY BRIEF'. Use EXACTLY this format — 11 sectio
 - AI EDUCATION (3-6 bullets on what is relevant to teaching practical AI workflows to office workers, students, and founders: learner-facing tools, corporate training moves, policy, competitor programs. End with one line starting 'Curriculum idea:'.)
 - RISKS (Top 2-3. Plain language. How likely, how bad.)
 - WHAT TO WATCH (3-5 concrete things with specific dates. Take the dated "settles on" items from the split sheet first.)
-- SCORECARD (Score the predictions in the SCORECARD raw section below: RIGHT, WRONG, or PENDING with expiry date, using today's data. No hedging. Only predictions listed there.)
+- SCORECARD (Score the predictions in the SCORECARD raw section below: RIGHT, WRONG, or PENDING, using today's data. A PENDING line gives the expiry written in parentheses at the end of its prediction line, copied exactly, or 'no dated horizon' where the line says so; never work out an expiry yourself. No hedging. Only predictions listed there.)
 
 Each fact appears once: do not repeat the same number or development in several sections.
 
@@ -1761,7 +1784,7 @@ Cross-reference every specific number, statistic, and claim in the brief against
 - Mark it [unverified] if it came from analysis (plausible but not from data)
 - Remove it entirely if it looks fabricated
 Do NOT remove numbers that ARE in the source data. Do not remove newsletter bullets that cite a source present in the raw data.
-SCORECARD lines are checked against the SCORECARD raw section: a prediction listed there is not unverified.
+SCORECARD lines are checked against the SCORECARD raw section: a prediction listed there is not unverified, and its expiry is the one written on its line there (a different date is replaced by that one).
 MARKET MOOD quotes are checked against the SOCIAL raw section.
 WHERE THE VIEWS SPLIT: keep every count phrase ("N of M lenses ...") exactly as written; they come from the split sheet below.
 Do NOT add facts, quotes, dates or items that are not already in the draft.
@@ -1831,6 +1854,7 @@ RAW DATA (for cross-referencing numbers; every package section, each trimmed):
             pass
         src = {"package": read(self.dir / "00_data_package.md"), "raw": read(self.dir / "00_raw_data.md"),
                "social": read(self.dir / "01_social.md"), "scorecard": read(self.dir / "00_scorecard.md"),
+               "synth_scorecard": self.synth_scorecard(),   # the computed expiries the synthesizer read (§20.7 #79)
                **{k.lower(): v for k, v in raw.items()}}
         dbt = {"record": read(self.dir / "07_full_record.md"), "split": read(self.dir / "07_split_sheet.md"),
                "lens": read(self.dir / "07_lens_notes.md")}
@@ -1842,7 +1866,7 @@ RAW DATA (for cross-referencing numbers; every package section, each trimmed):
         words = len(brief.split())
         sheet = self.load("split_sheet") if self.art("split_sheet").exists() else None
         bc = debate.brief_checks(brief, sheet)
-        self.log(f"  Claims check: {len(claims)} numeric claims, {found} found in source, {derived} derived in the debate, "
+        self.log(f"  Claims check: {len(claims)} claims (numbers and dates), {found} found in source, {derived} derived in the debate, "
                  f"{len(claims) - found - derived} not found")
         self.log(f"  URLs: {urls['urls']} in the brief, {len(urls['missing'])} not in the raw data; "
                  f"numbers in 3+ sections: {len(rep)}; words {words}")
