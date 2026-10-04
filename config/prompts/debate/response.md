@@ -29,11 +29,12 @@ Answer:
 1. steelman_fair: is that a fair statement of your case? yes, partly or no; if not yes, correct it in one sentence.
 2. crux_agreed: is that what the disagreement turns on? If not, state your crux.
 3. verdict and new_probability (a whole number 0-100). The rule: you may move up to 5 points on
-   argument alone, and the other view's argument and its quotes count as argument. A larger move counts
-   only with a new fact: a verbatim quote that neither side has cited, from the crux data above or the
-   excerpts, about what the disagreement turns on. A program enforces this: larger moves without such a
-   quote are cut back to 5 points and recorded. Social-media quotes do not justify a larger move.
-   Hold when the challenge brings no new fact; there is no credit for agreeing.
+   argument alone, and the other view's argument and its quotes count as argument. Each new fact allows
+   10 points more, up to 25 points in total: a new fact is one verbatim line that neither side has cited,
+   from the crux data above or the excerpts, carrying a number about what the disagreement turns on.
+   A program enforces this: a move larger than your new facts allow is cut back and recorded.
+   Social-media quotes do not justify a larger move. Hold when the challenge brings no new fact; there
+   is no credit for agreeing.
 4. reason: at most 60 words — what changed and why, or why nothing did.
 5. new_evidence: 0-3 quotes that neither side cited before, verbatim, with their section.
 Reply with one JSON object matching the schema.

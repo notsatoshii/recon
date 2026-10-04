@@ -163,6 +163,15 @@ print(f"Reddit: {fetched}/{len(order)} subreddits fetched, {cached} from cache (
 PYREDDIT
 REDDIT_PID=$!
 
+# ─── PHASE E COLLECTORS (Polymarket, Kalshi, changelogs, ZDNet Korea; keyless) ─────
+# phase-e-collectors-spec §4.1: started beside Reddit and X, 120 s each, waited for before the raw
+# file is assembled. Each prints one status line ("  Kalshi: ok, 41 items, ...") into the day log and
+# resolves data-sources/ from RECON_HOME.
+log "Collecting Polymarket, Kalshi, changelogs and ZDNet Korea (in the background)..."
+(cd "$RECON_HOME" && for c in polymarket kalshi changelogs zdnet_kr; do
+    timeout 120 "$RECON_PY" "scripts/collect_$c.py" & done; wait) >> "$LOG_FILE" 2>&1 &
+NEW_COLLECTORS_PID=$!
+
 # ─── TWITTER/X (twscrape, account-backed X internal API) ─────
 
 log "Collecting Twitter/X data..."
@@ -317,36 +326,6 @@ if isinstance(chains, list):
         if c.get("name") in target_chains:
             out.append(f"- {c['name']}: TVL ${c.get('tvl',0):,.0f}")
     out.append("")
-
-# ── POLYMARKET LIVE MARKETS (direct API) ─────────────────
-out.append("## POLYMARKET LIVE MARKETS\n")
-try:
-    pm_url = "https://gamma-api.polymarket.com/markets?closed=false&order=volume24hr&ascending=false&limit=15"
-    pm_req = urllib.request.Request(pm_url, headers={"User-Agent": "RECON/1.0"})
-    with urllib.request.urlopen(pm_req, timeout=20) as pm_r:
-        pm_markets = json.loads(pm_r.read().decode())
-    if pm_markets:
-        for m in pm_markets:
-            question = m.get("question", "?")[:120]
-            volume = float(m.get("volume", 0) or 0)
-            volume_24h = float(m.get("volume24hr", 0) or 0)
-            liquidity = float(m.get("liquidityNum", 0) or 0)
-            # Get best price (outcome probabilities)
-            outcomes = m.get("outcomePrices", "")
-            if isinstance(outcomes, str) and outcomes:
-                try:
-                    prices = json.loads(outcomes)
-                    if prices:
-                        yes_price = float(prices[0]) * 100
-                        out.append(f"- {question}")
-                        out.append(f"  YES: {yes_price:.0f}% | 24h vol: ${volume_24h:,.0f} | total vol: ${volume:,.0f} | liq: ${liquidity:,.0f}")
-                except (json.JSONDecodeError, IndexError, ValueError):
-                    out.append(f"- {question} (vol: ${volume:,.0f})")
-            else:
-                out.append(f"- {question} (vol: ${volume:,.0f})")
-        out.append("")
-except Exception as e:
-    out.append(f"Polymarket API error: {str(e)[:60]}\n")
 
 # ── PREDICTION MARKET PROTOCOLS (CORE SECTOR) ──────────────
 out.append("## PREDICTION MARKET PROTOCOLS\n")
@@ -868,6 +847,34 @@ log "  AI/Tools: $(wc -l < "$DATA_DIR/ai_tools/latest.md" 2>/dev/null || echo FA
 # Now run processing layers before assembling final package
 # ═══════════════════════════════════════════════════════════
 
+wait "$NEW_COLLECTORS_PID" || log "  A Phase E collector exited non-zero (see its status line above)"
+
+# phase-e §2: the Phase E files (and the v1 files when RECON_FRESH_V1=1) pass the 72 h freshness check
+# before they go into the raw file or the package; a stale file becomes one SOURCE STALE line.
+source_name() {
+    case "$1" in polymarket) echo "Polymarket" ;; kalshi) echo "Kalshi" ;; changelogs) echo "Changelogs" ;;
+        zdnet_kr) echo "ZDNet Korea" ;; *) echo "$1" ;; esac
+}
+fresh_or_stale() {
+    local f="$DATA_DIR/$1/latest.md" apply=0 st age stamp name
+    [ -f "$f" ] || return 0
+    case "$1" in polymarket|kalshi|changelogs|zdnet_kr) apply=1 ;; *) [ "${RECON_FRESH_V1:-0}" = 1 ] && apply=1 ;; esac
+    if [ "$apply" = 1 ] && ! st=$("$RECON_PY" "$RECON_HOME/scripts/collector_common.py" --fresh "$f"); then
+        name=$(source_name "$1")
+        age=$(echo "$st" | awk '{print $2}')
+        stamp=$(echo "$st" | cut -d' ' -f3-)
+        echo "# $name Intelligence"
+        echo ""
+        if [ "$age" = "n/a" ]; then
+            echo "- $name: SOURCE STALE — no parseable stamp; not shown."
+        else
+            echo "- $name: SOURCE STALE — last good pull $stamp ($(printf '%.0f' "$age") h old); not shown."
+        fi
+        return 0
+    fi
+    cat "$f"
+}
+
 # RECON_RUN_DIR: the orchestrator collects into its own run folder (validation runs use briefs/<date>-<tag>)
 BRIEF_DIR="${RECON_RUN_DIR:-$RECON_HOME/briefs/$TODAY}"; mkdir -p "$BRIEF_DIR"
 
@@ -880,11 +887,12 @@ echo "# RAW DATA -- $TODAY" > "$RAW_PKG"
 echo "## Collected: $(date +'%H:%M:%S %Z')" >> "$RAW_PKG"
 echo "" >> "$RAW_PKG"
 
-for src in reddit twitter onchain news ai_tools fundraising; do
+# phase-e §4.1a: the Phase E files go into the raw file too (Phase C's LENS_RAW and evidence.locate read it)
+for src in reddit twitter onchain news ai_tools fundraising polymarket kalshi changelogs zdnet_kr; do
     [ -f "$DATA_DIR/$src/latest.md" ] && {
         echo "---" >> "$RAW_PKG"
         echo "" >> "$RAW_PKG"
-        cat "$DATA_DIR/$src/latest.md" >> "$RAW_PKG"
+        fresh_or_stale "$src" >> "$RAW_PKG"
         echo "" >> "$RAW_PKG"
     }
 done
@@ -929,7 +937,7 @@ PKG="$BRIEF_DIR/00_data_package.md"
 cat > "$PKG" << PKGHEADER
 # RECON INTELLIGENCE PACKAGE -- $TODAY
 ## Assembled: $(date +'%H:%M:%S %Z')
-## Structure: Sentiment → Geopolitical → On-Chain → News → Social
+## Structure: Sentiment → Geopolitical → On-Chain → News → Social → AI & Tools → Fundraising → Prediction Markets
 
 This package has been processed through three layers:
 1. Deduplication: cross-source signals identified and duplicate stories merged
@@ -979,6 +987,8 @@ echo "# SECTION 4: NEWS INTELLIGENCE" >> "$PKG"
 echo "" >> "$PKG"
 [ -f "$DATA_DIR/news/latest.md" ] && cat "$DATA_DIR/news/latest.md" >> "$PKG"
 echo "" >> "$PKG"
+# ZDNet Korea after the news file (phase-e §4.2)
+[ -f "$DATA_DIR/zdnet_kr/latest.md" ] && { fresh_or_stale zdnet_kr; echo ""; } >> "$PKG"
 
 # 5. Social intelligence (Reddit + Twitter)
 echo "---" >> "$PKG"
@@ -997,6 +1007,8 @@ echo "# SECTION 6: AI & TOOLS" >> "$PKG"
 echo "" >> "$PKG"
 [ -f "$DATA_DIR/ai_tools/latest.md" ] && cat "$DATA_DIR/ai_tools/latest.md" >> "$PKG"
 echo "" >> "$PKG"
+# AI tool changelogs after the GitHub/HN block (phase-e §4.2)
+[ -f "$DATA_DIR/changelogs/latest.md" ] && { fresh_or_stale changelogs; echo ""; } >> "$PKG"
 
 # 7. Fundraising (was only in fundraising mode before 2026-09-11)
 echo "---" >> "$PKG"
@@ -1005,6 +1017,17 @@ echo "# SECTION 7: FUNDRAISING" >> "$PKG"
 echo "" >> "$PKG"
 [ -f "$DATA_DIR/fundraising/latest.md" ] && cat "$DATA_DIR/fundraising/latest.md" >> "$PKG"
 echo "" >> "$PKG"
+
+# 8. Prediction markets (phase-e §4.2): Polymarket, then Kalshi
+if [ -f "$DATA_DIR/polymarket/latest.md" ] || [ -f "$DATA_DIR/kalshi/latest.md" ]; then
+    echo "---" >> "$PKG"
+    echo "" >> "$PKG"
+    echo "# SECTION 8: PREDICTION MARKETS" >> "$PKG"
+    echo "" >> "$PKG"
+    for src in polymarket kalshi; do
+        [ -f "$DATA_DIR/$src/latest.md" ] && { fresh_or_stale "$src"; echo ""; } >> "$PKG"
+    done
+fi
 
 log "  Intelligence package: $(wc -c < "$PKG") bytes ($(wc -l < "$PKG") lines)"
 

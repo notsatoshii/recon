@@ -473,6 +473,11 @@ same commit, because `collect_data.sh`, `run_recon.sh` and the orchestrator are 
    `AI & TOOLS` 6,000 → 9,000, `NEWS INTELLIGENCE` 13,000 → 18,000. `FALLBACK_NAMES` gains
    `polymarket`, `kalshi` → PREDICTION MARKETS, `changelogs` → AI & TOOLS, `zdnet korea` → NEWS
    INTELLIGENCE. The view grows from ~65 KB to ~92 KB.
+   As built (Phase C §20.2): the two raised caps apply only when the Phase E block is in that section
+   (`PHASE_E_EXTRA`: NEWS 13,000 + 5,000 with `# ZDNet Korea Intelligence`, AI & TOOLS 6,000 + 3,000 with
+   `# Changelogs Intelligence`). A package collected before Phase E (09-10, 09-11, 10-04) keeps its view
+   byte for byte, so the spread probe and the replays read the views Phase C §3 measured; with the
+   blocks present the caps are the 18,000 and 9,000 of the table below.
 
    The caps come from running `fair_share` on the measured 2026-10-04 files (Polymarket 15.9 KB +
    Kalshi 8.9 KB; news section 47.3 KB + ZDNet 6.5 KB; ai_tools 4.2 KB + changelogs 3.5 KB):

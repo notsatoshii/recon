@@ -88,7 +88,10 @@ LENS_RAW: dict[str, list[str]] = {
     "narrator": ["# Reddit Intelligence", "# Twitter/X Intelligence"],
 }
 
-PHASE_E_CAPS = {"PREDICTION MARKETS": 20000, "AI & TOOLS": 9000, "NEWS INTELLIGENCE": 18000}
+# Since the phase-e §4 wiring, scripts/build_agent_package.py carries these itself (CAPS, PHASE_E_EXTRA:
+# NEWS 13,000 + 5,000 with ZDNet = 18,000, AI & TOOLS 6,000 + 3,000 with the changelogs = 9,000,
+# PREDICTION MARKETS 20,000; FALLBACK_NAMES). The updates below are kept as no-ops for the record.
+PHASE_E_CAPS = {"PREDICTION MARKETS": 20000}
 PHASE_E_FALLBACK = {"polymarket": "PREDICTION MARKETS", "kalshi": "PREDICTION MARKETS",
                     "changelogs": "AI & TOOLS", "zdnet korea": "NEWS INTELLIGENCE"}
 PHASE_E_SOURCES = ("polymarket", "kalshi", "changelogs", "zdnet_kr")

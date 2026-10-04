@@ -53,7 +53,8 @@ def numbers(text: str) -> list[dict]:
         if bare_int and (v <= 31 or 1900 <= v <= 2100):
             continue
         scaled = v * _MULT.get(suf, 1.0)
-        out.append({"raw": m.group(0).strip(), "value": v, "scaled": scaled, "pct": suf == "%"})
+        out.append({"raw": m.group(0).strip(), "value": v, "scaled": scaled, "pct": suf == "%",
+                    "cur": m.group("cur") or ""})
     return out
 
 
@@ -216,3 +217,255 @@ def citation_overlap(takes: dict[str, str]) -> dict:
     vals = [len(sets[a] & sets[b]) / len(sets[a] | sets[b]) for a, b in pairs]
     return {"mean_jaccard": round(sum(vals) / len(vals), 3), "pairs": len(pairs),
             "numbers_per_take": {a: len(v) for a, v in sets.items()}}
+
+
+# ── locate: where a quote is, with its package section and evidence class (Phase C §3 item 4) ──
+
+SOCIAL_SECTIONS = ("SENTIMENT & MARKET MOOD", "SOCIAL INTELLIGENCE")
+# '# <Name> Intelligence' blocks of 00_raw_data.md -> (package section, class)
+RAW_BLOCKS = (("reddit", "SOCIAL INTELLIGENCE", "social"), ("twitter", "SOCIAL INTELLIGENCE", "social"),
+              ("bettafish", "SENTIMENT & MARKET MOOD", "social"), ("on-chain", "ON-CHAIN & MARKET DATA", "data"),
+              ("onchain", "ON-CHAIN & MARKET DATA", "data"), ("news", "NEWS INTELLIGENCE", "data"),
+              ("ai & tools", "AI & TOOLS", "data"), ("fundraising", "FUNDRAISING", "data"),
+              ("polymarket", "PREDICTION MARKETS", "data"), ("kalshi", "PREDICTION MARKETS", "data"),
+              ("changelogs", "AI & TOOLS", "data"), ("zdnet", "NEWS INTELLIGENCE", "data"),
+              ("world monitor", "GEOPOLITICAL CONTEXT", "data"))
+DOC_ORDER = ("package", "raw", "view", "social")
+_WORDS = re.compile(r"[\w$%.,']+")
+# A line is social by its content, in any section (package SECTION 0 CROSS-SOURCE SIGNALS is made of
+# tweets and Reddit titles): an X line '[Mon DD HH:MM] (…♥…🔁…)' (raw, or re-rendered '- @who [...]'),
+# an X or Reddit URL, or an 'Also in:' line that names r/… or @… sources.
+SOCIAL_LINE = re.compile(
+    r"^\s*(?:[-*]\s*)?(?:@\S+\s+)?\[(?:[A-Z][a-z]{2} \d{1,2}(?:, \d{4})?|\d{4}-\d\d-\d\d) \d\d:\d\d\]\s*\("
+    r"|https?://(?:www\.|mobile\.|old\.)?(?:x\.com|twitter\.com|t\.co|reddit\.com|redd\.it)/"
+    r"|^\s*\*?\s*Also in:.*(?:(?<![\w/])r/\w+|@\w+)", re.I)
+_CORE_STRIP = re.compile(r"https?://\S+|^\s*[-*]\s*|@\S+\s+(?=\[)|\[[^\]]{0,40}\]\s*|\([^)]*[♥🔁💬][^)]*\)\s*")
+STRICT_MIN_CHARS = 40     # a qualifying quote is at least this long, or carries a number
+
+
+def _section_of(name: str) -> tuple[str, str]:
+    n = name.strip().upper()
+    return n, ("social" if any(n.startswith(s) for s in SOCIAL_SECTIONS) else "data")
+
+
+def social_line(line: str) -> bool:
+    return bool(SOCIAL_LINE.search(line or ""))
+
+
+def _core(line: str) -> str:
+    """A line without its URL, X bracket and engagement counts: what makes two renderings the same item."""
+    return norm(_CORE_STRIP.sub(" ", line or "")).strip(" .\"'")
+
+
+class Locator:
+    """Quote lookup over the run's documents (package, raw, view, social), built once per run.
+
+    locate(quote) -> {status, section, cls, doc, line, numbers_found, numbers_total}; `line` is the
+    1-based line number in `doc`. `section` comes from the package section of the hit (raw file: the
+    '# <Name> Intelligence' block; view: its '# SECTION: <name>' label; 01_social.md: social). `cls` is
+    `social` for the social sections and blocks and for any line that is social by content
+    (SOCIAL_LINE), `data` otherwise. When the same item has a social and a data rendering it is social;
+    a data hit that is a different item wins.
+
+    Status: `verified` = the whole quote verbatim (normalised) and every number in it found. A quote
+    stitched with '...' never verifies: at best `partial`, and only when every piece is found (pieces
+    under 12 characters included) and every number is found. Otherwise `partial` = 4-gram overlap
+    >= 0.6 with every number present, anchored to the single line with the highest 4-gram overlap.
+
+    strict(quote) is the evidence-gate check (§7.2): a single-line verbatim match with no ellipsis,
+    every number found, and at least STRICT_MIN_CHARS characters or a number. locate() stays loose
+    (reporting, eligibility, excerpts); only strict() lets a quote justify a move."""
+
+    def __init__(self, docs: dict[str, str]):
+        self.raw_docs = {k: v for k, v in docs.items() if v}
+        self.lines: dict[str, list[str]] = {k: v.split("\n") for k, v in self.raw_docs.items()}
+        self.index = NumberIndex(self.raw_docs)
+        self._norm: dict[str, tuple[str, list[int], list[int], list[int]]] = {}
+        self._labels: dict[str, list[tuple[str, str]]] = {}
+        self._doc_sh: dict[str, set] = {}
+        self._line_sh: dict[str, list[set]] = {}
+        self._cache: dict[str, dict] = {}
+        self._strict: dict[str, dict] = {}
+
+    def order(self) -> list[str]:
+        return [d for d in DOC_ORDER if d in self.lines] + [d for d in self.lines if d not in DOC_ORDER]
+
+    def _normed(self, name: str) -> tuple[str, list[int], list[int], list[int]]:
+        """(normalised text, start offset of each kept line, that line's index, its normalised length)."""
+        if name not in self._norm:
+            parts, starts, idx, lens, pos = [], [], [], [], 0
+            for n, line in enumerate(self.lines[name]):
+                t = norm(line)
+                if not t:
+                    continue
+                starts.append(pos)
+                idx.append(n)
+                lens.append(len(t))
+                parts.append(t)
+                pos += len(t) + 1
+            self._norm[name] = (" ".join(parts), starts, idx, lens)
+        return self._norm[name]
+
+    def labels(self, name: str) -> list[tuple[str, str]]:
+        """(section, class) for every line of a document."""
+        if name in self._labels:
+            return self._labels[name]
+        out, cur = [], ("", "data")
+        for line in self.lines[name]:
+            if name == "package":
+                m = re.match(r"^# SECTION \d+: (.+)$", line)
+                if m:
+                    cur = _section_of(m.group(1))
+            elif name == "view":
+                m = re.match(r"^# SECTION(?: \d+)?: (.+)$", line)
+                if m:
+                    cur = _section_of(m.group(1))
+            elif name == "raw":
+                m = re.match(r"^# (.+?) Intelligence", line)
+                if m:
+                    h = m.group(1).lower()
+                    hit = next(((sec, cls) for k, sec, cls in RAW_BLOCKS if k in h), None)
+                    cur = hit or (m.group(1).upper(), "data")
+            elif name == "social":
+                cur = ("SOCIAL INTELLIGENCE", "social")
+            out.append((cur[0], "social") if cur[1] == "data" and social_line(line) else cur)
+        self._labels[name] = out
+        return out
+
+    def label(self, name: str, line: int) -> tuple[str, str]:
+        lab = self.labels(name)
+        return lab[line - 1] if 1 <= line <= len(lab) else ("", "data")
+
+    def line_text(self, name: str, line: int) -> str:
+        ls = self.lines.get(name) or []
+        return ls[line - 1] if 1 <= line <= len(ls) else ""
+
+    def _occurrences(self, name: str, part: str, limit: int = 8) -> list[tuple[int, bool]]:
+        """[(1-based line, single_line)] for the first `limit` occurrences of a normalised part."""
+        text, starts, idx, lens = self._normed(name)
+        out, pos = [], text.find(part) if part else -1
+        while pos >= 0 and len(out) < limit and idx:
+            k = max(0, bisect.bisect_right(starts, pos) - 1)
+            out.append((idx[k] + 1, pos + len(part) <= starts[k] + lens[k]))
+            pos = text.find(part, pos + 1)
+        return out
+
+    def _pick(self, hits: list[tuple[str, int]]) -> tuple[str, int, str, str]:
+        """The hit that classifies a quote: social when the data hits are the same item as a social hit."""
+        lab = [(d, n, *self.label(d, n)) for d, n in hits]
+        data = [h for h in lab if h[3] == "data"]
+        social = [h for h in lab if h[3] == "social"]
+        if data and social:
+            cores = [_core(self.line_text(d, n)) for d, n, _, _ in social]
+            for h in data:
+                c = _core(self.line_text(h[0], h[1]))
+                if not any(c and s and (c in s or s in c) for s in cores):
+                    return h
+            return social[0]
+        return (data or social or lab)[0]
+
+    def locate(self, quote: str) -> dict:
+        key = quote or ""
+        if key not in self._cache:
+            self._cache[key] = self._locate(key)
+        return dict(self._cache[key])
+
+    def _locate(self, quote: str) -> dict:
+        q = norm(quote).strip(" .\"'")
+        nums = numbers(quote)
+        found_nums = [x for x in nums if self.index.find(x)]
+        all_nums = len(found_nums) == len(nums)
+        base = {"numbers_found": len(found_nums), "numbers_total": len(nums)}
+        if len(q) < 8:
+            return {"status": "empty", "section": "", "cls": "", "doc": None, "line": None, **base}
+        pieces = [p.strip(" .\"'") for p in re.split(r"\.\.\.|…|\[\.\.\.\]", q)]
+        pieces = [p for p in pieces if p]
+        stitched = len(pieces) > 1
+        hits = []
+        for name in self.order():
+            text = self._normed(name)[0]
+            if pieces and all(p in text for p in pieces):
+                hits += [(name, n) for n, _ in self._occurrences(name, max(pieces, key=len))]
+        if hits and all_nums:
+            name, line, sec, cls = self._pick(hits)
+            out = {"status": "partial" if stitched else "verified", "section": sec, "cls": cls, "doc": name,
+                   "line": line, **base}
+            if stitched:
+                out["stitched"] = True
+            return out
+        sh = _shingles(_WORDS.findall(q))
+        best, best_doc = 0.0, None
+        for name in self.order():
+            if name not in self._doc_sh:
+                self._doc_sh[name] = _shingles(_WORDS.findall(self._normed(name)[0]))
+            r = len(sh & self._doc_sh[name]) / len(sh) if sh else 0.0
+            if r > best:
+                best, best_doc = r, name
+        if best >= 0.6 and all_nums and best_doc:
+            line = self._anchor(best_doc, sh)
+            sec, cls = self.label(best_doc, line)
+            return {"status": "partial", "section": sec, "cls": cls, "doc": best_doc, "line": line,
+                    "overlap": round(best, 2), **base}
+        return {"status": "unverified", "section": "", "cls": "", "doc": None, "line": None,
+                "overlap": round(best, 2), **base}
+
+    def strict(self, quote: str) -> dict:
+        """§7.2 gate check: {ok, reason, doc, line, section, cls}."""
+        key = quote or ""
+        if key not in self._strict:
+            self._strict[key] = self._strict_check(key)
+        return dict(self._strict[key])
+
+    def _strict_check(self, quote: str) -> dict:
+        q = norm(quote).strip(" .\"'")
+        out = {"ok": False, "reason": "", "doc": None, "line": None, "section": "", "cls": ""}
+        if len(q) < 8:
+            return {**out, "reason": "empty"}
+        if re.search(r"\.\.\.|…|\[\.\.\.\]", q):
+            return {**out, "reason": "stitched quote"}
+        nums = numbers(quote)
+        if any(not self.index.find(x) for x in nums):
+            return {**out, "reason": "a number is not in the run folder"}
+        if len(q) < STRICT_MIN_CHARS and not nums:
+            return {**out, "reason": f"under {STRICT_MIN_CHARS} characters with no number"}
+        hits = []
+        for name in self.order():
+            hits += [(name, n) for n, single in self._occurrences(name, q) if single]
+        if not hits:
+            return {**out, "reason": "not a single verbatim line"}
+        name, line, sec, cls = self._pick(hits)
+        return {"ok": True, "reason": "", "doc": name, "line": line, "section": sec, "cls": cls}
+
+    def positions(self, quote: str) -> set[tuple[str, int]]:
+        """Every (doc, line) a quote sits on (verbatim occurrences, or the anchor of a partial match)."""
+        q = norm(quote).strip(" .\"'")
+        if len(q) < 8:
+            return set()
+        pieces = [p.strip(" .\"'") for p in re.split(r"\.\.\.|…|\[\.\.\.\]", q) if p.strip(" .\"'")]
+        out = set()
+        for name in self.order():
+            for p in pieces:
+                out |= {(name, n) for n, _ in self._occurrences(name, p)}
+        if not out:
+            loc = self.locate(quote)
+            if loc.get("doc"):
+                out.add((loc["doc"], loc["line"]))
+        return out
+
+    def _anchor(self, name: str, sh: set) -> int:
+        if name not in self._line_sh:
+            self._line_sh[name] = [_shingles(_WORDS.findall(norm(l))) if l.strip() else set()
+                                   for l in self.lines[name]]
+        best, at = -1, 1
+        for n, ls in enumerate(self._line_sh[name]):
+            c = len(sh & ls)
+            if c > best:
+                best, at = c, n + 1
+        return at
+
+
+def locate(quote: str, docs) -> dict:
+    """{status, section, cls, doc, line} for a quote over docs (package, raw, view, social). `docs` is a
+    Locator (built once per run) or a dict of texts (a Locator is built for the call)."""
+    loc = docs if isinstance(docs, Locator) else Locator(docs)
+    return loc.locate(quote)

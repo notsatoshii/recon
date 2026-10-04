@@ -34,7 +34,10 @@ AGENTS = ["trader", "narrator", "builder", "analyst", "skeptic", "policy_analyst
           "user_agent", "macro_strategist", "ai_engineer"]
 LAYER = {"reddit": "reddit", "twitter": "twitter", "onchain": "onchain", "news": "news",
          "ai_tools": "ai_tools", "fundraising": "fundraising", "worldmonitor": "worldmonitor",
-         "bettafish": "bettafish"}
+         "bettafish": "bettafish", "polymarket": "polymarket", "kalshi": "kalshi", "changelogs": "changelogs",
+         "zdnet_kr": "zdnet_kr"}
+PHASE_E = {"polymarket", "kalshi", "changelogs", "zdnet_kr"}   # 72 h freshness rule from day one (phase-e §2)
+FRESH_HOURS = float(os.environ.get("RECON_FRESH_HOURS", "72"))
 
 
 def read(p: Path, default: str = "") -> str:
@@ -125,7 +128,8 @@ def assign_phases(calls: list[dict], agent: str, n_challenges: int, has_resp: bo
 
 SECTION_LAYER = [("reddit", "reddit"), ("twitter", "twitter"), ("on-chain", "onchain"), ("onchain", "onchain"),
                  ("news", "news"), ("ai & tools", "ai_tools"), ("fundraising", "fundraising"),
-                 ("bettafish", "bettafish"), ("world monitor", "worldmonitor")]
+                 ("bettafish", "bettafish"), ("world monitor", "worldmonitor"), ("polymarket", "polymarket"),
+                 ("kalshi", "kalshi"), ("changelogs", "changelogs"), ("zdnet korea", "zdnet_kr")]
 
 
 def header_time(stamp: str, finished: datetime | None) -> str:
@@ -150,6 +154,13 @@ def source_record(name: str, layer: str, txt: str, finished: datetime | None) ->
         err = bad.group(0).lower()
     elif items == 0:
         err = "no items"
+    stale = re.search(r"SOURCE STALE", txt[:600] if txt else "")
+    if stale:
+        ok, err = False, "stale (not shown in the package)"
+    elif m and finished and (layer in PHASE_E or os.environ.get("RECON_FRESH_V1", "0") == "1"):
+        age = (finished - datetime.fromisoformat(fetched)).total_seconds() / 3600
+        if age > FRESH_HOURS:
+            ok, err = False, f"stale ({age:.0f} h)"
     return {"name": name, "layer": layer, "ok": ok, "items": items, "fetched_at": fetched,
             "bytes": len(txt.encode("utf-8")), "error": err}
 
@@ -197,7 +208,8 @@ def source_records(date: str, finished: str | None = None) -> tuple[list[dict], 
 # block inside (and as the fallback when a block is missing). Names match run["sources"][].name.
 TITLE_SOURCES = [("cross-source", ["news", "reddit", "twitter"]), ("sentiment", ["bettafish"]),
                  ("geopolitical", ["worldmonitor"]), ("on-chain", ["onchain"]), ("news", ["news"]),
-                 ("social", ["reddit", "twitter"]), ("ai", ["ai_tools"]), ("fundraising", ["fundraising"])]
+                 ("social", ["reddit", "twitter"]), ("ai", ["ai_tools"]), ("fundraising", ["fundraising"]),
+                 ("prediction", ["polymarket", "kalshi"])]
 LAYER_SOURCE = {v: k for k, v in LAYER.items()}
 
 

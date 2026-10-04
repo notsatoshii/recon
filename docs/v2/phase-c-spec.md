@@ -9,7 +9,9 @@ Eric's standing instruction for this work: decide, do not ask. Every product cho
 open is decided here and listed in §19 so it can be reversed in one place.
 
 Revised 2026-10-04 after review: 23 findings applied; §20 lists each change and where it landed.
-A second review measured the lens extras on the real packages: 2 findings, §20.1.
+A second review measured the lens extras on the real packages: 2 findings, §20.1. A third review of the
+build (2026-10-04) found the evidence gate and the closure rule still let a debate collapse; its fixes
+are in §20.2 and in the sections they name.
 The templates in §13 are committed as `config/prompts/debate/*.md` and the call schemas in §12 as
 `schemas/debate/*.json` (generated from this spec; `recon/schemas.py` must produce the same JSON,
 a test in §17.2 compares them).
@@ -221,7 +223,9 @@ pass the gate with today's baseline quote.
 
 ### 2.6 The question ledger
 
-`config/questions/ledger.jsonl` (gitignored, like `knowledge.db`), one line per question per run,
+`config/questions/ledger.jsonl` (gitignored, like `knowledge.db`; so are `config/agent_scores/`,
+`config/agent_memory/` and `config/agent_state/`, the runtime state every run rewrites, untracked since
+§20.2 so a pull on the droplet stays clean), one line per question per run,
 appended by the `split` phase (§11) so it carries the final stats. Dry and replay runs write to
 `<run>/state/questions/ledger.jsonl`, and so does every run with a tagged id (anything other than
 the bare date, e.g. the §17.5 runs `<date>-c3`) unless `--state-dir config/` is passed
@@ -549,7 +553,10 @@ team's `crux.claim`, `crux.observable` and `would_change_my_mind.observable`, an
 For each pair, terms come from both challenges' `crux.claim`, `crux.observable` and
 `would_change_my_mind.observable`:
 
-- numbers (`evidence.numbers`), matched with the `NumberIndex` tolerance;
+- numbers (`evidence.numbers`), matched on the **scaled** value within the `NumberIndex` tolerance, and only
+  when both or neither are percentages and their currencies do not differ (`debate.same_number`): the bare
+  mantissa never matches, so a crux `85K` does not match `85`, `$85.2M` or `85.1%`, and `$1B` does not
+  match `1.0%`;
 - entities: tokens with a capital letter or digits, length ≥ 3, excluding
   - a stop list (`The`, `This`, `If`, `Will`, `What`, weekday and month names…);
   - a sentence-initial capitalised token whose lower-case form is a dictionary word (a fixed list
@@ -558,6 +565,9 @@ For each pair, terms come from both challenges' `crux.claim`, `crux.observable` 
   - date-like tokens (`2026-10-04`, `10/04`, `Q4`, `4Q26`, `H2`, a bare year `20\d\d`, `UTC`,
     `KST`);
   - plus Hangul words of ≥ 2 syllables;
+  - then entities that sit on more than 2 % of the corpus's non-empty lines are dropped
+    (`debate.drop_frequent_entities`: `BTC`, `ETF`, `Fed`, `DeFi` are on hundreds of package lines and say
+    nothing specific about a crux);
 - metric words from a fixed list: tvl, volume, liquidity, price, yield, apy, funding, open
   interest, inflow, outflow, spread, depth, market cap, dominance, supply, peg, 거래대금, 시가총액.
 
@@ -614,25 +624,35 @@ for e in resp.new_evidence:
                 "challenger" if norm(e.quote) in seen else
                 "crux_data"  if loc.line in crux_hit_lines(pair) else
                 "other")
-    e.qualifies = (loc.status == "verified"          # not partial: a stitched quote does not count
+    e.qualifies = (strict(e.quote).ok                 # one verbatim line, no '...', every number found
                    and e.source in ("crux_data", "other")   # not in either side's evidence
                    and loc.cls == "data"
-                   and shares_term(e.quote, terms))  # at least one crux number, entity or metric word
+                   and shares_specific(e.quote, terms))  # a crux number, or a crux entity plus a number
 
-qualifying = [e for e in resp.new_evidence if e.qualifies]
+lines   = {line of e for e in resp.new_evidence if e.qualifies}       # distinct qualifying lines
+allowed = FREE_MOVE + min(EVIDENCE_MOVE_MAX, EVIDENCE_MOVE_PER_ITEM * len(lines))   # 5 + 10 a line, 25 at most
 
-if abs(d) <= FREE_MOVE:              gated = new_p
-elif qualifying:                     gated = new_p
-else:                                gated = take_p + copysign(FREE_MOVE, d)
-                                     flag("social evidence only, capped" if any(e.source in ("crux_data", "other")
+if abs(d) <= allowed:                gated = new_p
+else:                                gated = take_p + copysign(allowed, d)
+                                     flag(f"evidence move capped at {allowed}" if lines
+                                          else "social evidence only, capped" if any(e.source in ("crux_data", "other")
                                           and e.cls == "social" for e in resp.new_evidence)
                                           else "argument only, capped" if any(e.source == "challenger" for e in resp.new_evidence)
                                           else "update without evidence, capped")
 gated = min(100, max(0, gated))
 ```
 
+**Evidence cap (§20.2).** A qualifying quote no longer allows the whole requested move: each distinct
+qualifying line adds `EVIDENCE_MOVE_PER_ITEM = 10` points to the free 5, up to `EVIDENCE_MOVE_MAX = 20`
+(25 in all). One copied crux line therefore moves an agent at most 15 points, and a split of 30 cannot
+close on one quote. `response.md` states the same numbers, and `moves_capped` counts the
+`evidence move capped at N` flags with the other `… capped` flags. An entity alone does not qualify a
+quote: it needs a crux number, or a crux entity together with a number of its own.
+
 The challenger's quotes are argument, not new evidence: a responder that copies them can move
-only the free 5 points. Each evidence item is stored with `new_evidence_source`
+only the free 5 points. `norm_p` takes the agent's take values as `take_values(agent)` returns them, a
+`{qid: int}` dict, and reads its values (§20.2); `take_values` rescales a value strictly between 0 and 1
+when the take's other values go above 1 (0.65 next to 70 is 65 %). Each evidence item is stored with `new_evidence_source`
 (`crux_data|challenger|own|other`) and `qualifies`; each side's move records
 `evidence_source`: `crux_data` if any qualifying item came from the crux hits, `other` if a
 qualifying item came from elsewhere in the run folder, else `none`.
@@ -688,15 +708,20 @@ gated, delta, clamped, new data evidence count, evidence source), `verdicts`, `s
 rated by each target), `crux_agreed`, `evidence` (claimed vs verified vs data-class per side),
 `flags` (all of §5.4 and §7.2), `crux_check` (resolved, leans) when run, and these derived fields:
 
-- `closed_on_data`: at least one side's move has `evidence_source == "crux_data"` and moved
-  towards the opponent;
+- `closed_on_data`: at least one side moved more than the free 5 points towards the opponent with
+  `evidence_source == "crux_data"` (a crux check that resolved `no` resets it);
+- `confirmed` (internal): `closed_on_data` **and** the crux check ran on this debate and resolved `yes`,
+  or `partly` with `leans` pointing the way the mover moved (`lower` when the high side came down);
+- `narrowed_on_data`: closed on crux data but not confirmed, and the gap narrowed;
 - `closure_without_evidence`: `max(0, gap_before − gap_after)` when `closed_on_data` is false,
   else 0 (points of the split that disappeared on argument alone);
 - `effect`: rendered by code for the replay report and RUBRIC, never for the brief, e.g.
   "narrowed from 30 to 18 on argument", "narrowed from 30 to 8 on crux data", "held at 32";
-- `live_split`: `gap_after ≥ 20` **or** (`gap_before ≥ GAP_MIN` **and** not `closed_on_data`).
+- `live_split`: `gap_after ≥ 20` **or** (`gap_before ≥ GAP_MIN` **and** not `confirmed`).
   A split that two polite debaters closed by 5 points each is still a split; it stops being one
-  only when data closed it;
+  only when data closed it **and** the neutral crux check confirmed that data (§20.2: a responder can copy
+  a crux-hit line, and on a normal day the budget drops the crux check, so a move on crux data alone no
+  longer removes the block; the block stays and is marked `narrowed_on_data`);
 - `useful`: `live_split`, or any side moved ≥ 10 points on qualifying evidence, or the crux check
   resolved `yes`, or resolved `partly` with `leans != "neither"`. A referee's bare `partly` (that
   model's default hedge) does not count. "Useful debates per run" is the headline replay metric.
@@ -770,6 +795,7 @@ sheet holds one **consensus** block. With neither, the sheet says `no split toda
 | `crux_check` | `resolved`, `what_the_data_says`, `quote` when §8 ran on this question, else `null` |
 | `settles_on` | crux check `settles_on`, else the question's `resolves_on`/`settles_with`, else the earlier of the two `would_change_my_mind` dates |
 | `carried` | `unchanged since <date> (median a% → b%)` when the question was carried, else empty |
+| `narrowed_on_data` | the debate closed on crux data the crux check did not confirm (§9.1); rendered as "Note: new data narrowed this split today without settling it." |
 | `type` | `direction`, `degree` or `consensus` |
 
 Consensus block, same schema: `type: consensus`, `debated: false`; `question`, `counts`,
@@ -778,9 +804,12 @@ reason of the agent closest to the median, plus one verified data quote); `minor
 red-team `case` and its first verified quote, `source: red_team`; `crux` = the red team's
 `crux.claim`; `crux_check`; `settles_on`. The brief calls it the red-team case.
 
-Every text field passes the anonymiser: the nine agent names (snake case, title case, upper case,
-with or without "the"), "@agent", and lens words used as names ("the Skeptic") become "the other
-view" / are dropped; lines matching the §5.4 leakage regex are dropped; each text is cut at a
+Every text field passes the anonymiser, the question, `settles_with`, `settles_on` and the no-split line
+included: the nine agent names (snake case; the four multi-word names in any case with a space or an
+underscore, "the macro strategist", "AI engineer"; title case and upper case single names; with or
+without "the"), "@agent", and lens words used as names ("the Skeptic", and in debate text a lower-case
+"the skeptic" followed by a possessive or a verb: "the skeptic overstates", "the trader's read") become
+"the other view" / are dropped; lines matching the §5.4 leakage regex are dropped; each text is cut at a
 sentence boundary to fit. The whole sheet is ≤ 6 KB rendered (`07_split_sheet.md`); if over,
 quotes are dropped first, then cases are shortened evenly.
 
@@ -1022,7 +1051,7 @@ PAIRING = obj(
     red_team=nullable(obj(agent=enum(AGENTS), question_id=s(), median=num(), distance=num(),
                           reason=s())),
     eligible=obj(**{q: arr(enum(AGENTS)) for q in QIDS}),   # all five keys, empty arrays allowed
-    positions_evidence=free("{agent: [EV_CHECKED]}; active agents only, so §18 can retire agents"),
+    positions_evidence=free("{agent: {question_id: [EV_CHECKED]}}; active agents only, so §18 can retire agents"),
     budget=obj(used=i(), budget=i(), ceiling=i(), target_before_budget=i(), crux_check_planned=b()),
 )
 
@@ -1043,7 +1072,7 @@ DEBATE_SCORE = obj(
     evidence=obj(high=obj(claimed=i(), verified=i(), data=i()), low=obj(claimed=i(), verified=i(), data=i())),
     flags=arr(obj(agent=enum(AGENTS), flag=s(), where=enum(["challenge", "response"]))),
     crux_check=nullable(obj(resolved=s(), leans=s())),
-    closed_on_data=b(), closure_without_evidence=i(), effect=s(),
+    closed_on_data=b(), narrowed_on_data=b(), closure_without_evidence=i(), effect=s(),
     live_split=b(), useful=b(),
 )
 
@@ -1062,7 +1091,7 @@ AGENT_RUN_SCORE = obj(
 
 SPLIT_BLOCK = obj(
     type=enum(["direction", "degree", "consensus"]), debated=b(), question_id=s(), ledger_id=s(),
-    question=s(), resolves_on=DATE, settles_with=s(),
+    question=s(), resolves_on=DATE, settles_with=s(), narrowed_on_data=b(),
     counts=obj(n=i(), majority=i(), minority=i(), median=num(), range=arr(i())),
     count_phrase=s(),
     base_case=obj(text=s(), quote=s()),
@@ -1082,6 +1111,7 @@ LEDGER_LINE = obj(
 )
 ```
 
+`ARTIFACTS["run"]` checks the Phase C keys of `run.json` (the Phase B keys around them stay free).
 `run.json` (`schema_version` 1 → 2) gains: `pairing` (as above, without `positions_evidence`),
 `debates` (list of `DEBATE_SCORE`, replacing Phase B's shorter `debates`), `red_team`,
 `crux_check`, `split_sheet`, `agent_scores`, `usage.budget_skips[]` (§1.1), and `questions[]`
@@ -1233,11 +1263,12 @@ Answer:
 1. steelman_fair: is that a fair statement of your case? yes, partly or no; if not yes, correct it in one sentence.
 2. crux_agreed: is that what the disagreement turns on? If not, state your crux.
 3. verdict and new_probability (a whole number 0-100). The rule: you may move up to 5 points on
-   argument alone, and the other view's argument and its quotes count as argument. A larger move counts
-   only with a new fact: a verbatim quote that neither side has cited, from the crux data above or the
-   excerpts, about what the disagreement turns on. A program enforces this: larger moves without such a
-   quote are cut back to 5 points and recorded. Social-media quotes do not justify a larger move.
-   Hold when the challenge brings no new fact; there is no credit for agreeing.
+   argument alone, and the other view's argument and its quotes count as argument. Each new fact allows
+   10 points more, up to 25 points in total: a new fact is one verbatim line that neither side has cited,
+   from the crux data above or the excerpts, carrying a number about what the disagreement turns on.
+   A program enforces this: a move larger than your new facts allow is cut back and recorded.
+   Social-media quotes do not justify a larger move. Hold when the challenge brings no new fact; there
+   is no credit for agreeing.
 4. reason: at most 60 words — what changed and why, or why nothing did.
 5. new_evidence: 0-3 quotes that neither side cited before, verbatim, with their section.
 Reply with one JSON object matching the schema.
@@ -1386,6 +1417,8 @@ Reply with one JSON object matching the schema, writing the fields in this order
 | `.gitignore` | `config/questions/`, `config/agent_scores/`. |
 | `tests/` (new) | §17, with the fixtures of §17.1 committed under `tests/fixtures/`. |
 | `scripts/spread_probe.py`, `scripts/replay_report.py` (new) | §15.0 and §15.3; read run folders only, no LLM. |
+| `scripts/schema_smoke.py` (new) | §17.4b: one FAST call per call schema. |
+| `scripts/phase_c_validate.sh` (new) | The droplet run of §17.4b, §15.0 and §15.2 in order, detached, with a gate after the probe. |
 | `tests/lens_extras_probe.py` (exists) | Reference implementation and measuring tool for `LENS_RAW` (§3 item 3); `debate.lens_extras` must return the same text; rerun before the spread probe (§0.1). |
 
 Effort: 2 days of Claude time, as the plan says; `debate.py` and its tests are about half of it.
@@ -1435,7 +1468,7 @@ pointing into the probe's run folder (cold memory, as replays).
 | `2026-09-11-p1` | `briefs/2026-09-11` | triage + 9 takes | 10 |
 | `2026-10-04-p1` | `briefs/2026-10-04` | triage + 9 takes | 10 |
 | `2026-10-04-p2` | same | 9 takes again on `p1`'s `triage.json` (`--from-phase takes` on a copy of `p1`), for test-retest | 9 |
-| `2026-10-04-p3` | same | skeptic and macro_strategist only, again on `p1`'s triage, with `RECON_MODEL_ANALYST` set to the SYNTH model; then the same two at `RECON_EFFORT_ANALYST=high` | 4 |
+| `2026-10-04-p3` | same | skeptic and macro_strategist only (`RECON_TAKE_AGENTS=skeptic,macro_strategist`), again on `p1`'s triage, with `RECON_MODEL_ANALYST` set to the SYNTH model; then the same two at `RECON_EFFORT_ANALYST=high` (`2026-10-04-p3h`) | 4 |
 
 About 33 calls. `scripts/spread_probe.py <run ids>` (no LLM) reads the `takes/*.json` and writes
 `briefs/spread_probe.md` plus one model-log row:
@@ -1675,7 +1708,9 @@ responses) are hand-written in `tests/fixtures/debate/`.
 | pairing | deterministic | same input in shuffled order → identical `pairing.json` |
 | gate_move | +25 with no new evidence | gated +5, flag `update without evidence, capped` |
 | gate_move | +25 citing only the challenger's verified data quote | gated +5, `argument only, capped`, source `challenger` |
-| gate_move | +25 with a verified data quote from the crux hits that shares a crux number | gated +25, source `crux_data`, no flag |
+| gate_move | +25 with a verified data quote from the crux hits that shares a crux number | gated +15, source `crux_data`, flag `evidence move capped at 15` (§20.2) |
+| gate_move | +25 with two such quotes on two different lines | gated +25, no flag |
+| gate_move | requested 0.6 against take values `{q1: 30, q2: 70}` | 60, `fraction rescaled`, not `moved away` |
 | gate_move | +25 with a `partial` quote from the crux hits | +5 (partial does not qualify) |
 | gate_move | +25 with a verified data quote sharing no crux term | +5 |
 | gate_move | +25 with only a social quote | +5, `social evidence only, capped` |
@@ -1683,10 +1718,15 @@ responses) are hand-written in `tests/fixtures/debate/`.
 | gate_move | verdict hold, +8 towards the opponent | gated +5, `hold but moved`, `soft move` |
 | gate_move | quote already in own take | source `own`, does not qualify |
 | score | gap 30 → 20 on argument | `live_split` true, `closure_without_evidence` 10, effect "narrowed from 30 to 20 on argument" |
-| score | gap 30 → 8 with crux-data evidence | `live_split` false, `closed_on_data` true |
+| score | gap 30 → 8 with crux-data evidence, no crux check | `closed_on_data` true, `live_split` true, `narrowed_on_data` true |
+| score | the same with a crux check `yes`, or `partly` leaning the way the mover moved | `live_split` false |
 | score | crux check `partly` + `neither` / `partly` + `higher` | `useful` false / true |
 | crux_search | crux "DEX volume rises while TVL falls" over the 09-11 raw fixture | hits include DEX and TVL lines with a number or entity; lines already quoted excluded; ≤ 12 hits; ≤ 3 KB |
 | crux_search | "The", "September", "2026-10-04", "Q4", a sentence-initial "Volume" | not entities |
+| crux_search | crux `85K` against `85`, `$85.2M`, `85.1%`; `$1B` against `1.0%` | no number match; `$85,000` matches |
+| crux_search | an entity on > 2 % of the corpus lines | dropped from the terms |
+| crux_search | a quote with a crux entity and no number | does not qualify (`shares_specific`) |
+| lens extras | `debate.LENS_RAW` against `tests/lens_extras_probe.py` | the same table (analyst includes `## CROSS-SOURCE SIGNALS`) |
 | crux_search | red-team crux on a consensus fixture | stored under `redteam` |
 | stats | 9 values with two at 50 | majority/minority counts exclude the 50s |
 | split_sheet | direction, degree, consensus, split_unpaired, none | right `type`, `count_phrase` text, ≤ 6 KB, no agent names after `anonymise` (all nine names in all casings in the input) |
@@ -1720,9 +1760,11 @@ responses) are hand-written in `tests/fixtures/debate/`.
 
 - each template renders with the variables the orchestrator passes; a missing or extra variable
   raises (catches drift in both directions);
-- the rendered challenge and response prompts for the fixture pair are under 9 KB;
+- the rendered challenge prompt for the fixture pair is under 9 KB, the response prompt under 12 KB (it
+  also carries the 3 KB crux data block);
 - `response.md` does not contain "the other view's evidence" in its list of sources for a larger
-  move, and its free-move number equals `debate.FREE_MOVE`.
+  move, and its free-move, per-line and total numbers equal `debate.FREE_MOVE`,
+  `EVIDENCE_MOVE_PER_ITEM` and `FREE_MOVE + EVIDENCE_MOVE_MAX`.
 
 ### 17.4 Dry-run end to end
 
@@ -1854,5 +1896,19 @@ schema before any replay spends calls on it.
 |---|---|---|---|---|
 | 24 | medium | The corrected `LENS_RAW` still gave trader, builder and analyst 0 bytes on the real 10-04 package (every pick already in the view); §17.1's test and the 7-of-9 bar could not pass, and the spread probe would have run with three lenses reading only the shared block | Table re-picked from what the views leave out (fundraising, news sub-blocks, `news~` filters per lens, KOREA, AI EDUCATION); view subtraction also matches re-rendered X lines and URLs; one lens per line in table order; continuation lines follow their item; per-agent bytes measured on 09-10, 09-11, 10-04 and 10-04 + Phase E and recorded; reference implementation `tests/lens_extras_probe.py`; probe precondition in §0.1; phase-e §4.1a shown not to affect the probe packages | §0.1, §3, §15.5, §17.1, phase-e §4.5b |
 | 25 | medium | The committed 09-11 fixture view was the old uncapped v1 view (169,516 B, every raw line in it), so lens extras were 0 for all nine agents and the test said nothing about a replay | Both fixture views replaced by the full view `build_agent_package.py` builds from the day's full package, as a replay does (09-11 regenerated on the droplet: 63,240 B; 10-04: the run's own 60,260 B, identical to a rebuild), untrimmed; a fixture test checks that the views are capped and that every agent gets lens bytes | §3, §17.1, phase-e §5 |
+
+### 20.2 Third review (2026-10-04, the build)
+
+| # | Severity | Finding | Change | Where |
+|---|---|---|---|---|
+| 26 | high | Phase C existed only as uncommitted library code; the orchestrator still ran Phase B; no budget, ceiling, ledger, resume alias, `--replay`/`--as-of`/`--state-dir`, `RECON_STOP_AFTER`; no common-words list; no tests; dry run unchanged | Orchestrator wired in the §1 order with all of these; `recon/data/common_words.txt` (5.5 K words, hand-written; `is_common` accepts plain inflections); `tests/test_debate.py`, `test_schemas.py`, `test_prompts.py`, `test_dry_run.py`; dry-run provider per §12.2; one commit | §1, §1.1, §2.6, §14, §15, §17 |
+| 27 | high | The debate could still collapse: bare-mantissa number matches, one common entity made a hit, a copied crux line qualified, and `closed_on_data` alone removed the block | Numbers match on scaled value with unit and percent; entities on > 2 % of lines dropped; a qualifying quote needs a crux number or an entity plus a number; a block leaves the sheet only when the crux check confirmed the data, else it is marked `narrowed_on_data` | §6, §7.2, §9.1, §11.2 |
+| 28 | medium | Code capped evidence moves, spec and prompt did not; `moves_capped` missed `evidence move capped at N` | One rule everywhere: 5 free + 10 per qualifying line, 25 in all; `response.md` states it; `moves_capped` counts the flag | §7.2, §13.4, §17.1, §17.3 |
+| 29 | medium | `norm_p` iterated the take-values dict's keys, so fractions were never rescaled; mixed-scale takes recorded 0.65 as 1 % | `norm_p` reads dict values; `take_values` rescales values strictly between 0 and 1 when the others go above 1 | §7.2 |
+| 30 | medium | Spaced lower-case role names and "the skeptic argues" passed the anonymiser and the brief check; the question, `settles_with` and the no-split line were not anonymised; `DEBATE_FORMAT` lacked the "the other view" sentence | Multi-word names in any case; role nouns followed by a verb or possessive; the extra fields anonymised; delivery check gains the spaced forms in the two checked sections; `DEBATE_FORMAT` per §13.1 | §11.2, §11.5, §13.1 |
+| 31 | medium | `schemas.py` alone would have broken the live Phase B cron | It lands with the orchestrator; `write_all` also writes the `LEGACY` schemas | §12 |
+| 32 | medium | `debate.LENS_RAW` dropped analyst's `## CROSS-SOURCE SIGNALS` | Restored; a test compares the table with `tests/lens_extras_probe.py` | §3, §17.1 |
+| 33 | medium | Phase E collectors not wired | phase-e §4 items 1–8 (collection, raw file on both paths, SECTION 8, duplicate Polymarket block removed, view caps, `shared()` 100 KB, run-folder raw blocks, export layers, archive); the NEWS and AI & TOOLS caps rise only when ZDNet or the changelogs are in the package, so the replay packages keep their measured views | phase-e §4 |
+| 34 | medium | Tracked `config/agent_memory` and `config/agent_state` dirty on the droplet; a replay could mix months | Both gitignored and untracked (the droplet keeps its files); replays and tagged runs keep state under `<run>/state` | §2.6, §15.1 |
 
 Path: `docs/v2/phase-c-spec.md`.

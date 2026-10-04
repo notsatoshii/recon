@@ -24,3 +24,9 @@ data-sources/reddit/cache.json
 data-sources/*/status.json
 data-sources/*/seen.json
 data-sources/*/prev.json
+# Phase C runtime state (docs/v2/phase-c-spec.md §2.6, §9.2): written by every run, never committed, so a
+# pull on the droplet stays clean. Dry, replay and tagged runs keep theirs under briefs/<run>/state/.
+config/questions/
+config/agent_scores/
+config/agent_memory/
+config/agent_state/

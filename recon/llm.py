@@ -248,16 +248,69 @@ _DRY_FILLER = (
 def _dry_quotes(prompt: str) -> list[str]:
     """Verbatim lines from the prompt's package block, so dry-run evidence verifies."""
     lines = [l.strip() for l in prompt.splitlines()]
-    out = [l[:140] for l in lines if 50 <= len(l) <= 400 and l.startswith("- ") and any(c.isdigit() for c in l)]
-    return out or ["dry-run quote that is not in the package"]
+    out = [l[:140] for l in lines if 50 <= len(l) <= 400 and l.startswith("- ") and any(c.isdigit() for c in l)
+           and not l.startswith("- SECTION ")]
+    return list(dict.fromkeys(out)) or ["dry-run quote that is not in the package"]
+
+
+_DRY_DOMAIN_LENSES = {"markets_crypto": ["trader", "analyst"], "macro_policy": ["macro_strategist", "policy_analyst"],
+                      "ai_product": ["ai_engineer", "builder"], "korea": ["policy_analyst", "user_agent"],
+                      "prediction_markets": ["trader", "skeptic"]}
+
+
+def _dry_day(prompt: str) -> str:
+    """The run day: from the triage task line, else the package header of the shared block."""
+    for rx in (r"TRIAGE AND QUESTIONS OF THE DAY \((\d{4}-\d\d-\d\d)\)", r"INTELLIGENCE PACKAGE \((\d{4}-\d\d-\d\d)\)",
+               r"Resolves: (\d{4}-\d\d-\d\d)"):
+        m = re.search(rx, prompt)
+        if m:
+            return m.group(1)
+    return ""
+
+
+def _plus_days(day: str, n: int) -> str:
+    from datetime import date, timedelta
+    try:
+        return (date.fromisoformat(day) + timedelta(days=n)).isoformat()
+    except ValueError:
+        return "2026-10-31"
+
+
+def _dry_questions(prompt: str, item_schema: dict, gen) -> list[dict]:
+    """Five QUESTION objects that pass the §2.4 gate: distinct texts ending with '?', baselines copied from
+    package lines, resolves_on = run day + 7 (empty for judgment), weights 1-3, nothing carried."""
+    quotes = [q for q in _dry_quotes(prompt) if not q.startswith("dry-run")]
+    day = _dry_day(prompt)
+    kinds = ["event", "threshold", "direction", "event", "judgment"]
+    domains = ["markets_crypto", "macro_policy", "ai_product", "korea", "prediction_markets"]
+    out = []
+    for k in range(5):
+        o = gen(item_schema, "question")
+        bq = quotes[(k * 7) % len(quotes)] if quotes else ""
+        kind = kinds[k]
+        o.update({"id": f"q{k + 1}", "kind": kind, "domain": domains[k],
+                  "text": f"Will {(bq or 'the package figure')[2:62].strip()} hold through day+7 (item {k + 1})?",
+                  "baseline_quote": bq if kind in ("threshold", "direction") else "",
+                  "resolves_on": "" if kind == "judgment" else _plus_days(day, 7),
+                  "settles_with": "the same package line on the resolution day",
+                  "metric": "the figure in the baseline line" if kind in ("threshold", "direction") else "",
+                  "comparator": ">=" if kind == "threshold" else "",
+                  "threshold": (re.findall(r"[\d.,]+[%KMBkmb]?", bq) or [""])[0] if kind == "threshold" else "",
+                  "lenses": list(_DRY_DOMAIN_LENSES[domains[k]]), "weight": 1 + k % 3, "carried_from": ""})
+        out.append(o)
+    return out
 
 
 def _dry_json(schema: dict, prompt: str, agent: str) -> str:
     """Fill a JSON schema with plausible values: question ids from the prompt, probabilities spread by
-    agent, quotes copied from the prompt (one in five invented, to exercise the unverified path)."""
+    agent (RECON_DRY_SPREAD=wide: 5-95; narrow: 55-65), quotes copied from the prompt (one in five
+    invented, to exercise the unverified path), integers for integer fields, and gate-passing questions
+    for the triage call (phase-c-spec §12.2)."""
     import hashlib
     qids = list(dict.fromkeys(re.findall(r"\[(q\d)\]", prompt))) or ["q1", "q2", "q3"]
     quotes = _dry_quotes(prompt)
+    spread = os.environ.get("RECON_DRY_SPREAD", "wide").strip().lower()
+    day = _dry_day(prompt)
     seed = int(hashlib.sha1((agent or "-").encode()).hexdigest()[:12], 16)
     counter = [0]
 
@@ -265,17 +318,27 @@ def _dry_json(schema: dict, prompt: str, agent: str) -> str:
         counter[0] += 1
         return (seed // (counter[0] * 7 + 1)) + counter[0] * 37
 
+    def prob() -> int:
+        if spread == "narrow":
+            return 55 + nxt() % 11
+        return 5 + nxt() % 91
+
     def gen(sch: dict, key: str = ""):
         t = sch.get("type")
         if isinstance(t, list):
             t = next((x for x in t if x != "null"), "string")
+        if key == "question_id":          # a question id present in the prompt wins over the enum
+            return qids[nxt() % len(qids)]
         if "enum" in sch:
             return sch["enum"][nxt() % len(sch["enum"])]
         if t == "object":
             return {k: gen(v, k) for k, v in sch.get("properties", {}).items()}
         if t == "array":
             items = sch.get("items", {})
-            if items.get("type") == "object" and "question_id" in items.get("properties", {}):
+            props = items.get("properties", {}) if items.get("type") == "object" else {}
+            if "kind" in props and "baseline_quote" in props:
+                return _dry_questions(prompt, items, gen)
+            if "question_id" in props:
                 out = []
                 for q in qids:
                     o = gen(items, key)
@@ -283,24 +346,42 @@ def _dry_json(schema: dict, prompt: str, agent: str) -> str:
                     out.append(o)
                 return out
             return [gen(items, key) for _ in range(2)]
-        if t in ("number", "integer"):
-            return 5 + nxt() % 91 if "probab" in key else nxt() % 10
+        if t == "integer":
+            if "probab" in key:
+                return prob()
+            return 1 + nxt() % 3 if key == "weight" else nxt() % 10
+        if t == "number":
+            return prob() if "probab" in key else nxt() % 10
         if t == "boolean":
             return bool(nxt() % 2)
         if key == "quote":
             n = nxt()
             return "dry-run invented figure 123.4%" if n % 5 == 0 else quotes[n % len(quotes)]
-        if key == "question_id":
-            return qids[nxt() % len(qids)]
         if key in ("resolves_on", "by_date"):
-            return "2026-10-31"
+            return _plus_days(day, 7) if day else "2026-10-31"
         if key == "section":
             return "ON-CHAIN & MARKET DATA"
-        if key in ("take", "text"):
-            return f"[dry-run] {agent or '-'} {key}. " + _DRY_FILLER * 2
+        if key in ("take", "text", "rebuttal", "case", "reason"):
+            return f"[dry-run] {agent or '-'} {key}. " + _DRY_FILLER * (2 if key in ("take", "text") else 1)
         return f"[dry-run] {key or 'value'}"
 
     return json.dumps(gen(schema), ensure_ascii=False)
+
+
+def _dry_brief(prompt: str) -> str:
+    """The canned brief: the sections of schemas.BRIEF_SECTIONS; WHERE THE VIEWS SPLIT copies the split
+    sheet's first count phrase and, on a consensus sheet, the words 'case against' (§11.5 checks pass)."""
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+    from recon.schemas import BRIEF_SECTIONS
+    m = re.search(r"Count phrase \(copy exactly\): (.+)", prompt)
+    split = f"- {m.group(1).strip()}." if m else "- The lenses broadly agree today."
+    if "[consensus" in prompt:
+        split = "- No real split today. The strongest case against the consensus: dry-run red-team case.\n" + split
+    parts = []
+    for sec in BRIEF_SECTIONS:
+        body = split if sec == "WHERE THE VIEWS SPLIT" else f"- {_DRY_FILLER}"
+        parts.append(f"### {sec}\n{body}\n")
+    return "# RECON DAILY BRIEF\n\n" + "\n".join(parts)
 
 
 def _call_dry_run(prompt: str, tier: str, agent: str, schema_path: str | None = None) -> tuple[str, dict, str]:
@@ -324,9 +405,7 @@ def _call_dry_run(prompt: str, tier: str, agent: str, schema_path: str | None = 
                 "### Recurring Themes\n- dry-run theme — seen 1x\n\n### Lessons Learned\n- none\n\n### Archived\n- none"), {}, ""
     body = f"[dry-run] agent={agent or '-'} tier={tier} prompt_bytes={len(p)}\n\n" + _DRY_FILLER * 3
     if "RECON DAILY BRIEF" in p:
-        sections = ("WHAT HAPPENED", "WHAT IT MEANS", "MARKET MOOD", "THE CONTRARIAN CASE", "AI NEWSLETTER",
-                    "FUNDRAISING", "KOREA", "AI EDUCATION", "RISKS", "WHAT TO WATCH", "SCORECARD")
-        return "# RECON DAILY BRIEF\n\n" + "\n".join(f"### {s}\n- {_DRY_FILLER}\n" for s in sections), {}, ""
+        return _dry_brief(p), {}, ""
     return body, {}, ""
 
 

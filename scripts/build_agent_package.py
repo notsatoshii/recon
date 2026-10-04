@@ -36,7 +36,14 @@ CAPS = {
     "SOCIAL INTELLIGENCE": 16000,   # Reddit 6,000 + X 10,000
     "AI & TOOLS": 6000,
     "FUNDRAISING": 6000,
+    "PREDICTION MARKETS": 20000,    # Polymarket + Kalshi (phase-e §4.4)
 }
+# Phase E blocks that share a section with a v1 source raise that section's cap only when they are in the
+# package (phase-e §4.4): NEWS 13,000 -> 18,000 with ZDNet Korea, AI & TOOLS 6,000 -> 9,000 with the
+# changelogs. A package collected before Phase E keeps its old view byte for byte, so the spread probe and
+# the replays read the views Phase C §3 measured.
+PHASE_E_EXTRA = {"NEWS INTELLIGENCE": [("# ZDNet Korea Intelligence", 5000)],
+                 "AI & TOOLS": [("# Changelogs Intelligence", 3000)]}
 REDDIT_CAP = 6000
 X_CAP = 10000
 SOCIAL_EXTRACT_CAP = 8000
@@ -51,6 +58,8 @@ FALLBACK_NAMES = {
     "on-chain": "ON-CHAIN & MARKET DATA", "news": "NEWS INTELLIGENCE",
     "world monitor": "GEOPOLITICAL CONTEXT", "bettafish sentiment": "SENTIMENT & MARKET MOOD",
     "ai & tools": "AI & TOOLS", "fundraising": "FUNDRAISING",
+    "polymarket": "PREDICTION MARKETS", "kalshi": "PREDICTION MARKETS", "changelogs": "AI & TOOLS",
+    "zdnet korea": "NEWS INTELLIGENCE",
 }
 
 NOISE = re.compile(r"^### (r/\S+ -- (ERROR|empty)|@\S+ \((0 tweets|not found|error))")
@@ -293,7 +302,8 @@ def build(run: Path) -> int:
     tweets_picked: list[dict] = []
     posts: list[dict] = []
     for name, body, label in sections:
-        cap = CAPS.get(name, 4000)
+        cap = CAPS.get(name, 4000) + sum(extra for heading, extra in PHASE_E_EXTRA.get(name, [])
+                                         if re.search(rf"(?m)^{re.escape(heading)}", body))
         if name == "SOCIAL INTELLIGENCE":
             parts = re.split(r"(?m)^(?=# Twitter/X Intelligence)", body, maxsplit=1)
             reddit = parts[0]
