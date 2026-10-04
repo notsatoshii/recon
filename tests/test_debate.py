@@ -357,6 +357,56 @@ class PairingTests(unittest.TestCase):
         r2 = debate.pair(qs2, p2, e, ag, "normal", 3)
         self.assertEqual(json.dumps(r1, sort_keys=True), json.dumps(r2, sort_keys=True))
 
+    def test_load_skipped_split_stays_unpaired_when_target_met(self):
+        # Review 2026-10-04 (/tmp/vanish.py): budget_pairs(10, 24, 2, 3) -> 2 pairs. q1 (trader-builder, gap 40)
+        # pairs first; q2 (trader-analyst, 35) and q3 (builder-analyst, 32) are skipped on the cap-1 load pass, and
+        # q4 (skeptic-narrator, 25) takes the second slot. q2 and q3 were outranked by nothing: they must be unpaired
+        # (load cap) and get split_unpaired blocks, not the strict rule-2 bar (q2 has 1 dissenter, q3 range 32).
+        ags = ["trader", "narrator", "builder", "analyst", "skeptic", "policy_analyst", "user_agent",
+               "macro_strategist", "ai_engineer"]
+        base = {"q1": 60, "q2": 55, "q3": 55, "q4": 60, "q5": 60}
+        spread = [-6, -3, 0, 3, 6, -5, 5, 1, -1]
+        vals = {q: {a: base[q] + spread[i] for i, a in enumerate(ags)} for q in base}
+        ends = {"q1": ("trader", 82, "builder", 42), "q2": ("trader", 75, "analyst", 40),
+                "q3": ("builder", 72, "analyst", 40), "q4": ("skeptic", 76, "narrator", 51),
+                "q5": ("policy_analyst", 74, "user_agent", 52)}
+        for q, (h, ph, lo, pl) in ends.items():
+            vals[q][h], vals[q][lo] = ph, pl
+        vals["q4"]["macro_strategist"], vals["q5"]["ai_engineer"] = 73, 72
+        evq = {a: {} for a in ags}
+        for q, (h, _, lo, _) in ends.items():
+            evq[h][q], evq[lo][q] = ev(quote=f"{h}-{q}"), ev(quote=f"{lo}-{q}")
+        qs, p, e = setup(vals, weights={q: 1 for q in vals}, evq=evq)
+        target, _ = debate.budget_pairs(10, 24, 2, 3)
+        self.assertEqual(target, 2)
+        res = debate.pair(qs, p, e, ags, "risk", target)
+        full = debate.pair(qs, p, e, ags, "risk", 3)
+        self.assertEqual([x["question_id"] for x in res["pairs"]], ["q1", "q4"])
+        self.assertEqual([x["question_id"] for x in full["pairs"]], ["q1", "q4", "q5"])
+        self.assertEqual([(u["question_id"], u["reason"]) for u in res["unpaired"]],
+                         [("q2", debate.UNPAIRED_LOAD_CAP), ("q3", debate.UNPAIRED_LOAD_CAP)])
+        unp = debate.dropped_unpaired(res, full, "budget", p)
+        self.assertEqual([(u["question_id"], u["range"]) for u in unp], [("q2", 35), ("q3", 32), ("q5", 22)])
+        # full@3 records the same load-skipped questions; dropped_unpaired merges them from `full` alone too
+        self.assertEqual({u["question_id"] for u in full["unpaired"]}, {"q2", "q3"})
+        self.assertEqual([u["question_id"] for u in debate.dropped_unpaired({"pairs": res["pairs"]}, full, "budget", p)],
+                         ["q2", "q3", "q5"])
+        takes = {a: {"positions": [{"question_id": q, "reason": "r", "evidence": []} for q in vals]} for a in ags}
+
+        def blocks(gap_after_q4):
+            debates = [{"question_id": x["question_id"], "high": x["high"], "low": x["low"], "gap_before": x["gap"],
+                        "gap_after": gap_after_q4 if x["question_id"] == "q4" else x["gap"], "in_split": True,
+                        "live_split": True, "held_split": x["question_id"] == "q1", "narrowed_on_data": False,
+                        "crux_agreed": False} for x in res["pairs"]]
+            sh = debate.split_sheet("2026-10-04", "x", res["day_type"], qs, p, p, debates, {}, {}, takes, None, 20,
+                                    unpaired=[u["question_id"] for u in unp])
+            return [(b["question_id"], b["type"], b["debated"]) for b in sh["blocks"]]
+
+        # both debates stand: the wider direction split q2 takes the undebated slot, not degree-22 q5
+        self.assertEqual(blocks(25), [("q1", "direction", True), ("q4", "degree", True), ("q2", "direction", False)])
+        # q4 closed below gap_min beside a held split (#70): its slot goes to q3, both direction splits print
+        self.assertEqual(blocks(12), [("q1", "direction", True), ("q2", "direction", False), ("q3", "direction", False)])
+
 
 # ── the evidence gate ────────────────────────────────────────────────────────────────────
 

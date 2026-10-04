@@ -693,17 +693,27 @@ def pair(questions: list[dict], p: dict, evq: dict, active: list[str], depth: st
     cands.sort(key=lambda c: (c[1] < robust, -c[0], -c[1], -c[2], c[3], c[4], c[5]))
     if off_reason:
         target = 0
-    pairs, used_q, load = [], set(), Counter()
+    # load_skipped: questions with a candidate the load cap skipped (in either pass) ahead of a pair accepted later
+    # in that pass. Such a question lost its slot to the cap, not to a higher-ranked split, so it is unpaired even
+    # when the day reaches its target (§4.3/§11.1; review 2026-10-04: q2/q3 skipped on load while q4 took the
+    # slot, and both direction splits left the sheet).
+    pairs, used_q, load, load_skipped = [], set(), Counter(), set()
     for cap in (1, 2):
+        skipped = []
         for c in cands:
             if len(pairs) >= target:
                 break
-            if c[3] in used_q or load[c[4]] >= cap or load[c[5]] >= cap:
+            if c[3] in used_q:
+                continue
+            if load[c[4]] >= cap or load[c[5]] >= cap:
+                skipped.append(c[3])
                 continue
             pairs.append(c)
             used_q.add(c[3])
             load[c[4]] += 1
             load[c[5]] += 1
+            load_skipped.update(skipped)
+            skipped = []
     out_pairs = [{"question_id": c[3], "high": c[5], "low": c[4], "p_high": p[c[5]][c[3]], "p_low": p[c[4]][c[3]],
                   "gap": c[1], "score": c[0], "both_lenses": c[6], "repeat_of_yesterday": c[7]} for c in pairs]
     lone_q = {x["question_id"] for x in lone}
@@ -711,15 +721,15 @@ def pair(questions: list[dict], p: dict, evq: dict, active: list[str], depth: st
             "eligible": elig, "lone_outliers": lone}
     if out_pairs:
         # A question with a candidate pair that the load cap left out while slots remained (its debaters already
-        # argue two pairs) is unpaired, not 'more splits than slots': §11.1 gives it the split_unpaired bar.
+        # argue two pairs), or that the cap skipped ahead of a lower-ranked pair that then took the slot, is unpaired, not 'more splits than slots': §11.1 gives it the split_unpaired bar.
         # A question whose take range is >= gap_min but has no candidate pair at all (its dissenters fail
         # eligibility) is unpaired for the same reason it would be on a split_unpaired day: it must not lose its
         # block only because another question formed a pair (review 2026-10-04).
         paired, cand_q = {c[3] for c in pairs}, {c[3] for c in cands}
         unp = []
-        if len(pairs) < target:
-            for qid in sorted(cand_q - paired, key=lambda x: (-ranges[x], x)):
-                unp.append({"question_id": qid, "range": int(ranges[qid]), "reason": UNPAIRED_LOAD_CAP})
+        capped = (cand_q if len(pairs) < target else load_skipped) - paired
+        for qid in sorted(capped, key=lambda x: (-ranges[x], x)):
+            unp.append({"question_id": qid, "range": int(ranges[qid]), "reason": UNPAIRED_LOAD_CAP})
         for qid in sorted((q for q, r in ranges.items() if r >= gap_min and q not in cand_q and q not in lone_q),
                           key=lambda x: (-ranges[x], x)):
             unp.append({"question_id": qid, "range": int(ranges[qid]), "reason": UNPAIRED_NO_ELIGIBLE})
@@ -749,15 +759,15 @@ def pair(questions: list[dict], p: dict, evq: dict, active: list[str], depth: st
     return {"day_type": "consensus", "pairs": [], "unpaired": [], "red_team": rt, **base}
 
 
-UNPAIRED_LOAD_CAP = "load cap: its debaters already argue two pairs"
+UNPAIRED_LOAD_CAP = "load cap: its debaters already argue another pair"
 UNPAIRED_NO_ELIGIBLE = "no eligible pair straddles the median with the gap (evidence missing or social-only)"
 
 
 def dropped_unpaired(res: dict, full: dict, why: str, p: dict | None = None) -> list[dict]:
     """§4.3/§11.1. The questions whose candidate pair the depth target would have debated but the day did not:
     `res` is pair() at the budgeted target, `full` pair() at the depth target, `why` 'budget' or 'ceiling'.
-    Returns res's own unpaired (load cap) plus every question paired, or load-capped, in `full` that `res`
-    left without a pair, one entry each, `range` the take range from `p` ({agent: {qid: int}}; the pair's gap
+    Returns res's own unpaired (load cap, including a question the cap skipped ahead of a pair that took the
+    slot) plus every question paired, or load-capped, in `full` that `res` left without a pair, one entry each, `range` the take range from `p` ({agent: {qid: int}}; the pair's gap
     without it) (fifth review: budget_pairs(12, 24, 2, 3) gives up the last pair on a
     normal day, and its split vanished from the brief when the take range was under 40)."""
     paired = {x["question_id"] for x in res.get("pairs") or []}
