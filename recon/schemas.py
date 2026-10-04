@@ -221,6 +221,7 @@ PAIRING = obj(
     unpaired=arr(obj(question_id=s(), range=i(), reason=s())),
     red_team=nullable(obj(agent=enum(AGENTS), question_id=s(), median=num(), distance=num(), reason=s())),
     eligible=obj(**{q: arr(enum(AGENTS)) for q in QIDS}),
+    lone_outliers=arr(obj(question_id=s(), agent=enum(AGENTS), p=P, range=i(), trimmed_range=i(), median=num())),
     positions_evidence=free("{agent: {question_id: [EV_CHECKED]}}; active agents only, so §18 can retire agents"),
     budget=obj(used=i(), budget=i(), ceiling=i(), target_before_budget=i(), crux_check_planned=b()),
     debate=obj(enabled=b(), reason=s("why the debate is off (RECON_DEBATE, §0.1/§18); empty when on")),

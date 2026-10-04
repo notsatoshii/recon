@@ -1035,6 +1035,9 @@ SECTOR CONTEXT (crypto and macro landscape; background, not today's data):
             self.log(f"    [{x['question_id']}] {x['high']} {x['p_high']}% vs {x['low']} {x['p_low']}% (gap {x['gap']}, score {x['score']})")
         for u in res["unpaired"]:
             self.log(f"    unpaired [{u['question_id']}] range {u['range']}: {u['reason']}")
+        for x in res.get("lone_outliers") or []:
+            self.log(f"    one lens [{x['question_id']}] range {x['range']} only through {x['agent']} {x['p']}% "
+                     f"({x['trimmed_range']} without it, median {x['median']:.0f}): no debate slot")
         if res.get("red_team"):
             rt = res["red_team"]
             self.log(f"    red team: {rt['agent']} on [{rt['question_id']}] ({rt['reason']})")

@@ -99,6 +99,19 @@ def near_misses(pos: dict, gap_min: int) -> list[dict]:
     return out
 
 
+def lone_outliers(pos: dict, gap_min: int) -> list[dict]:
+    """Questions whose take range reaches gap_min only through one lens (debate.lone_lens): pairing gives them no
+    slot (§4.2, §20.7 #83); a resample of the takes, not this draw, says whether the split is real."""
+    take_p = pos.get("take_p") or {}
+    out = []
+    for q in pos.get("questions") or []:
+        x = debate.lone_outlier({a: v[q["id"]] for a, v in take_p.items() if q.get("id") in v}, gap_min)
+        if x:
+            out.append({"question_id": q["id"], "agent": x["agent"], "range": x["range"],
+                        "trimmed_range": x["trimmed_range"]})
+    return out
+
+
 def render_ratios(per_debate: list[dict]) -> str:
     """'q3 macro_strategist/trader 22->13 0.59 (< 0.6)' per debate, '; '-joined."""
     return "; ".join(f"{x['question_id']} {x['high']}/{x['low']} {x['gap_before']}->{x['gap_after']} {x['ratio']:.2f}"
@@ -169,6 +182,8 @@ def report(root: Path, run_id: str, old: dict | None, gap_min_probe: int | None)
     gm_run = int(pairing.get("gap_min") or gap_min_probe or debate.GAP_MIN_DEFAULT)
     near = near_misses(pos, gm_run)
     near_txt = "; ".join(f"{x['question_id']} {x['range']}" for x in near) or "none"
+    lone = lone_outliers(pos, gm_run)
+    lone_txt = "; ".join(f"{x['question_id']} {x['range']} ({x['trimmed_range']} without {x['agent']})" for x in lone) or "none"
     m = {
         "run_id": run_id, "day": run.get("day"), "status": run.get("status"),
         "questions_kept": len(qs), "questions_dropped": len(dropped),
@@ -201,7 +216,7 @@ def report(root: Path, run_id: str, old: dict | None, gap_min_probe: int | None)
         "calls": u.get("calls_logged", u.get("calls")), "budget_skips": len(u.get("budget_skips", [])),
         "in_tok": u.get("in_tok"), "cached_tok": u.get("cached_tok"), "out_tok": u.get("out_tok"),
         "wall": u.get("wall_seconds"), "ceiling": u.get("ceiling", 32), "lens_bytes": lens, "lens_ok": lens_ok,
-        "spread": spread, "near_misses": near, "top_pair": (pairing.get("pairs") or [{}])[0].get("question_id"),
+        "spread": spread, "near_misses": near, "lone_outliers": lone, "top_pair": (pairing.get("pairs") or [{}])[0].get("question_id"),
     }
     o = old_metrics(old)
     bar = {
@@ -235,6 +250,8 @@ def report(root: Path, run_id: str, old: dict | None, gap_min_probe: int | None)
              f"| near misses: take range within {NEAR_MISS} under gap_min {gm_run} (one draw: rerun --from-phase takes "
              f"before reading the pair count) | "
              f"{near_txt} | — |",
+             f"| one-lens ranges: >= gap_min {gm_run} only through one lens, no debate slot (rerun --from-phase takes "
+             f"twice before counting the run toward the pass bar) | {lone_txt} | — |",
              f"| live splits / held splits / useful debates | {m['live_splits']} / {m['held_splits']} / {m['useful']} | deep dive: {o.get('deep_dive', '—')} |",
              f"| effect per debate | {'; '.join(m['effects']) or '—'} | — |",
              f"| closure without evidence; median gap_after/gap_before (no crux data) | {m['closure_without_evidence']}; "
@@ -319,18 +336,22 @@ def spread_stability(samples: list[dict], gap_min: int = debate.GAP_MIN_DEFAULT)
                 if len(vals) < 3:
                     continue
                 rng = int(max(vals) - min(vals))
+                one = debate.lone_lens(vals, gap_min)
                 t = next((t for t in topics if s["run_id"] not in t["runs"]
                           and any(same_topic(q["text"], x) for x in t["texts"])), None)
                 if t is None:
                     t = {"label": ", ".join(sorted(_subject(q["text"]))) or q["text"][:40], "texts": [], "runs": [],
-                         "ranges": []}
+                         "ranges": [], "lone_flags": []}
                     topics.append(t)
                 t["texts"].append(q["text"])
                 t["runs"].append(s["run_id"])
                 t["ranges"].append(rng)
+                t["lone_flags"].append(one)
         for t in topics:
             t["asked"] = len(t["runs"])
-            t["clears"] = sum(1 for r in t["ranges"] if r >= gap_min)
+            # a range one lens alone carries to gap_min does not clear: pairing gives it no slot (§20.7 #83)
+            t["lone"] = sum(t["lone_flags"])
+            t["clears"] = sum(1 for r, one in zip(t["ranges"], t["lone_flags"]) if r >= gap_min and not one)
             t["unstable"] = 0 < t["clears"] < t["asked"]
             # near misses that repeat across samples (never clearing) point at GAP_MIN, not at the draw (§20.7 #82)
             t["near"] = sum(1 for r in t["ranges"] if gap_min - NEAR_MISS <= r < gap_min)
@@ -355,6 +376,7 @@ def render_spread_stability(days: list[dict]) -> list[str]:
             lines.append(f"  - {t['label']}: asked {t['asked']}/{len(d['runs'])}, take range "
                          f"{min(t['ranges'])}-{max(t['ranges'])} ({', '.join(map(str, t['ranges']))}), "
                          f"range >= GAP_MIN {d['gap_min']} in {t['clears']}/{t['asked']}"
+                         + (f" (one lens carries the range in {t['lone']}: not counted)" if t.get("lone") else "")
                          + (" (UNSTABLE: the pair depends on the sample)" if t["unstable"] else "")
                          + (f" (NEAR MISS in {t['near']}/{t['asked']}, within {NEAR_MISS} under GAP_MIN: recheck "
                             f"GAP_MIN {d['gap_min']} against the probe)" if t.get("near_repeat") else ""))
@@ -384,7 +406,7 @@ def main(argv=None) -> int:
         (root / rid / "replay_report.md").write_text(text, encoding="utf-8")
         allm.append(m)
         print(f"| {day} | **Phase C replay {rid}** ({m['day_type']}): {m['questions_kept']} questions, {m['pairs']} pairs, "
-              f"near misses {len(m['near_misses'])}, live splits {m['live_splits']}, held {m['held_splits']}, useful {m['useful']}, soft moves {m['soft_moves']}/{m['responses']} "
+              f"near misses {len(m['near_misses'])}, one-lens ranges {len(m['lone_outliers'])}, live splits {m['live_splits']}, held {m['held_splits']}, useful {m['useful']}, soft moves {m['soft_moves']}/{m['responses']} "
               f"(requests {m['soft_requests']}), endpoints by tier {m['endpoints_by_tier']}, "
               f"evidence {m['evidence_rate']}, overlap {m['citation_overlap']}, brief {m['words']} words, status {m['status']} "
               f"| {m['calls']} | {(m['in_tok'] or 0) / 1e6:.2f} M ({(m['cached_tok'] or 0) / 1e6:.2f} M cached) | "

@@ -91,7 +91,8 @@ class SpreadStabilityTests(unittest.TestCase):
         self.assertEqual(sorted(day["pairs"]), [1, 2, 2])
         topics = {t["label"]: t for t in day["topics"]}
         openai, hormuz = topics["OpenAI, Pro"], topics["Hormuz, South Korea"]
-        self.assertEqual((openai["asked"], openai["clears"], openai["unstable"]), (4, 4, False))
+        # p1's 26 is one lens (45 against 61-71, 10 without it): it no longer clears, so OpenAI is unstable (§20.7 #83)
+        self.assertEqual((openai["asked"], openai["clears"], openai["lone"], openai["unstable"]), (4, 3, 1, True))
         self.assertEqual(sorted(openai["ranges"]), [26, 34, 35, 37])
         self.assertEqual((hormuz["asked"], hormuz["clears"], hormuz["unstable"]), (3, 2, True))
         self.assertEqual(topics["Bitcoin"]["clears"], 0)
@@ -107,7 +108,8 @@ class SpreadStabilityTests(unittest.TestCase):
         self.assertIn("pairs 1-2 over 3 runs to pairing (target 2); one replay's pair count is one sample", text)
         self.assertIn("Hormuz, South Korea: asked 3/4, take range 12-38", text)
         self.assertIn("in 2/3 (UNSTABLE", text)
-        self.assertIn("OpenAI, Pro: asked 4/4, take range 26-37 (37, 35, 34, 26), range >= GAP_MIN 20 in 4/4", text)
+        self.assertIn("OpenAI, Pro: asked 4/4, take range 26-37 (37, 35, 34, 26), range >= GAP_MIN 20 in 3/4 (one lens "
+                      "carries the range in 1: not counted) (UNSTABLE", text)
 
 
 if __name__ == "__main__":
@@ -193,3 +195,32 @@ class NearMissTests(unittest.TestCase):
         self.assertIn("Bitcoin: asked 2/2, take range 18-18 (18, 18), range >= GAP_MIN 20 in 0/2 (NEAR MISS in 2/2, "
                       "within 3 under GAP_MIN: recheck GAP_MIN 20 against the probe)", text)
         self.assertEqual(text.count("NEAR MISS"), 1)
+
+
+class LoneOutlierTests(unittest.TestCase):
+    """09-11 c11 q3 (§20.7 #83): OpenAI Pro reached range 27 only through one lens (8 of 9 at 31-42%, one at 58), where
+    c10 asked the topic at range 19. Item (g) must not count that range as clearing GAP_MIN, and the run report names it."""
+    C11 = [("q3", OPENAI, [31, 33, 35, 36, 38, 39, 40, 42, 58])]
+    C10 = [("q3", OPENAI, [53, 54, 56, 58, 60, 64, 66, 70, 72])]          # 19
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self.tmp.name)
+        write_run(self.root, "2026-09-11-c11", self.C11, 1)
+        write_run(self.root, "2026-09-11-c10", self.C10, 1)
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_one_lens_range_does_not_clear(self):
+        samples = [replay_report.run_sample(self.root, r) for r in ("2026-09-11-c10", "2026-09-11-c11")]
+        (day,) = replay_report.spread_stability(samples, 20)
+        (t,) = day["topics"]
+        self.assertEqual((t["clears"], t["lone"], t["unstable"]), (0, 1, False))
+        text = "\n".join(replay_report.render_spread_stability([day]))
+        self.assertIn("range >= GAP_MIN 20 in 0/2 (one lens carries the range in 1: not counted)", text)
+
+    def test_report_lists_one_lens_ranges(self):
+        text, m = replay_report.report(self.root, "2026-09-11-c11", None, None)
+        self.assertEqual(m["lone_outliers"], [{"question_id": "q3", "agent": AGENTS[8], "range": 27, "trimmed_range": 11}])
+        self.assertIn(f"| q3 27 (11 without {AGENTS[8]}) |", text)

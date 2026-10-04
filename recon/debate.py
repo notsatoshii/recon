@@ -590,6 +590,45 @@ def pick_red_team(q: dict, p: dict, evq: dict, active: list[str]) -> dict | None
             "reason": "most verified data evidence on the question"}
 
 
+def _lone_end(vals, gap_min: int) -> str:
+    """'hi' or 'lo' when one take alone carries the range to gap_min, else ''. Both must hold: without that take
+    the range is under gap_min, and the take is an outlier (beyond the 1.5 x IQR fence of all takes), so a spread
+    that is merely even and just over gap_min (28, 32, ..., 46, 50) is not one lens's split."""
+    v = sorted(float(x) for x in vals)
+    if len(v) < 3 or v[-1] - v[0] < gap_min:
+        return ""
+    q = statistics.quantiles(v, n=4, method="inclusive")
+    iqr = q[2] - q[0]
+    drop_hi, drop_lo = v[-2] - v[0], v[-1] - v[1]
+    if drop_hi < gap_min and drop_hi <= drop_lo and v[-1] > q[2] + 1.5 * iqr:
+        return "hi"
+    if drop_lo < gap_min and v[0] < q[0] - 1.5 * iqr:
+        return "lo"
+    return ""
+
+
+def lone_lens(vals, gap_min: int) -> bool:
+    """§4.2: the take range reaches gap_min only through one lens, an outlier whose removal leaves a range under
+    gap_min. One draw of one lens is not a split worth a debate slot: 09-11 c11 q3 (OpenAI Pro) staged a pair on a
+    1-of-9 outlier (8 of 9 at 31-42%, IQR 5, one lens at 58: range 27, 11 without it), while c10 asked the same
+    topic at range 19 with a yes majority, and the pair counts over the package's replays went 2, 1, 2 (§20.7 #83).
+    A minority of two (58 and 60) or one dissenter on each side survives dropping any one lens and still pairs."""
+    return bool(_lone_end(vals, gap_min))
+
+
+def lone_outlier(vals_by_agent: dict, gap_min: int) -> dict | None:
+    """The lens that alone carries a question's take range to gap_min (lone_lens), its take, the range, the range
+    without it and the median; None otherwise."""
+    end = _lone_end(list(vals_by_agent.values()), gap_min)
+    if not end:
+        return None
+    v = sorted(vals_by_agent.values())
+    pick = max if end == "hi" else min
+    far = pick(vals_by_agent.items(), key=lambda kv: kv[1])
+    return {"agent": far[0], "p": int(far[1]), "range": int(v[-1] - v[0]),
+            "trimmed_range": int(v[-2] - v[0] if end == "hi" else v[-1] - v[1]), "median": float(statistics.median(v))}
+
+
 def pair(questions: list[dict], p: dict, evq: dict, active: list[str], depth: str, target: int,
          gap_min: int = GAP_MIN_DEFAULT, yesterday_pairs: set | None = None, off_reason: str | None = None) -> dict:
     """§4.2-4.3. p: {agent: {qid: int}}; evq: {agent: {qid: [EV_CHECKED]}}. Returns the PAIRING
@@ -601,7 +640,7 @@ def pair(questions: list[dict], p: dict, evq: dict, active: list[str], depth: st
     elig = {q: [] for q in ("q1", "q2", "q3", "q4", "q5")}
     if not questions:
         return {"day_type": "no_questions", "depth": depth, "target": target, "gap_min": gap_min, "pairs": [],
-                "candidates_considered": 0, "unpaired": [], "red_team": None, "eligible": elig}
+                "candidates_considered": 0, "unpaired": [], "red_team": None, "eligible": elig, "lone_outliers": []}
 
     def quotes(a, qid):
         return {qnorm(e.get("quote")) for e in evq.get(a, {}).get(qid, []) if _ok(e)}
@@ -609,7 +648,7 @@ def pair(questions: list[dict], p: dict, evq: dict, active: list[str], depth: st
     def vcount(a, qid):
         return sum(1 for e in evq.get(a, {}).get(qid, []) if _ok(e))
 
-    cands, ranges = [], {}
+    cands, ranges, lone = [], {}, []
     for q in questions:
         qid = q["id"]
         vals = [p[a][qid] for a in active if qid in p[a]]
@@ -621,6 +660,13 @@ def pair(questions: list[dict], p: dict, evq: dict, active: list[str], depth: st
         el = eligible_agents(q, p, evq, active)
         if qid in elig:
             elig[qid] = el
+        # A range that one lens alone carries to gap_min gets no debate slot and no undebated block: it is not
+        # wide (no split_unpaired, no unpaired entry), and on a day with no other split it is a consensus day,
+        # where the red team (furthest eligible agent from the median) can argue it in one call (§4.2, §20.7 #83).
+        lo_x = lone_outlier({a: p[a][qid] for a in active if qid in p[a]}, gap_min)
+        if lo_x:
+            lone.append({"question_id": qid, **lo_x})
+            continue
         for a, b in combinations(el, 2):
             lo, hi = sorted((a, b), key=lambda x: (p[x][qid], x))
             gap = p[hi][qid] - p[lo][qid]
@@ -660,8 +706,9 @@ def pair(questions: list[dict], p: dict, evq: dict, active: list[str], depth: st
             load[c[5]] += 1
     out_pairs = [{"question_id": c[3], "high": c[5], "low": c[4], "p_high": p[c[5]][c[3]], "p_low": p[c[4]][c[3]],
                   "gap": c[1], "score": c[0], "both_lenses": c[6], "repeat_of_yesterday": c[7]} for c in pairs]
+    lone_q = {x["question_id"] for x in lone}
     base = {"depth": depth, "target": target, "gap_min": gap_min, "candidates_considered": len(cands),
-            "eligible": elig}
+            "eligible": elig, "lone_outliers": lone}
     if out_pairs:
         # A question with a candidate pair that the load cap left out while slots remained (its debaters already
         # argue two pairs) is unpaired, not 'more splits than slots': §11.1 gives it the split_unpaired bar.
@@ -673,12 +720,13 @@ def pair(questions: list[dict], p: dict, evq: dict, active: list[str], depth: st
         if len(pairs) < target:
             for qid in sorted(cand_q - paired, key=lambda x: (-ranges[x], x)):
                 unp.append({"question_id": qid, "range": int(ranges[qid]), "reason": UNPAIRED_LOAD_CAP})
-        for qid in sorted((q for q, r in ranges.items() if r >= gap_min and q not in cand_q),
+        for qid in sorted((q for q, r in ranges.items() if r >= gap_min and q not in cand_q and q not in lone_q),
                           key=lambda x: (-ranges[x], x)):
             unp.append({"question_id": qid, "range": int(ranges[qid]), "reason": UNPAIRED_NO_ELIGIBLE})
         unp.sort(key=lambda u: (-u["range"], u["question_id"]))
         return {"day_type": "debate", "pairs": out_pairs, "unpaired": unp, "red_team": None, **base}
-    wide = sorted(((qid, r) for qid, r in ranges.items() if r >= gap_min), key=lambda x: (-x[1], x[0]))
+    wide = sorted(((qid, r) for qid, r in ranges.items() if r >= gap_min and qid not in lone_q),
+                  key=lambda x: (-x[1], x[0]))
     if off_reason:
         if wide:
             return {"day_type": "split_unpaired", "pairs": [], "red_team": None,

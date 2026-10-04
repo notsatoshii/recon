@@ -486,6 +486,7 @@ for q in questions:
     if len(vals) < 3: continue
     med = median(vals)
     w = round(min(3, max(1, q.weight)))                  # clamped, a weight of 10 cannot dominate
+    if lone_lens(vals, GAP_MIN): continue                # one outlying lens carries the range (§20.7 #83)
     for a, b in combinations(sorted(eligible(q)), 2):
         lo, hi = sorted((a, b), key=lambda x: (p[x][q], x))
         gap = p[hi][q] - p[lo][q]
@@ -512,7 +513,15 @@ otherwise fall short of its target, then two; pairs straddle the median, so each
 the consensus, not about two degrees of the same view; pairs prefer the extremes because the
 score is the gap; a pair whose gap is under `GAP_MIN + 2 × FREE_MOVE` (30 at the default) ranks
 after every pair with that margin, whatever its score, since the two free moves (§7.2) alone can take
-it under `GAP_MIN` without qualifying evidence; it is still debated when a slot remains. Both sides of a pair challenge each other (2 calls), so direction does not
+it under `GAP_MIN` without qualifying evidence; it is still debated when a slot remains. A question whose
+take range reaches `GAP_MIN` only through one lens gets no pair (`lone_lens`): dropping its most outlying
+take leaves a range under `GAP_MIN`, and that take is beyond the 1.5 × IQR fence of all takes (09-11 c11
+q3: 8 of 9 at 31-42%, one at 58, range 27, 11 without it). It is not wide in §4.3 either (no
+`unpaired[]` entry, no split_unpaired block): it is listed in `pairing.json → lone_outliers` with the
+lens, its take, the range and the range without it, and on a day with no other split it is a consensus
+day, where the red team (the eligible agent furthest from the median) argues it in one call. A minority
+of two, one dissenter on each side, or an even spread just over `GAP_MIN` (no take beyond the fence)
+still pairs. Both sides of a pair challenge each other (2 calls), so direction does not
 matter; the record labels them `high` and `low`. `GAP_MIN_DEFAULT` is 20 until the spread probe
 sets it (§15.0: `max(20, 2 × median retest |Δp|)`); the value used is written to
 `pairing.json → gap_min`.
@@ -1813,7 +1822,10 @@ The three replays (09-10, 09-11, 10-04) together:
   `NEAR_MISS` (3, the probe's median retest |Δp|) under `GAP_MIN` is a near miss: each run's report
   lists them with the advice to rerun the takes (`--from-phase takes`) before reading the pair count,
   and a topic that never clears but misses that narrowly in two or more samples is marked NEAR MISS
-  with 'recheck GAP_MIN against the probe' (§20.7 #82);
+  with 'recheck GAP_MIN against the probe' (§20.7 #82). A range one lens alone carries to `GAP_MIN`
+  (§4.2 `lone_lens`) does not count as clearing; the topic line says in how many samples it happened, and
+  each run's report lists such questions with the advice to resample the takes twice before counting
+  the run toward the pass bar (§20.7 #83);
 - lens extras: `lens_extra_bytes ≥ 2 KB` for at least 7 of 9 agents in the 09-11 and in the 10-04
   replay, every agent above 0 in the 09-10 replay (its package predates the KOREA, AI EDUCATION
   and fundraising blocks; measured 5/9 at 2 KB), and a **lens-quote share** of at least 0.5 (the share
@@ -2221,3 +2233,4 @@ Path: `docs/v2/phase-c-spec.md`.
 | 80 | medium | 09-11 c8 q1 ('Will Bitcoin trade below $75,000 by 2026-09-18?'), crux '$75,000': a crux number qualified a quote on its own, and on threshold questions the crux repeats the threshold, so 'Apeing's Crypto Presale Crosses $75K Raised ...' qualified (source other) and gate_move took trader 62 -> 47, a 15-point move with no flag, on a presale headline | On threshold and direction questions a matched crux number also needs a crux entity, a metric word or the question's subject (aliases included) on the same line; the seventh-review small-percentage rule extended to every figure. Event and judgment questions unchanged. The gate's why_not names the case | `number_backed`, `shares_specific`, `gate_move` |
 | 81 | medium | Rate-day headlines phrased without 'odds' or 'chance' were data: 'Traders price a 78% probability of an October Fed cut as CME FedWatch odds firm' and 'Polymarket bettors give 64% likelihood that the Fed cuts in October' came back cls=data, qualifies=True, and gate_move took skeptic 40 -> 65, the full 25-point allowance, on market odds; either could be a crux hit and confirm a closure | `_HEADLINE_ODDS` counts probability, likelihood, bet/bettors/betting, priced/pricing, implied, traders put/see/give, and FedWatch/Polymarket/Kalshi next to an unsigned non-period percentage as market, at every reader of `market_line_in` | `_HEADLINE_ODDS`, `market_line_in` |
 | 82 | medium | 09-11 c10 staged 1 pair (q4 OpenAI Pro, trader vs user_agent, 32 -> 28 on argument, held) where c9 staged 2: q1-q3 take ranges were 18/18/19, 1-2 points under `GAP_MIN` 20, so none was paired, and the report printed the pair count with nothing marking the three near misses as one draw; with one debate the pass-bar checks across debates had one sample | Report only, no pairing change from one sample: each run's replay report has a near-miss row (range in [`GAP_MIN` - 3, `GAP_MIN`)) telling the reader to rerun the takes first, the model-log row counts them, and item (g) marks a topic NEAR MISS when it never clears and misses within 3 in two or more samples, the signal to recheck `GAP_MIN` against the probe | `scripts/replay_report.py` `NEAR_MISS`, `near_misses`, `spread_stability`, `render_spread_stability`; §15.5 (g) |
+| 83 | medium | 09-11 c11 staged a pair on q3 (OpenAI Pro) where the range of 27 came from one lens: 8 of 9 at 31-42% (IQR 5), one at 58, 11 without it. c10 asked the same topic (25 Sep window) at range 19 with a yes majority (6 of 9 at 54-72%); pair counts over the package's replays were 2 (c9), 1 (c10), 2 (c11), so whether the split appeared depended on one draw of one lens, and c11 had no take resamples for item (g) | Pairing: a question whose range reaches `GAP_MIN` only through one outlying lens (without it under `GAP_MIN`, and beyond the 1.5 × IQR fence) gets no pair and no undebated block; it goes to `pairing.json → lone_outliers` and the run log; alone it makes a consensus day, so the red team can argue it in one call. A minority of two still pairs. Item (g) does not count such a range as clearing (marked per topic; the measured 09-11 p1 OpenAI sample, 45 against 61-71, now counts as not clearing and the topic as UNSTABLE), and each run's report has a one-lens row saying to resample the takes twice (`copy_run` to `t1`/`t2`, `--from-phase takes`, `RECON_STOP_AFTER=takes`, ~18 calls) before counting the run toward the pass bar | `debate.lone_lens`, `lone_outlier`, `pair`; `schemas.PAIRING.lone_outliers`; `orchestrator.ph_pairing` log; `replay_report.lone_outliers`, `spread_stability`, `render_spread_stability`; §4.2, §15.5 (g) |

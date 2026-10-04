@@ -256,6 +256,47 @@ class PairingTests(unittest.TestCase):
         alone = debate.pair([q for q in qs if q["id"] == "q1"], p, e, list(p), "normal", 1)
         self.assertEqual([(x["question_id"], x["gap"]) for x in alone["pairs"]], [("q1", 22)])
 
+    # 09-11 c11 q3 (OpenAI Pro): 8 of 9 at 31-42%, one lens at 58 (range 27, IQR 5). The pair rested on one draw of
+    # one lens: c10 asked the same topic at range 19 with a yes majority, and pair counts over the replays went 2, 1, 2.
+    C11_Q3 = [31, 33, 35, 36, 38, 39, 40, 42, 58]
+
+    def test_one_lens_range_gets_no_debate_slot(self):
+        qs, p, e = setup({"q3": dict(zip(AG, self.C11_Q3))})
+        r = debate.pair(qs, p, e, AG, "normal", 3)
+        self.assertEqual(r["pairs"], [])
+        self.assertEqual(r["day_type"], "consensus")               # not split_unpaired: no undebated block either
+        self.assertEqual(r["unpaired"], [])
+        self.assertEqual(r["lone_outliers"], [{"question_id": "q3", "agent": AG[8], "p": 58, "range": 27,
+                                               "trimmed_range": 11, "median": 38.0}])
+        self.assertEqual(r["red_team"]["agent"], AG[8])            # the outlier argues it in the one red-team call
+        schemas.validate(dict(r, positions_evidence={}, budget={"used": 0, "budget": 24, "ceiling": 32,
+                              "target_before_budget": 3, "crux_check_planned": False},
+                              debate={"enabled": True, "reason": ""}), schemas.PAIRING)
+
+    def test_one_lens_range_beside_a_real_split(self):
+        # a debate day: the real split is paired, the one-lens question is neither paired nor unpaired
+        qs, p, e = setup({"q1": dict(zip(AG, [20, 25, 30, 35, 50, 60, 65, 70, 75])),
+                          "q3": dict(zip(AG, self.C11_Q3))})
+        r = debate.pair(qs, p, e, AG, "normal", 3)
+        self.assertEqual([x["question_id"] for x in r["pairs"]], ["q1"])
+        self.assertEqual(r["unpaired"], [])
+        self.assertEqual([x["question_id"] for x in r["lone_outliers"]], ["q3"])
+        off = debate.pair(qs, p, e, AG, "normal", 3, off_reason="debate off")
+        self.assertEqual([u["question_id"] for u in off["unpaired"]], ["q1"])
+
+    def test_two_lens_minority_still_paired(self):
+        # a minority of two (58, 60) survives dropping either lens: still a split with a slot
+        vals = [31, 33, 35, 36, 38, 39, 40, 58, 60]
+        qs, p, e = setup({"q3": dict(zip(AG, vals))})
+        r = debate.pair(qs, p, e, AG, "normal", 1)
+        self.assertEqual(len(r["pairs"]), 1)
+        self.assertEqual(r["lone_outliers"], [])
+        # one dissenter on each side (20 and 70 around a 45 cluster): the range survives dropping either one
+        self.assertFalse(debate.lone_lens([20, 45, 45, 45, 45, 45, 45, 45, 70], 20))
+        self.assertTrue(debate.lone_lens(self.C11_Q3, 20))
+        self.assertTrue(debate.lone_lens([10, 31, 33, 35, 36, 38, 39, 40, 42], 20))   # low-side outlier
+        self.assertFalse(debate.lone_lens([40, 45, 55], 20))                          # under gap_min at all
+
     def test_same_side_no_pair(self):
         qs, p, e = setup({"q1": {"trader": 10, "analyst": 50, "skeptic": 55, "builder": 60}})
         e["skeptic"]["q1"] = ev(status="unverified")
@@ -1731,7 +1772,8 @@ class DroppedPairTests(unittest.TestCase):
         self.assertEqual(debate.budget_pairs(12, 24, 2, 3), (2, True))
         v1 = dict(zip(AG, [10, 20, 30, 70, 80, 90, 85, 15, 75]))
         v2 = dict(zip(AG, [80, 25, 70, 20, 30, 85, 15, 75, 90]))
-        v3 = dict(zip(AG, [66, 70, 40, 62, 75, 68, 64, 72, 60]))        # one lens at 40, median 66, range 35
+        # two lenses at 40 and 42, median 66, range 35 (one lens alone would be no split: §20.7 #83)
+        v3 = dict(zip(AG, [66, 70, 40, 62, 75, 68, 64, 72, 42]))
         vals = {"q1": v1, "q2": v2, "q3": v3}
         qs, p, e = setup(vals, weights={"q1": 3, "q2": 3, "q3": 2})
         res = debate.pair(qs, p, e, list(AG), "normal", 2)
@@ -1769,10 +1811,11 @@ class DroppedPairTests(unittest.TestCase):
         self.assertEqual([u["question_id"] for u in debate.dropped_unpaired(r, r, "budget")], ["q3"])
 
     def test_no_candidate_split_is_unpaired_on_a_debate_day(self):
-        # q2's only dissenter (builder at 40) is social-only on a threshold question: no candidate pair. Alone it
-        # is a split_unpaired day with a block; beside a debated q1 it must keep that block (review 2026-10-04).
+        # q2's two dissenters (builder at 40, ai_engineer at 42) are social-only on a threshold question: no candidate
+        # pair. Alone it is a split_unpaired day with a block; beside a debated q1 it must keep that block (review
+        # 2026-10-04). Two, since a range one lens alone carries gets neither (§20.7 #83).
         v1 = dict(zip(AG, [10, 20, 30, 70, 80, 90, 85, 15, 75]))
-        v2 = dict(zip(AG, [66, 70, 40, 62, 75, 68, 64, 72, 60]))        # builder at 40, median 66, range 35
+        v2 = dict(zip(AG, [66, 70, 40, 62, 75, 68, 64, 72, 42]))        # median 66, range 35
         qrec = [{"id": qid, "text": f"Will {qid} happen by 10-11?", "weight": 2, "resolves_on": "2026-10-11",
                  "settles_with": "a print", "ledger_id": f"x-{qid}"} for qid in ("q1", "q2")]
 
@@ -1780,6 +1823,7 @@ class DroppedPairTests(unittest.TestCase):
             qs, p, e = setup(vals)
             if "q2" in vals:
                 e["builder"]["q2"] = ev(cls="social")
+                e["ai_engineer"]["q2"] = ev(cls="social")
             res = debate.pair(qs, p, e, list(AG), "normal", 3)
             tp = {a: {qid: vals[qid][a] for qid in vals} for a in AG}
             takes = {a: {"positions": [{"question_id": qid, "probability": tp[a][qid], "reason": f"r {qid}",
