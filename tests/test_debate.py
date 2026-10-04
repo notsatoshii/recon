@@ -670,6 +670,13 @@ class MarketGateTests(unittest.TestCase):
         self.assertTrue(debate.market_match("Will Bitcoin trade above $84,000 on October 4?", self.LINES))
         self.assertFalse(debate.market_match("Will Bitcoin ETF inflows exceed $500M this week?", self.LINES))
         self.assertFalse(debate.market_match("Will Uniswap V3 daily volume stay above $1.2B by October 10?", self.LINES))
+        # one body under any of its names, and a multi-word name is one entity, not two
+        self.assertTrue(debate.market_match("Will the FOMC hike rates at its October 28 meeting?", self.LINES))
+        self.assertTrue(debate.market_match("Will the Federal Reserve hike rates at its October 28 meeting?", self.LINES))
+        self.assertFalse(debate.market_match("Will the Federal Reserve cut by 50 bps?",
+                                             ["- Federal Reserve Chair speaks at Jackson Hole — YES: 40%"]))
+        self.assertTrue(debate.market_match("Will the Securities and Exchange Commission approve a SOL ETF by October 31?",
+                                            ["- SEC approves Solana ETF by October 31? — YES: 35%"]))
 
     def test_odds_by_content(self):
         for line, ok in (("- Fed Rate Hike by September 2026 Meeting? — YES: 59.5% | vol: $3,037,770", True),
@@ -697,6 +704,15 @@ class MarketGateTests(unittest.TestCase):
               q("Will total DeFi TVL increase over the next seven days?", kind="direction", bq="", resolves="2026-09-18")]
         r = debate.gate_questions(qs, "2026-09-11", loc, market=lines)
         self.assertEqual([d["text"] for d in r["dropped"] if "prediction market already prices it" in d["reason"]], [fed])
+        # Phase C: the same market under the Fed's other names (FOMC, Federal Reserve) is dropped too
+        fomc = "Will the FOMC hike by 25 bps in September 2026?"
+        held = "Will the Federal Reserve leave rates unchanged at the September 2026 meeting?"
+        qs2 = [q(fomc, kind="event", bq="", domain="macro_policy", resolves="2026-09-18"),
+               q(held, kind="event", bq="", domain="macro_policy", resolves="2026-09-18"),
+               q("Will total DeFi TVL increase over the next seven days?", kind="direction", bq="", resolves="2026-09-18")]
+        r2 = debate.gate_questions(qs2, "2026-09-11", loc, market=lines)
+        self.assertEqual([d["text"] for d in r2["dropped"] if "prediction market already prices it" in d["reason"]],
+                         [fomc, held])
         # the 59.5% line passes Locator.strict as a GEOPOLITICAL CONTEXT data line, but never qualifies a move ...
         st = loc.strict(wm)
         self.assertTrue(st["ok"])

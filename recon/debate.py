@@ -1144,8 +1144,15 @@ def shares_specific(quote: str, terms: dict, kind: str = "") -> bool:
 
 # A question's subject under its other common name: a crux that says 'Bitcoin' on a 'BTC' question is about
 # the same subject, so 'Bitcoin dominance: 58.6%' is no more about the crux than 'BTC dominance: 58.6%'.
-SUBJECT_ALIASES = {"btc": ("Bitcoin",), "bitcoin": ("BTC",), "eth": ("Ethereum", "Ether"), "ethereum": ("ETH",),
-                   "ether": ("ETH",), "sol": ("Solana",), "solana": ("SOL",), "xrp": ("Ripple",), "ripple": ("XRP",)}
+# One shared map, built from ALIAS_GROUPS: crypto tickers and the policy bodies a market line names under a
+# different name than triage does ('FOMC' / 'Federal Reserve' questions vs the 'Fed Rate Hike …' odds line).
+ALIAS_GROUPS = (("BTC", "Bitcoin"), ("ETH", "Ethereum", "Ether"), ("SOL", "Solana"), ("XRP", "Ripple"),
+                ("Fed", "FOMC", "Federal Reserve"), ("SEC", "Securities and Exchange Commission"),
+                ("CFTC", "Commodity Futures Trading Commission"), ("ECB", "European Central Bank"),
+                ("BOJ", "BoJ", "Bank of Japan"), ("BOE", "BoE", "Bank of England"), ("BOK", "BoK", "Bank of Korea"),
+                ("PBOC", "PBoC", "People's Bank of China"), ("IMF", "International Monetary Fund"),
+                ("OPEC", "OPEC+"))
+SUBJECT_ALIASES = {a.lower(): tuple(b for b in g if b.lower() != a.lower()) for g in ALIAS_GROUPS for a in g}
 
 
 def drop_frequent_entities(terms: dict, docs: dict[str, str], max_share: float = 0.02, keep_always=(),
@@ -1438,20 +1445,38 @@ def _stems(text: str) -> set[str]:
     return {w[:4] for w in re.findall(r"[a-z]{4,}", (text or "").lower()) if w not in MARKET_STOP}
 
 
+_BPS = re.compile(r"(?<![\w.])(\d+(?:\.\d+)?)\s*(?:bps|bp|basis[- ]points?)(?!\w)", re.I)
+
+
+def _bps(text: str) -> set[float]:
+    """Basis-point figures ('25 bps', '25bps', '50 basis points'): evidence.numbers skips them as bare small
+    integers, but on a rates question the size of the move is its specific figure."""
+    return {float(m.group(1)) for m in _BPS.finditer(text or "")}
+
+
 def market_match(question: str, lines: list[str]) -> str:
     """The first market line that prices this question, or ''. A line prices it when it shares at least one
-    entity of the question (or its other common name: 'Bitcoin' / 'BTC', SUBJECT_ALIASES) plus a second specific
-    term: another entity, one of the question's numbers (same figure, §6 rules), or two content words ('Fed' +
-    'hike' + 'rate'). A price ladder ('market-implied median …', every strike of a daily close) prices any
+    entity of the question (or its other name: 'Bitcoin' / 'BTC', 'FOMC' / 'Fed', ALIAS_GROUPS) plus a second
+    specific term: another entity, one of the question's numbers (same figure, §6 rules; a basis-point size), or
+    two content words ('Fed' + 'hike' + 'rate'). A price ladder ('market-implied median …', every strike of a daily close) prices any
     question on its asset that carries a currency figure."""
     if not lines:
         return ""
-    q_ents = [e for e in entities(question, mid_common=False) if e.lower() not in MARKET_STOP]
-    if not q_ents:
+    # A body named in the question under any ALIAS_GROUPS name ('FOMC', 'Federal Reserve') is one entity
+    # group: it matches a line under any of its names, and 'Federal Reserve' never counts as two entities.
+    found = [(g, [a for a in g if re.search(rf"(?<!\w){re.escape(a)}(?!\w)", question)]) for g in ALIAS_GROUPS]
+    found = [(g, hit) for g, hit in found if hit]
+    named = {w.lower() for _, hit in found for a in hit for w in re.findall(r"[\w']+", a)}
+    groups = [[hit[0], *[a for a in g if a != hit[0]]] for g, hit in found]
+    for e in entities(question, mid_common=False):
+        if e.lower() in MARKET_STOP or {w.lower() for w in re.findall(r"[\w']+", e)} <= named:
+            continue
+        groups.append([e, *SUBJECT_ALIASES.get(e.lower(), ())])
+    if not groups:
         return ""
-    groups = [[e, *SUBJECT_ALIASES.get(e.lower(), ())] for e in q_ents]
     q_nums = evidence.numbers(question)
     q_cur = any(x.get("cur") for x in q_nums)
+    q_bps = _bps(question)
     ent_stems = {w[:4] for g in groups for e in g for w in re.findall(r"[a-z]{4,}", e.lower())}
     q_words = _stems(question) - ent_stems
     for line in lines:
@@ -1461,7 +1486,7 @@ def market_match(question: str, lines: list[str]) -> str:
             continue
         if q_cur and _LADDER.search(line):
             return line
-        nums = _num_match(evidence.numbers(line), q_nums) if q_nums else []
+        nums = (_num_match(evidence.numbers(line), q_nums) if q_nums else []) or bool(q_bps & _bps(line))
         if len(ents) >= 2 or nums or len(q_words & _stems(line)) >= 2:
             return line
     return ""
