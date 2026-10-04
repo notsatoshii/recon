@@ -93,6 +93,13 @@ def gap_ratios(debates: list[dict]) -> tuple[list[dict], float | None]:
 NEAR_MISS = 3
 
 
+# Pass-bar items judged on the run's debates (§15.5 b, c, d, debate evidence): NOT COUNTED on a run with no pair.
+DEBATE_ITEMS = ("b held split (two-sided, gap_after >= GAP_MIN, cruxes stated)",
+                "c gap_after/gap_before >= 0.6 (no crux data)",
+                "d soft moves (> FREE_MOVE without qualifying evidence) <= 30%",
+                "debate evidence >= 80%")
+
+
 def near_misses(pos: dict, gap_min: int) -> list[dict]:
     """Questions whose take range is in [gap_min - NEAR_MISS, gap_min): not paired on this draw, paired on a
     likely rerun. The range is take_stats.range, else recomputed from take_p."""
@@ -229,6 +236,10 @@ def report(root: Path, run_id: str, old: dict | None, gap_min_probe: int | None,
         "spread": spread, "near_misses": near, "lone_outliers": lone, "top_pair": (pairing.get("pairs") or [{}])[0].get("question_id"),
     }
     o = old_metrics(old)
+    # A run that staged no pair ran no debate: (b), (c), (d) and debate evidence have nothing to judge, and the
+    # missing split is one take draw (09-11 c15: consensus, q3 19 one under GAP_MIN where c14 drew 34 on the same
+    # package). Those items are None (NOT COUNTED) until take-only resamples say whether the day splits.
+    m["debated"] = bool(m["pairs"]) or bool(debates)
     bar = {
         "b held split (two-sided, gap_after >= GAP_MIN, cruxes stated)": m["held_splits"] >= 1,
         "c gap_after/gap_before >= 0.6 (no crux data)": ratio is None or ratio >= 0.6,
@@ -248,7 +259,15 @@ def report(root: Path, run_id: str, old: dict | None, gap_min_probe: int | None,
         # (the new takes answer the same questions); the bar is that takes cite their own lens data
         "lens-quote share >= 0.5": m["lens_quote_share"] is None or m["lens_quote_share"] >= 0.5,
     }
+    if not m["debated"]:
+        for k in DEBATE_ITEMS:
+            bar[k] = None
     m["bar"] = bar
+    m["not_counted_why"] = None if m["debated"] else (
+        f"no debate ran on this draw ({m['day_type'] or 'no pairing'}, {m['pairs']} pairs"
+        f"{'; near misses ' + near_txt if near else ''}"
+        f"{'; one-lens ranges ' + lone_txt if lone else ''}): resample the takes twice before counting this run "
+        f"(scripts/launch_run.py --resample {run_id})")
     tier_moves = "; ".join(f"{t} {v['sides']}, {v['mean_toward']}" for t, v in sorted(m["side_moves_by_tier"].items()))
     lines = [f"# Replay report — {run_id} (day {m['day']}, status {m['status']})", "",
              "Cold-start replay: no memory, state, ledger or historical context, unlike the original run.", "",
@@ -290,7 +309,9 @@ def report(root: Path, run_id: str, old: dict | None, gap_min_probe: int | None,
              + (f"{o.get('calls', '—')} calls, {(o.get('in_tok') or 0) / 1e6:.2f} M input |" if o else "no old export |"),
              f"| lens extras >= 2 KB | {lens_ok}/{len(lens)}: {', '.join(f'{a} {b}' for a, b in sorted(lens.items()))} | — |",
              "", "## Pass-bar items for this run (§15.5)", ""]
-    lines += [f"- {'PASS' if v else 'FAIL'}: {k}" for k, v in bar.items()]
+    lines += [f"- {'NOT COUNTED' if v is None else 'PASS' if v else 'FAIL'}: {k}" for k, v in bar.items()]
+    if m["not_counted_why"]:
+        lines.append(f"- NOT COUNTED: {m['not_counted_why']}")
     lines.append("")
     return "\n".join(lines), m
 
@@ -429,7 +450,16 @@ def main(argv=None) -> int:
               f"{(m['out_tok'] or 0) / 1e3:.1f} K | {m['wall']} s |")
     if len(allm) > 1 or a.stability or a.spread:
         s = ["# Phase C replays — pass bar (§15.5)", ""]
-        s.append(f"- (b) a held split across the runs: {'PASS' if any(m['held_splits'] for m in allm) else 'FAIL'}")
+        # (b) is judged on the runs that debated; a run with no pair is one take draw, not a failed split (c15)
+        skipped = [m for m in allm if not m["debated"]]
+        skipped_txt = ", ".join(f"{m['run_id']}, {m['pairs']} pairs" for m in dict((m["run_id"], m) for m in skipped).values())
+        if any(m["held_splits"] for m in allm):
+            b = "PASS"
+        elif len(skipped) < len(allm):
+            b = "FAIL" + (f" (not counted: {skipped_txt})" if skipped else "")
+        else:
+            b = f"NOT JUDGED (no run debated; not counted: {skipped_txt}; resample the takes or replay another package)"
+        s.append(f"- (b) a held split across the runs: {b}")
         ratios = [m["gap_ratio_no_crux"] for m in allm if m["gap_ratio_no_crux"] is not None]
         each = [x for m in allm for x in m.get("gap_ratios_no_crux") or []]
         s.append(f"- (c) median gap_after/gap_before without crux data: {statistics.median(ratios):.2f}"
@@ -455,8 +485,9 @@ def main(argv=None) -> int:
         gm = next((x["gap_min"] for x in samples if x["gap_min"]), None) or gp or debate.GAP_MIN_DEFAULT
         s += render_spread_stability(spread_stability(samples, int(gm)))
         for m in allm:
-            fails = [k for k, v in m["bar"].items() if not v]
-            s.append(f"- {m['run_id']}: {'all run items pass' if not fails else 'fails: ' + '; '.join(fails)}")
+            fails = [k for k, v in m["bar"].items() if v is False]
+            s.append(f"- {m['run_id']}: " + (f"not counted (no debate ran): {m['not_counted_why']}; " if not m["debated"] else "")
+                     + ("all run items pass" if not fails else "fails: " + "; ".join(fails)))
         (root / "replay_summary.md").write_text("\n".join(s) + "\n", encoding="utf-8")
         print("\n".join(s))
     return 0

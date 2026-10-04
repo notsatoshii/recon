@@ -63,6 +63,49 @@ class NextRunIdTests(unittest.TestCase):
         self.assertEqual(launch_run.next_run_id(self.home, "2026-09-11", "p"), "2026-09-11-p4")
 
 
+class ResampleTests(unittest.TestCase):
+    """09-11 c15 (phase C): a consensus draw with q3 one under GAP_MIN, where c14 drew 34 on the same package. The
+    report does not count such a run (replay_report NOT COUNTED) until two take-only resamples of its triage say
+    whether the day splits; launch_run --resample stages them (copy_run as in phase_c_validate step 5: c<N>t1,
+    c<N>t2 on the run's triage.json, run.json and started.txt removed) and runs them one after the other,
+    RECON_STOP_AFTER=takes, --from-phase takes."""
+    def setUp(self):
+        self.home = Path(tempfile.mkdtemp(prefix="recon_resample_"))
+        ph = self.home / "briefs" / "2026-09-11-c15" / "phases"
+        ph.mkdir(parents=True)
+        (ph / "triage.json").write_text("{}")
+        (ph / "started.txt").write_text("x")
+        (self.home / "briefs" / "2026-09-11-c15" / "run.json").write_text("{}")
+        (self.home / "logs").mkdir()
+
+    def tearDown(self):
+        shutil.rmtree(self.home, ignore_errors=True)
+
+    def test_two_take_only_copies_run_in_order(self):
+        with mock.patch.object(launch_run, "sync", return_value=(True, "abc1234")),                 mock.patch.object(launch_run, "launch_chain", return_value=77) as chain, mock.patch("builtins.print"):
+            rc = launch_run.main(["--resample", "2026-09-11-c15", "--home", str(self.home)])
+        self.assertEqual(rc, 0)
+        b = self.home / "briefs"
+        for t in ("t1", "t2"):
+            self.assertTrue((b / f"2026-09-11-c15{t}" / "phases" / "triage.json").exists())
+            self.assertFalse((b / f"2026-09-11-c15{t}" / "phases" / "started.txt").exists())
+            self.assertFalse((b / f"2026-09-11-c15{t}" / "run.json").exists())
+        (home, cmds, env), _ = chain.call_args
+        self.assertEqual(env, {"RECON_STOP_AFTER": "takes"})
+        self.assertEqual([c[c.index("--run-id") + 1] for c in cmds], ["2026-09-11-c15t1", "2026-09-11-c15t2"])
+        for c in cmds:
+            self.assertEqual(c[c.index("--replay") + 1:c.index("--replay") + 4], ["briefs/2026-09-11", "--as-of", "2026-09-11"])
+            self.assertEqual(c[-2:], ["--from-phase", "takes"])
+
+    def test_next_free_suffix_and_missing_triage(self):
+        (self.home / "briefs" / "2026-09-11-c15t1").mkdir()
+        self.assertEqual(launch_run.resample_ids(self.home, "2026-09-11-c15", 2), ["2026-09-11-c15t2", "2026-09-11-c15t3"])
+        with mock.patch.object(launch_run, "sync", return_value=(True, "abc1234")),                 mock.patch.object(launch_run, "launch_chain") as chain, mock.patch("sys.stderr"):
+            rc = launch_run.main(["--resample", "2026-09-11-c99", "--home", str(self.home)])
+        self.assertEqual(rc, 2)
+        chain.assert_not_called()
+
+
 class SyncTests(unittest.TestCase):
     def setUp(self):
         self.tmp = Path(tempfile.mkdtemp(prefix="recon_sync_"))

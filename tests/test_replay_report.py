@@ -226,6 +226,66 @@ class LoneOutlierTests(unittest.TestCase):
         self.assertIn(f"| q3 27 (11 without {AGENTS[8]}) |", text)
 
 
+class UndebatedRunTests(unittest.TestCase):
+    """09-11 c15 (replay on f8b74f7, debate on): a consensus day with 0 pairs, take ranges q1 16 (7 yes / 2 no), q2 11,
+    q3 19 (analyst 76 against a median of 63, one under GAP_MIN 20), where c14 gave q3 34 on the same package and
+    take prompt. No debate ran, so there were no gaps, moves or verdicts to check, yet the run report printed
+    'FAIL: b held split' and passed (c), (d) and debate evidence on nothing, and the summary read the draw as a
+    failed bar. A run that staged no pair is one take draw: its debate items are NOT COUNTED and point at the
+    take-only resamples (launch_run.py --resample); the summary judges (b) on the runs that debated."""
+    C15 = [("q1", BTC, [44, 46, 52, 55, 56, 57, 58, 59, 60]),                # 16
+           ("q2", COWORK, [40, 41, 43, 44, 46, 47, 48, 50, 51]),             # 11
+           ("q3", OPENAI, [57, 58, 60, 62, 63, 64, 65, 66, 76])]             # 19, median 63
+    C14 = [("q3", OPENAI, [36, 38, 40, 44, 50, 60, 62, 66, 70])]             # 34
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self.tmp.name)
+        write_run(self.root, "2026-09-11-c15", self.C15, 0)
+        pr = self.root / "2026-09-11-c15" / "phases" / "pairing.json"
+        pr.write_text(json.dumps({"day_type": "consensus", "pairs": [], "target": 2, "gap_min": 20}), encoding="utf-8")
+        write_run(self.root, "2026-09-11-c14", self.C14, 1)
+        pos = self.root / "2026-09-11-c14" / "phases" / "positions.json"
+        data = json.loads(pos.read_text(encoding="utf-8"))
+        data["debates"] = [{"question_id": "q3", "high": "narrator", "low": "user_agent", "gap_before": 34,
+                            "gap_after": 31, "held_split": False, "effect": "narrowed from 34 to 31"}]
+        pos.write_text(json.dumps(data), encoding="utf-8")
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def summary(self, *runs: str) -> str:
+        with contextlib.redirect_stdout(io.StringIO()):
+            replay_report.main([*runs, "--root", str(self.root), "--old-dir", str(self.root)])
+        return (self.root / "replay_summary.md").read_text(encoding="utf-8")
+
+    def test_run_without_a_pair_is_not_counted(self):
+        text, m = replay_report.report(self.root, "2026-09-11-c15", None, None)
+        self.assertFalse(m["debated"])
+        debate_items = [k for k in m["bar"] if k.startswith(("b ", "c ", "d ", "debate evidence"))]
+        self.assertEqual(len(debate_items), 4)
+        self.assertEqual({m["bar"][k] for k in debate_items}, {None})
+        self.assertNotIn("FAIL: b held split", text)
+        self.assertIn("- NOT COUNTED: b held split (two-sided, gap_after >= GAP_MIN, cruxes stated)", text)
+        self.assertNotIn("PASS: c gap_after", text)
+        self.assertIn("no debate ran on this draw (consensus, 0 pairs; near misses q3 19): resample the takes "
+                      "twice before counting this run (scripts/launch_run.py --resample 2026-09-11-c15)", text)
+
+    def test_summary_does_not_count_an_undebated_draw(self):
+        s = self.summary("2026-09-11-c15", "2026-09-11-c15")
+        self.assertNotIn("(b) a held split across the runs: FAIL", s)
+        self.assertIn("(b) a held split across the runs: NOT JUDGED (no run debated; not counted: 2026-09-11-c15, "
+                      "0 pairs; resample the takes or replay another package)", s)
+        self.assertIn("- 2026-09-11-c15: not counted (no debate ran):", s)
+        s = self.summary("2026-09-11-c14", "2026-09-11-c15")
+        self.assertIn("(b) a held split across the runs: FAIL (not counted: 2026-09-11-c15, 0 pairs)", s)
+
+    def test_debated_run_still_fails_b(self):
+        text, m = replay_report.report(self.root, "2026-09-11-c14", None, None)
+        self.assertTrue(m["debated"])
+        self.assertIn("- FAIL: b held split", text)
+
+
 class OldExportTests(unittest.TestCase):
     """The old column compares against the v1 export of the same day. Replays run on the droplet, where the exports
     are <repo>/exports/runs, but the default --old-dir was the laptop's ~/innovlabs/recon-exports/runs: the 09-11
