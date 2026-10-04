@@ -18,8 +18,11 @@ WHAT THE LENSES SAID OTHERS WOULD MISS (last run):
 2. weight_agents: the 2-4 lenses whose view matters most today.
 3. questions: up to {{n_max}} QUESTIONS OF THE DAY. Each one:
    - is a yes/no question (at most 200 characters, ending with "?") about something in today's package;
-   - is genuinely contestable: informed lenses could land 25 or more points apart. Drop any question
-     you expect every lens to answer below 15% or above 85%;
+   - is genuinely contestable: informed lenses could land 25 or more points apart FOR DIFFERENT REASONS
+     (macro, flows, regulation, adoption, product or risk pulling different ways). Drop any question
+     you expect every lens to answer below 15% or above 85%, and any question that a market price or a
+     prediction-market probability quoted in the package already answers (every lens would copy that
+     number). At most one question is a pure price-level threshold;
    - kind: threshold (a number above or below a level on a date), event (a dated event happens or not),
      direction (a measured series up or down over a stated window), or judgment (no clean data; at most one);
    - resolves_on: a date 1 to 30 days after {{day}} (empty only for judgment); settles_with: the exact

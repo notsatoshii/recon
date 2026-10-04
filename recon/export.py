@@ -414,12 +414,16 @@ def main() -> int:
     (out / "runs").mkdir(parents=True, exist_ok=True)
     index = []
     # daily runs are briefs/<date>; orchestrator validation runs are briefs/<date>-<tag>; dry runs stay out
+    # Phase C: dry runs (-dry, -dryc ...), replays (run.json mode "replay") and tagged orchestrator folders that
+    # stopped before run.json (spread probe, RECON_STOP_AFTER) stay out of the RUBRIC export; a daily folder
+    # without run.json (the bash fallback) is still scraped as before.
     dates = sorted([p.name for p in (RECON_HOME / "briefs").iterdir()
-                    if re.match(r"\d{4}-\d\d-\d\d(-[A-Za-z0-9]+)?$", p.name) and not p.name.endswith("-dry")],
+                    if re.match(r"\d{4}-\d\d-\d\d(-[A-Za-z0-9]+)?$", p.name) and not re.search(r"-dry", p.name)
+                    and not (len(p.name) > 10 and (p / "phases").is_dir() and not (p / "run.json").exists())],
                    reverse=True)[:args.days]
     for d in dates:
         run = build_run(d)
-        if not run:
+        if not run or run.get("mode") == "replay":
             continue
         (out / "runs" / f"{d}.json").write_text(json.dumps(run, ensure_ascii=False), encoding="utf-8")
         srcs = run["sources"]

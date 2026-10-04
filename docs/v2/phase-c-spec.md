@@ -1174,8 +1174,11 @@ WHAT THE LENSES SAID OTHERS WOULD MISS (last run):
 2. weight_agents: the 2-4 lenses whose view matters most today.
 3. questions: up to {{n_max}} QUESTIONS OF THE DAY. Each one:
    - is a yes/no question (at most 200 characters, ending with "?") about something in today's package;
-   - is genuinely contestable: informed lenses could land 25 or more points apart. Drop any question
-     you expect every lens to answer below 15% or above 85%;
+   - is genuinely contestable: informed lenses could land 25 or more points apart FOR DIFFERENT REASONS
+     (macro, flows, regulation, adoption, product or risk pulling different ways). Drop any question
+     you expect every lens to answer below 15% or above 85%, and any question that a market price or a
+     prediction-market probability quoted in the package already answers (every lens would copy that
+     number). At most one question is a pure price-level threshold;
    - kind: threshold (a number above or below a level on a date), event (a dated event happens or not),
      direction (a measured series up or down over a stated window), or judgment (no clean data; at most one);
    - resolves_on: a date 1 to 30 days after {{day}} (empty only for judgment); settles_with: the exact
@@ -1379,6 +1382,9 @@ TASK: YOUR TAKE ON TODAY'S PACKAGE.
 If historical context is provided, reference yesterday's brief: note what changed, what predictions held,
 what was wrong. Continuity matters. Answer each question from your lens. At least one evidence item per
 position must come from YOUR LENS DATA block (if that block says there is none today, cite the package).
+Odds quoted in the package (prediction markets, futures pricing) are evidence, not your answer: start from
+what your lens sees and give your own number; when it differs from the market or the obvious base rate,
+the reason says why.
 The ecosystem includes world events, macro, crypto/BTC/ETH, DeFi, stablecoins, AI/ML, regulation,
 prediction markets, fundraising and infrastructure.
 
@@ -1486,6 +1492,15 @@ About 33 calls. `scripts/spread_probe.py <run ids>` (no LLM) reads the `takes/*.
   agent's retest `|Δp|`. If the retest-adjusted distance rises on at least half the questions, the
   setting is kept in `LENS_TIER` for that agent (and its call cost goes in §16); otherwise
   `LENS_TIER` stays empty.
+
+**First run, 2026-10-04** (`briefs/spread_probe.md` on the droplet, 36 calls, 1.06 M input): median retest
+|Δp| 3, so `GAP_MIN` = 20; questions clearing: 09-11 one (q4, OpenAI Pro reopening, 30 points), 10-04 none.
+**Gate failed.** The takes anchored on numbers the package already quoted (all nine at 60 % on a Fed-hike
+question the package priced at 60 %; price-level thresholds a few percent away). The SYNTH model raised
+the skeptic's and the macro strategist's retest-adjusted distance on 3/4 and 4/4 questions. Inputs fixed
+before the rerun: triage drops questions a quoted market probability already answers and keeps at most
+one pure price threshold (§13.2); the take task says quoted odds are evidence, not the answer (§13.8);
+`LENS_TIER` puts skeptic and macro_strategist on the synth tier. The rerun is reported in the model log.
 
 Gate: at least one question per package must clear `GAP_MIN` against the retest noise. If not,
 the inputs are fixed first (lens extras, the take task, triage's "contestable" rule, per-lens
@@ -1639,7 +1654,7 @@ drops the filter, a normal day has 3 pairs and the crux check.
 | Stage | Phase B today (as built) | Phase C, normal day (3 pairs, 9 agents, budget 24) | Phase C, consensus day | Output tokens (C, normal) |
 |---|---|---|---|---|
 | Triage (questions) | 1 FAST / ~27 K | 1 FAST / ~28 K (+ ledger lines ~1 K); re-ask only if ≤ 1 question survives | same | ~1.2 K |
-| Takes | 9 ANALYST / ~300 K (~200 K cached) | 9 ANALYST / ~315 K (lens extras +1.6 K each; cached from take 6 on) | same | ~9 K (`take` ≤ 150 words, was ~14 K) |
+| Takes | 9 ANALYST / ~300 K (~200 K cached) | 7 ANALYST + 2 SYNTH (skeptic, macro_strategist: `LENS_TIER`, §15.0) / ~315 K (lens extras +1.6 K each; cached from take 6 on) | same | ~9 K (`take` ≤ 150 words, was ~14 K) |
 | Pairing | 0 (wildcard is programmatic) | 0 | 0 | — |
 | Challenges | 11 ANALYST / ~70 K (both full takes in each) | 6 ANALYST / ~38 K (~6.3 K each) | 1 red team / ~7 K | ~3 K |
 | Crux search | — | 0 | 0 | — |

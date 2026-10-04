@@ -12,6 +12,9 @@ TASK: YOUR TAKE ON TODAY'S PACKAGE.
 If historical context is provided, reference yesterday's brief: note what changed, what predictions held,
 what was wrong. Continuity matters. Answer each question from your lens. At least one evidence item per
 position must come from YOUR LENS DATA block (if that block says there is none today, cite the package).
+Odds quoted in the package (prediction markets, futures pricing) are evidence, not your answer: start from
+what your lens sees and give your own number; when it differs from the market or the obvious base rate,
+the reason says why.
 The ecosystem includes world events, macro, crypto/BTC/ETH, DeFi, stablecoins, AI/ML, regulation,
 prediction markets, fundraising and infrastructure.
 

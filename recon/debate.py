@@ -47,7 +47,10 @@ DOMAIN_LENSES = {"markets_crypto": ["trader", "analyst"], "macro_policy": ["macr
 LENS_LABEL = {"trader": "markets lens", "narrator": "narrative lens", "builder": "products lens",
               "analyst": "sector-model lens", "skeptic": "risk lens", "policy_analyst": "policy lens",
               "user_agent": "adoption lens", "macro_strategist": "macro lens", "ai_engineer": "AI tools lens"}
-LENS_TIER: dict[str, str] = {}   # per-agent tier override; empty unless the spread probe (§15.0) says otherwise
+# Per-agent tier override (§15.0). Spread probe 2026-10-04: on the SYNTH model the skeptic's and the macro
+# strategist's retest-adjusted distance from the median rose on 3/4 and 4/4 questions (high effort alone:
+# 2/4 each), so those two lenses take on the synth tier (+2 synth-tier calls a day, see spec §16).
+LENS_TIER: dict[str, str] = {"skeptic": "synth", "macro_strategist": "synth"}
 SPLIT_SHEET_CAP = 6000
 LENS_NOTES_CAP = 8000
 
