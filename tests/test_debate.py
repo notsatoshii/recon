@@ -1395,3 +1395,64 @@ class EighthReviewCruxKeywordTests(unittest.TestCase):
         self.assertNotIn("keywords", t)
         self.assertEqual(debate.crux_search(t, self.docs, [self.DISCUSS, self.TEAM])["hits"], [])
         self.assertFalse(debate.shares_specific(self.CONCERN, t, "threshold"))
+
+
+class MarketQuestionLineTests(unittest.TestCase):
+    """Fourth review #48, closed at the reader (ninth review): a POLYMARKET LIVE MARKETS question line
+    ('- US x Iran Effective Ceasefire by September 4?') carries its odds on the next line, and the package copies
+    such question lines into CROSS-SOURCE SIGNALS without them. Every reader (ev_class, the gate's strict
+    qualification, crux_search, the referee's quote check) used to look at the bare line and class it data: on
+    09-10 the Iran line was the only crux hit and qualified a Hormuz move (70 -> 55), and the LAPTOP $500M copy
+    qualified a threshold move on its number alone."""
+
+    IRAN = "US x Iran Effective Ceasefire by September 4?"
+    LAPTOP = "LAPTOP FDV above $500M one day after launch?"
+    CRUX = ["An effective US Iran ceasefire by September 4 would reopen Hormuz shipping lanes."]
+
+    def setUp(self):
+        pkg = read(FIX / "2026-09-10" / "00_data_package.md")
+        self.docs = {"package": pkg, "raw": "", "social": ""}
+        self.loc = evidence.Locator({"package": pkg})
+        t = debate.drop_frequent_entities(debate.crux_terms(self.CRUX), self.docs, subject=["Hormuz"])
+        t["keywords"] = debate.crux_keywords(self.CRUX, "Will Hormuz reopen to commercial shipping?")
+        self.event_terms = t
+
+    def test_question_line_and_its_copy_are_market_class(self):
+        self.assertEqual(self.loc.line_text("package", 374).strip(), "- " + self.IRAN)
+        self.assertTrue(debate.market_at(self.loc, "package", 374))
+        self.assertEqual(debate.ev_class(self.loc.locate(self.IRAN), self.loc), "market")
+        self.assertEqual(self.loc.locate(self.LAPTOP)["line"], 32)        # the CROSS-SOURCE copy, no odds under it
+        self.assertEqual(debate.ev_class(self.loc.locate(self.LAPTOP), self.loc), "market")
+        self.assertEqual(debate.ev_class(self.loc.locate("- Base: TVL $5,643,886,489"), self.loc), "data")
+
+    def test_not_a_crux_hit_and_never_qualifies(self):
+        res = debate.crux_search(self.event_terms, self.docs, [], self.loc)
+        self.assertFalse([h for h in res["hits"] if "Ceasefire" in h["text"]])
+        self.assertFalse(debate.crux_search(self.event_terms, self.docs, [])["hits"])     # without a locator too
+        m = debate.gate_move("a", 70, 40, {"q": 70}, 30, "narrow", [{"quote": self.IRAN}], [], [], [],
+                             self.event_terms, self.loc, kind="event")
+        self.assertFalse(m["new_evidence"][0]["qualifies"])
+        self.assertEqual(m["new_evidence"][0]["cls"], "market")
+        self.assertEqual(m["gated"], 70 - debate.FREE_MOVE)
+        t = debate.drop_frequent_entities(debate.crux_terms(["LAPTOP FDV above $500M one day after launch"]), self.docs)
+        m = debate.gate_move("a", 40, 70, {"q": 40}, 80, "narrow", [{"quote": self.LAPTOP}], [], [], [], t, self.loc)
+        self.assertFalse(m["new_evidence"][0]["qualifies"])
+        self.assertEqual(m["new_evidence"][0]["why_not"], "prediction-market odds line")
+        rq = debate.quote_qualifies(self.IRAN, self.event_terms, "event", self.loc)
+        self.assertFalse(rq["qualifies"])
+        self.assertTrue(rq["market"])
+
+    def test_no_market_question_line_is_data_on_any_fixture(self):
+        for day, name, doc in (("2026-09-10", "00_data_package.md", "package"), ("2026-09-11", "00_data_package.md",
+                               "package"), ("2026-09-11", "00_raw_data.md", "raw"), ("2026-10-04", "00_data_package.md",
+                               "package"), ("2026-10-04", "00_raw_data.md", "raw")):
+            text = read(FIX / day / name)
+            loc = evidence.Locator({doc: text})
+            lines = text.split("\n")
+            qs = [n for n in range(1, len(lines)) if lines[n - 1].strip().startswith("- ")
+                  and debate._ODDS_CONT.match(lines[n])]
+            with self.subTest(day=day, doc=doc):
+                self.assertTrue(qs)
+                self.assertEqual([n for n in qs if debate.ev_class(loc.locate(lines[n - 1].strip()), loc) != "market"], [])
+        lines = debate.market_lines(self.loc)
+        self.assertIn(f"- {self.IRAN} — YES: 62% | 24h vol: $511,565 | total vol: $1,300,401 | liq: $59,632", lines)

@@ -1367,11 +1367,9 @@ SECTOR CONTEXT (crypto and macro landscape; background, not today's data):
         # (not frequent, not the question's subject) with a number, or on an event or judgment question alone
         # (shares_specific against the pair's crux terms, as for a move). Otherwise the verdict stands but
         # confirms nothing, and the split sheet does not show it (debate.crux_check_usable).
-        st = self.locator().strict(quote) if quote else {"ok": False}
-        market = bool(st.get("ok")) and debate.is_market_line(st.get("section", ""),
-                                                              self.locator().line_text(st["doc"], st["line"]) or quote)
-        about = debate.shares_specific(quote, c["entry"].get("crux_terms") or {}, q.get("kind", "")) if quote else False
-        data["quote_qualifies"] = bool(st.get("ok") and st.get("cls") == "data" and not market and about)
+        qq = debate.quote_qualifies(quote, c["entry"].get("crux_terms") or {}, q.get("kind", ""), self.locator())
+        st, market = qq["strict"], qq["market"]
+        data["quote_qualifies"] = qq["qualifies"]
         if data.get("resolved") != "no" and not data["quote_qualifies"]:
             flags.append("referee quote " + ("is a prediction-market odds line" if market else
                                              "is a social line" if st.get("ok") and st.get("cls") != "data" else

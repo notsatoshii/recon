@@ -384,9 +384,10 @@ def settled_line(question: str, locator) -> str:
     versions = [v for v in re.findall(r"\b[A-Za-z][\w.]*[-\s]?\d+(?:\.\d+)?\b", undated)
                 if not re.fullmatch(r"(?:19|20)\d\d", v.split()[-1])]
     lines = locator.lines["package"]
-    for (sec, cls), line in zip(locator.labels("package"), lines):
+    mkeys = _market_keys(locator)
+    for i, ((sec, cls), line) in enumerate(zip(locator.labels("package"), lines)):
         s = line.strip()
-        if not s.startswith("- ") or cls != "data" or is_market_line(sec, s):
+        if not s.startswith("- ") or cls != "data" or market_line_in(sec, lines, i, mkeys):
             continue
         body = _URL.sub(" ", re.sub(r"^\s*-\s*(?:\[[^\]]*\]\s*)?", "", s))
         if not line_rx.search(body) or _HEDGE.search(body):
@@ -1193,9 +1194,10 @@ def crux_search(terms: dict, docs: dict[str, str], exclude_quotes, locator=None,
     # pairs had 0 hits; this says whether the corpus, the subject rule or the quote exclusion emptied it).
     pool = {"term_lines": set(), "pass_with_subject": set(), "pass": set(), "after_quote_exclusion": 0}
     subj = [str(x) for x in terms.get("subject", [])]
+    all_lines = {d: (docs.get(d) or "").split("\n") for d in ("raw", "package", "social")}
+    mkeys = _market_keys(locator) if locator is not None else market_question_keys(all_lines)
     for doc in ("raw", "package", "social"):
-        text = docs.get(doc) or ""
-        lines = text.split("\n")
+        lines = all_lines[doc]
         for n, line in enumerate(lines, 1):
             s = line.strip()
             if len(s) < 12 or s.startswith("#"):
@@ -1205,7 +1207,7 @@ def crux_search(terms: dict, docs: dict[str, str], exclude_quotes, locator=None,
                 sec, cls = locator.label(doc, n)
             else:
                 sec, cls = "", ("social" if doc == "social" or evidence.social_line(s) else "data")
-            if cls == "social" or is_market_line(sec, s):
+            if cls == "social" or market_line_in(sec, lines, n - 1, mkeys):
                 continue
             h = term_hits(s, terms)
             # On an event or judgment question the pinned subject counts once (2 points, one distinct term), so a
@@ -1303,9 +1305,80 @@ def ev_class(loc: dict, locator) -> str:
     data quote), is not a data quote in the split sheet or the lens notes, and never qualifies a move (§7.2)."""
     cls = (loc or {}).get("cls") or ""
     if cls == "data" and locator is not None and loc.get("doc") and loc.get("line"):
-        if is_market_line(loc.get("section", ""), locator.line_text(loc["doc"], loc["line"])):
+        if market_at(locator, loc["doc"], loc["line"], loc.get("section")):
             return "market"
     return cls
+
+
+def odds_below(lines: list[str], i: int) -> bool:
+    """Line i (0-based) is a market question: the next non-empty line is its odds ('  YES: 62% | 24h vol ...',
+    POLYMARKET LIVE MARKETS)."""
+    for nxt in lines[i + 1:]:
+        if nxt.strip():
+            return bool(_ODDS_CONT.match(nxt))
+    return False
+
+
+def market_question_keys(docs_lines: dict[str, list[str]]) -> set[str]:
+    """The _core() text of every market question line (odds_below) in the run's documents. The package copies
+    such lines into SECTION 0 CROSS-SOURCE SIGNALS without their odds ('- LAPTOP FDV above $500M one day after
+    launch?' then an 'Also in:' line), so a copy is the same item and a market line too."""
+    out = set()
+    for lines in docs_lines.values():
+        for i, line in enumerate(lines):
+            if line.strip().startswith("- ") and odds_below(lines, i):
+                k = evidence._core(line)
+                if len(k) >= 12:
+                    out.add(k)
+    return out
+
+
+def _market_keys(locator) -> set[str]:
+    keys = getattr(locator, "_market_question_keys", None)
+    if keys is None:
+        keys = market_question_keys(getattr(locator, "lines", {}) or {})
+        try:
+            locator._market_question_keys = keys
+        except AttributeError:
+            pass
+    return keys
+
+
+def market_line_in(section: str, lines: list[str], i: int, keys: set[str]) -> bool:
+    """is_market_line, aware of the neighbouring line and of the run's market questions: line i (0-based) of
+    `lines` is a market line when its section or content says so, when the next non-empty line is its odds, or
+    when it is a copy of a market question line (`keys`, market_question_keys)."""
+    line = lines[i] if 0 <= i < len(lines) else ""
+    if is_market_line(section, line) or odds_below(lines, i):
+        return True
+    k = evidence._core(line)
+    return len(k) >= 12 and k in keys
+
+
+def market_at(locator, doc, line, section=None) -> bool:
+    """market_line_in for a located (doc, 1-based line). Fourth review #48, closed at every reader (ninth
+    review, 2026-10-04): ev_class, the gate's strict qualification (gate_move), crux_search, quote_qualifies
+    and gate rule 9 all ask this, not is_market_line on the bare line. On the 09-10, 09-11 and raw 09-11
+    fixtures 56 question lines were classed data; on 09-10 the Iran-ceasefire question was the only crux hit
+    and qualified a Hormuz move, and the LAPTOP $500M copy qualified a threshold move."""
+    if locator is None or not doc or not line:
+        return False
+    lines = (getattr(locator, "lines", {}) or {}).get(doc) or []
+    sec = section if section is not None else locator.label(doc, line)[0]
+    return market_line_in(sec or "", lines, line - 1, _market_keys(locator))
+
+
+def quote_qualifies(quote: str, terms: dict, kind: str, locator) -> dict:
+    """The referee's quote check (§8, §9.1; orchestrator crux check): a quote confirms a closure only when it
+    would qualify a move: Locator.strict passes, the line is data, it is not a market line (market_at, so a
+    POLYMARKET LIVE MARKETS question line or its CROSS-SOURCE copy is market), and it is about the crux
+    (shares_specific). {qualifies, market, about, strict}."""
+    st = locator.strict(quote) if quote and locator is not None else {"ok": False}
+    market = bool(st.get("ok")) and (market_at(locator, st["doc"], st["line"], st.get("section", ""))
+                                     or is_market_line(st.get("section", ""), quote))
+    about = shares_specific(quote, terms or {}, kind) if quote else False
+    return {"qualifies": bool(st.get("ok") and st.get("cls") == "data" and not market and about),
+            "market": market, "about": about, "strict": st}
 
 
 def market_lines(locator) -> list[str]:
@@ -1435,7 +1508,8 @@ def gate_move(agent: str, take_p: int, requested, own_take_values, other_take_p:
         else:
             src = "other"
         st = locator.strict(q) if q else {"ok": False, "reason": "empty", "cls": ""}
-        market = bool(st.get("ok")) and is_market_line(st.get("section", ""), locator.line_text(st["doc"], st["line"]) or q)
+        market = bool(st.get("ok")) and (market_at(locator, st["doc"], st["line"], st.get("section", ""))
+                                         or is_market_line(st.get("section", ""), q))
         specific = shares_specific(q, terms, kind)
         qual = bool(st["ok"] and st.get("cls") == "data" and src in ("crux_data", "other") and not market and specific)
         why = "" if qual else (st.get("reason") or ("social line" if st.get("cls") == "social" else
@@ -1933,7 +2007,7 @@ def split_sheet(day: str, run_id: str, day_type: str, questions: list[dict], tak
     def verified_data(a, qid):
         return sum(1 for e in reason_of(a, qid)[1] if locator is not None
                    and locator.locate(e.get("quote", "")).get("status") in ("verified", "partial")
-                   and locator.locate(e.get("quote", "")).get("cls") == "data")
+                   and ev_class(locator.locate(e.get("quote", "")), locator) == "data")
 
     def majority_agent(qid, side_fn):
         f = fin(qid)
