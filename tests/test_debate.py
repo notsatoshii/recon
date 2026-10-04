@@ -1864,6 +1864,73 @@ class GenericCruxKeywordTests(unittest.TestCase):
         self.assertTrue(debate.shares_specific(launch, bare, "event"))
 
 
+
+class EntityPairWithoutResolutionWordTests(unittest.TestCase):
+    """09-11 c14 q3 (OpenAI Pro by 09-25, narrator / user_agent): the only crux hit was 'Introducing ChatGPT for
+    Financial Services, combining built-in financial data and GPT-6 Astra ...'. It names two crux entities
+    (ChatGPT, Astra) and says nothing about sign-ups or capacity, yet entity_backed passed it on the second
+    entity, so it qualified as crux_data for both sides: narrator 68 -> 60, user_agent ('hold') 34 -> 29. Where the
+    cruxes have keywords a crux entity now needs a crux keyword, a word of the question's resolution ('resume',
+    'sign-ups') or a crux number beside it; and the digits of a versioned product name (GPT-6.5, Llama-3.1-70B)
+    are never a crux number. Question, cruxes and line are the real c14 ones."""
+
+    Q = "Will OpenAI resume new Pro subscription sign-ups by 2026-09-25?"
+    CRUXES = [
+        "Astra-driven consumer demand will be brought back within available capacity before September 25 rather "
+        "than capacity being reserved for enterprise deployment.",
+        "An OpenAI announcement reopening ChatGPT Pro sign-ups or the Pro sign-up flow becoming available.",
+        "No reopening announcement or available ChatGPT Pro sign-up flow, alongside evidence that Astra capacity "
+        "remains restricted for enterprise deployment.",
+        "OpenAI can add enough inference capacity to reopen new Pro subscriptions within the next two weeks rather "
+        "than prioritize that capacity for enterprise-agent workloads.",
+        "An official OpenAI subscription-availability announcement or a functioning ChatGPT Pro sign-up flow for new "
+        "users.",
+        "OpenAI announces that new ChatGPT Pro subscriptions are available again, with a live new-user purchase flow.",
+    ]
+    FIN = ("Introducing ChatGPT for Financial Services, combining built-in financial data and GPT-6 Astra for "
+           "research, modeling, an")
+    RESUME = "ChatGPT to resume sign-ups for new users as Astra rollout steadies"
+    CAPACITY = "Astra capacity freed as ChatGPT enterprise rollout completes"
+
+    def setUp(self):
+        from types import SimpleNamespace
+        from recon.orchestrator import Run
+        filler = [f"- [wire] Unrelated headline number {i} about markets and weather" for i in range(300)]
+        pkg = "\n".join(["# SECTION 4: NEWS INTELLIGENCE"] + filler[:150]
+                        + ["- [Thu, 10 Sep 2026] Introducing ChatGPT for Financial Services https://openai.com/x",
+                           "  " + self.FIN, "- " + self.RESUME, "- " + self.CAPACITY] + filler[150:])
+        self.docs = {"raw": "", "social": "", "package": pkg}
+        self.loc = evidence.Locator({"package": pkg})
+        self.terms = Run.search_terms(SimpleNamespace(corpus_docs=lambda: self.docs), self.CRUXES, self.Q, "event")
+
+    def test_two_crux_entities_without_a_resolution_word_do_not_qualify(self):
+        self.assertEqual(sorted(debate.term_hits(self.FIN, self.terms)["entities"]), ["Astra", "ChatGPT"])
+        self.assertFalse(debate.shares_specific(self.FIN, self.terms, "event"))
+        res = debate.crux_search(self.terms, self.docs, [], self.loc, kind="event")
+        self.assertNotIn(self.FIN, [h["text"] for h in res["hits"]])
+        for agent, take, req, other, verdict in (("narrator", 68, 60, 34, "narrow"), ("user_agent", 34, 29, 68, "hold")):
+            m = debate.gate_move(agent, take, req, {"q3": take}, other, verdict, [{"quote": self.FIN}], [], [], [],
+                                 self.terms, self.loc, kind="event")
+            self.assertFalse(m["new_evidence"][0]["qualifies"], agent)
+            self.assertNotEqual(m.get("evidence_source"), "crux_data", agent)
+            self.assertEqual(abs(m["gated"] - take), min(debate.FREE_MOVE, abs(req - take)), agent)
+
+    def test_entity_with_a_resolution_word_or_keyword_still_qualifies(self):
+        self.assertTrue(debate.shares_specific(self.RESUME, self.terms, "event"))      # 'resume', 'sign-ups'
+        self.assertTrue(debate.shares_specific(self.CAPACITY, self.terms, "event"))    # crux keyword 'capacity'
+        m = debate.gate_move("narrator", 68, 55, {"q3": 68}, 34, "narrow", [{"quote": self.RESUME}], [], [], [],
+                             self.terms, self.loc, kind="event")
+        self.assertTrue(m["new_evidence"][0]["qualifies"])
+        self.assertEqual(m["gated"], 55)
+
+    def test_versioned_product_digits_are_no_crux_number(self):
+        t = debate.crux_terms(["GPT-6.5 Astra serving capacity reopens Pro sign-ups; Llama-3.1-70B stays closed"])
+        self.assertEqual(t["numbers"], [])
+        t = debate.crux_terms(["Pro sign-ups reopen at $200 a month"])
+        self.assertEqual([x["raw"] for x in t["numbers"]], ["$200"])
+        self.assertEqual(debate.term_hits("GPT-6.5 launch priced at $200 a month", t)["numbers"], ["$200"])
+        self.assertEqual(debate.crux_numbers("F-35 order; Brent 85.2"), debate.crux_numbers("Brent 85.2"))
+
 class MarketQuestionLineTests(unittest.TestCase):
     """Fourth review #48, closed at the reader (ninth review): a POLYMARKET LIVE MARKETS question line
     ('- US x Iran Effective Ceasefire by September 4?') carries its odds on the next line, and the package copies

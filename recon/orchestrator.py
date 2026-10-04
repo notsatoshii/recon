@@ -1190,6 +1190,7 @@ SECTOR CONTEXT (crypto and macro landscape; background, not today's data):
         terms = debate.crux_terms(texts, vocab)
         if kind in ("event", "judgment"):
             terms["keywords"] = debate.crux_keywords(texts, question)
+            terms["resolution"] = debate.resolution_words(question)
         return debate.drop_frequent_entities(terms, docs, keep_always=keep, subject=subj)
 
     def redteam_search(self, rec: dict, takes: dict) -> dict:

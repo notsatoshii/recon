@@ -1093,6 +1093,21 @@ def entities(text: str, vocab: set[str] | None = None, mid_common: bool = True) 
 METRIC_SET = set(METRIC_WORDS)
 
 
+# A versioned product name carries its version as digits ('GPT-6.5', 'Llama-3.1-70B', 'F-35'): a name, not a
+# figure. evidence.numbers reads '6.5' and '70B' (70 billion) out of them (tenth review, 2026-10-04: on 09-11
+# c14 q3 'GPT-6 Astra' sat on the only crux hit), so the crux terms and the lines they are matched against drop
+# a letter-led token with a hyphenated digit part before reading numbers. A figure after a space ('Brent 85.2')
+# stays a number.
+_VERSIONED = re.compile(r"(?<![\w$€£₩.])[A-Za-z][A-Za-z0-9]*"
+                        r"(?:[-‐‑–][A-Za-z0-9]*\d[A-Za-z0-9]*(?:\.\d+)*)+(?![\w%])")
+
+
+def crux_numbers(text: str) -> list[dict]:
+    """evidence.numbers without the digits of versioned product names (_VERSIONED): the numbers a crux term or a
+    crux-matched line carries."""
+    return evidence.numbers(_VERSIONED.sub(" ", text or ""))
+
+
 def crux_terms(texts: list[str], vocab: set[str] | None = None) -> dict:
     """Numbers, entities and metric words of the cruxes. An entity and a metric word from the same token
     ('TVL', 'Volume') count once, as the metric word: a generic metric is not a specific term."""
@@ -1100,7 +1115,7 @@ def crux_terms(texts: list[str], vocab: set[str] | None = None) -> dict:
     for t in texts:
         if not t:
             continue
-        nums += evidence.numbers(t)
+        nums += crux_numbers(t)
         ents += entities(t, vocab)
         low = t.lower()
         mets += [w for w in METRIC_WORDS if re.search(rf"(?<!\w){re.escape(w)}(?!\w)", low)]
@@ -1201,6 +1216,23 @@ def crux_keywords(texts: list[str], question: str = "") -> list[str]:
 _BOILER_BASES = {_kw_base(w) for w in CRUX_BOILERPLATE | CRUX_GENERIC}
 
 
+def resolution_words(question: str) -> list[str]:
+    """The question's own content words on an event or judgment question, as bases (_kw_base): its resolution verb
+    and object ('resum', 'subscription', 'sign' on 'Will OpenAI resume new Pro subscription sign-ups by ...?'),
+    minus stop, metric, boilerplate and generic words; names stay out (only words the question writes in lower
+    case). crux_keywords leaves them out (every line about the
+    subject carries them, so they cannot make a crux-search hit), but a crux entity on a line backs the crux
+    only beside one of them or a crux keyword (entity_backed)."""
+    out = []
+    for w in _lower_words(question or ""):
+        if w in STOP or w in METRIC_SET:
+            continue
+        st = _kw_base(w)
+        if st not in _BOILER_BASES:
+            out.append(st)
+    return list(dict.fromkeys(out))
+
+
 def keyword_hits(line: str, keywords) -> list[str]:
     """The crux keywords (bases, _kw_base) a line carries (any case)."""
     if not keywords:
@@ -1225,14 +1257,17 @@ def entity_backed(h: dict, terms: dict) -> bool:
     have keywords (event and judgment questions) a crux entity alone is a name the story is told around, not the
     fact the split turns on: 'GPT-6 Astra: The next generation in intelligence for work - OpenAI' names Astra and
     the pinned OpenAI on a crux about Astra serving capacity reopening Pro sign-ups, and says nothing about
-    capacity or sign-ups. There it counts only with a crux keyword, a crux number or a second crux entity on the
-    same line. Without keywords (threshold and direction questions, or cruxes with no content word) any crux
-    entity counts, as before."""
+    capacity or sign-ups. There it counts only with a crux keyword, a word of the question's own resolution
+    (`resolution`: resolution_words, 'resume' / 'sign-ups') or a crux number on the same line. A second crux
+    entity is not enough (tenth review, 2026-10-04, 09-11 c14 q3: 'Introducing ChatGPT for Financial Services,
+    combining built-in financial data and GPT-6 Astra ...' names ChatGPT and Astra, says nothing about sign-ups
+    or capacity, was the crux hit and moved both sides as crux_data). Without keywords (threshold and direction
+    questions, or cruxes with no content word) any crux entity counts, as before."""
     if not h.get("entities"):
         return False
     if not terms.get("keywords"):
         return True
-    return bool(h.get("keywords") or h.get("numbers") or len(h["entities"]) >= 2)
+    return bool(h.get("keywords") or h.get("resolution") or h.get("numbers"))
 
 
 def same_number(x: dict, y: dict) -> bool:
@@ -1275,7 +1310,7 @@ def term_hits(line: str, terms: dict) -> dict:
     mets = [w for w in terms.get("metrics", []) if re.search(rf"(?<!\w){re.escape(w)}(?!\w)", low)]
     nums = []
     if terms.get("numbers"):
-        xs = evidence.numbers(line)
+        xs = crux_numbers(line)
         for y in terms["numbers"]:
             # A percentage under 10 matches within ±0.051 points, so 'above 1%' would match every '+1.03% 24h' of
             # an on-chain page: it counts only on a line that also carries a crux entity or metric word (seventh
@@ -1285,7 +1320,8 @@ def term_hits(line: str, terms: dict) -> dict:
             if any(same_number(x, y) for x in xs):
                 nums.append(y["raw"])
     kws = keyword_hits(line, terms.get("keywords"))
-    return {"entities": ents, "numbers": nums, "metrics": mets, "pinned": pins, "keywords": kws}
+    res = keyword_hits(line, terms.get("resolution"))
+    return {"entities": ents, "numbers": nums, "metrics": mets, "pinned": pins, "keywords": kws, "resolution": res}
 
 
 def shares_term(quote: str, terms: dict) -> bool:
@@ -1326,7 +1362,7 @@ def shares_specific(quote: str, terms: dict, kind: str = "") -> bool:
         return True
     if not entity_backed(h, terms):
         return False
-    return kind in ("event", "judgment") or bool(evidence.numbers(quote or ""))
+    return kind in ("event", "judgment") or bool(crux_numbers(quote or ""))
 
 
 # A question's subject under its other common name: a crux that says 'Bitcoin' on a 'BTC' question is about
@@ -1376,7 +1412,7 @@ def drop_frequent_entities(terms: dict, docs: dict[str, str], max_share: float =
     # (same_number: '1%' on every '+0.98%' and '+1.03%' change of an on-chain page) says nothing about the crux.
     nkeep, ndropped = [], []
     if terms.get("numbers"):
-        line_nums = [xs for xs in (evidence.numbers(l) for l in lines) if xs]
+        line_nums = [xs for xs in (crux_numbers(l) for l in lines) if xs]
         for y in terms["numbers"]:
             n = sum(1 for xs in line_nums if any(same_number(x, y) for x in xs))
             (ndropped if n > limit else nkeep).append(y)
@@ -1482,8 +1518,8 @@ def crux_search(terms: dict, docs: dict[str, str], exclude_quotes, locator=None,
                 pool["term_lines"].add(ns)
             if score - 2 * pin + 3 * n_subj >= 4 and distinct - pin + n_subj >= 2:
                 pool["pass_with_subject"].add(ns)
-            # Ninth review: where the cruxes have keywords, a crux entity needs a keyword, a number or a second
-            # entity beside it (entity_backed), so the pinned subject plus one crux name is no longer a hit.
+            # Ninth review: where the cruxes have keywords, a crux entity needs a keyword, a number or (tenth review)
+            # a word of the question's resolution beside it (entity_backed), never just a second crux entity.
             if score < 4 or distinct < 2 or not (entity_backed(h, terms) or h["numbers"] or subject_keyword_pair(h)):
                 continue
             pool["pass"].add(ns)
