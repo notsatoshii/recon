@@ -279,6 +279,88 @@ def reddit_posts(block: str) -> list[dict]:
     return posts
 
 
+# ── per-lens diets (docs/v2/phase-c-diets.md) ───────────────
+
+DIETS_FILE = Path(__file__).resolve().parent.parent / "config" / "diets.json"
+_STAMP = re.compile(r"^\d{4}-\d\d-\d\d")
+
+
+def _heading_key(line: str) -> str:
+    """'## 2. Narrative Analysis' -> 'Narrative Analysis'; a timestamp or empty heading -> '@lead'."""
+    t = re.sub(r"^\d+\.\s+", "", line.lstrip("#").strip())
+    return "@lead" if not t or _STAMP.match(t) else t
+
+
+def diet_blocks(body: str) -> list[tuple[str, str, str]]:
+    """(block, sub, text) for each '## ' chunk of a section body; block is the enclosing '# ' heading
+    (without '#'), sub the '## ' heading key. Text before any '## ' under a block has sub ''."""
+    out, block, sub, cur = [], "", "", []
+
+    def flush():
+        if any(l.strip() and not l.startswith("#") and l.strip() != "---" for l in cur):
+            out.append((block, sub, "\n".join(cur)))
+
+    for line in body.split("\n"):
+        if line.startswith("# "):
+            flush()
+            block, sub, cur = line[2:].strip(), "", []
+            continue
+        if line.startswith("## "):
+            flush()
+            sub, cur = _heading_key(line), [line]
+            continue
+        cur.append(line)
+    flush()
+    return out
+
+
+def _starts(key: str, prefixes: list[str]) -> bool:
+    k = key.upper()
+    return any(k.startswith(p.upper()) for p in prefixes)
+
+
+def diet_entry(body: str, e: dict, pdate: datetime | None) -> str:
+    blocks = diet_blocks(body)
+    if e.get("block"):
+        blocks = [b for b in blocks if _starts(b[0], [e["block"]])]
+    if e.get("block", "").lower().startswith("twitter"):
+        xs = re.split(r"(?m)^(?=# Twitter/X Intelligence)", body, maxsplit=1)
+        return x_view(xs[1], pdate, e["cap"])[0] if len(xs) > 1 else ""
+    if e.get("only"):
+        blocks = [b for b in blocks if _starts(b[1], e["only"])]
+    if e.get("skip"):
+        blocks = [b for b in blocks if not _starts(b[1], e["skip"])]
+    chunks = [drop_noise(t) for _, _, t in blocks]
+    return fair_share([c for c in chunks if c.strip()], e["cap"]) if chunks else ""
+
+
+def build_diets(run: Path, sections: list[tuple[str, str, str]], pdate: datetime | None,
+                diets: dict | None = None) -> dict:
+    """Write <run>/01_diets/<agent>.md: only the sections and blocks each lens reads. {agent: bytes}."""
+    if diets is None:
+        if not DIETS_FILE.exists():
+            return {}
+        diets = {k: v for k, v in json.loads(DIETS_FILE.read_text(encoding="utf-8")).items() if not k.startswith("_")}
+    order = [n for n, _, _ in sections]
+    bodies = {n: b for n, b, _ in sections}
+    out_dir = run / "01_diets"
+    out_dir.mkdir(exist_ok=True)
+    report = {}
+    for agent, entries in diets.items():
+        per_sec: dict[str, list[str]] = {}
+        for e in entries:
+            if e["section"] not in bodies:
+                continue
+            text = diet_entry(bodies[e["section"]], e, pdate).strip()
+            if text:
+                per_sec.setdefault(e["section"], []).append(text)
+        parts = [f"---\n\n# SECTION: {n}\n\n" + "\n\n".join(per_sec[n]) + "\n" for n in order if n in per_sec]
+        text = "\n".join(parts)
+        (out_dir / f"{agent}.md").write_text(text, encoding="utf-8")
+        report[agent] = {"bytes": nbytes(text), "sections": [n for n in order if n in per_sec]}
+    return report
+
+
 # ── package ──────────────────────────────────────────────────
 
 def split_sections(pkg: str) -> tuple[str, list[tuple[str, str, str]]]:
@@ -346,6 +428,7 @@ def build(run: Path) -> int:
             failed.append(name)
     view_text = "\n".join(out)
     (run / "01_filtered.md").write_text(view_text, encoding="utf-8")
+    diets = build_diets(run, sections, pdate)
 
     # social extract for MARKET MOOD
     soc = ["# SOCIAL POSTS FOR MARKET MOOD",
@@ -409,7 +492,8 @@ def build(run: Path) -> int:
 
     (run / "01_package_report.json").write_text(json.dumps(
         {"agent_view_bytes": nbytes(view_text), "full_package_bytes": nbytes(pkg), "sections": report,
-         "x_tweets_shown": len(tweets_picked), "reddit_posts": len(posts)}, indent=1), encoding="utf-8")
+         "x_tweets_shown": len(tweets_picked), "reddit_posts": len(posts), "diets": diets}, indent=1),
+        encoding="utf-8")
 
     for r in report:
         flag = "  <-- EMPTY IN VIEW" if r["section"] in failed else ("  (empty at source)" if r["in_content"] == 0 else "")
@@ -417,6 +501,8 @@ def build(run: Path) -> int:
     print(f"agent view {nbytes(view_text)} bytes (full package {nbytes(pkg)}); "
           f"X tweets shown {len(tweets_picked)}; Reddit posts {len(posts)}; social extract "
           f"{nbytes(chr(10).join(soc))} bytes; {sc_note}")
+    if diets:
+        print("diets: " + ", ".join(f"{a} {r['bytes']}" for a, r in diets.items()))
     if failed:
         print(f"FAIL: sections with content that the view dropped: {', '.join(failed)}")
         return 2

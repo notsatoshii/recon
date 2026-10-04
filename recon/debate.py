@@ -210,6 +210,34 @@ def _lens_extras_one(raw: str, pkg: str, view: _View, entries: list[str], taken:
     return "\n\n".join(parts), report
 
 
+def minus_view(text: str, view_text: str) -> str:
+    """`text` without the body lines `view_text` already carries (the _View rule); a heading stays only
+    when a body line under it survives. Used to keep YOUR LENS DATA from repeating the agent's reading."""
+    view, out, pending, kept_item = _View(view_text), [], [], False
+    for line in (text or "").split("\n"):
+        s = line.strip()
+        if not s:
+            continue
+        if s.startswith("#"):
+            lv = _level(s)
+            pending = [h for h in pending if _level(h.strip()) < lv] + [line]
+            kept_item = False
+            continue
+        continuation = line.startswith(" ") and not s.startswith("- ")
+        if continuation:
+            if kept_item:
+                out.append(line)
+            continue
+        if view.has(line):
+            kept_item = False
+            continue
+        out.extend(pending)
+        pending = []
+        out.append(line)
+        kept_item = True
+    return "\n".join(out)
+
+
 def lens_extras(raw: str, pkg: str, view_text: str) -> dict[str, dict]:
     """{agent: {text, bytes, entries}} for all nine agents, computed in table order (a line goes to the
     first agent that picks it), whoever is active, so a lens's block never depends on the roster."""

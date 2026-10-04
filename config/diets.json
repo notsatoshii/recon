@@ -1,0 +1,70 @@
+{
+ "_doc": "What each lens reads for its take (docs/v2/phase-c-diets.md). Each entry picks blocks of one package section: 'block' is a prefix of the '# ' block name inside the section, 'only'/'skip' are prefixes of its '## ' sub-headings ('@lead' = the untitled lead block under a timestamp heading, e.g. the crypto outlets in NEWS), 'cap' is the byte budget of the entry. A '# Twitter/X Intelligence' pick goes through the same recency and engagement ranking as the shared view. Triage and synthesis keep reading the shared view.",
+ "trader": [
+  {"section": "ON-CHAIN & MARKET DATA", "only": ["MARKET OVERVIEW", "KEY PRICES", "TRENDING", "DEX VOLUMES", "DERIVATIVES", "POLYMARKET LIVE MARKETS", "STABLECOIN SUPPLY"], "cap": 7000},
+  {"section": "PREDICTION MARKETS", "cap": 6000},
+  {"section": "SENTIMENT & MARKET MOOD", "only": ["MARKET SIGNALS", "TRENDING TOPICS"], "cap": 1000},
+  {"section": "SOCIAL INTELLIGENCE", "block": "Reddit", "only": ["TRADING", "CRYPTO_CORE"], "cap": 2000},
+  {"section": "SOCIAL INTELLIGENCE", "block": "Twitter/X", "cap": 3000},
+  {"section": "NEWS INTELLIGENCE", "only": ["@lead"], "cap": 2000}
+ ],
+ "narrator": [
+  {"section": "CROSS-SOURCE SIGNALS", "cap": 3000},
+  {"section": "SENTIMENT & MARKET MOOD", "cap": 7500},
+  {"section": "NEWS INTELLIGENCE", "only": ["@lead"], "cap": 3000},
+  {"section": "SOCIAL INTELLIGENCE", "block": "Reddit", "cap": 7000},
+  {"section": "SOCIAL INTELLIGENCE", "block": "Twitter/X", "cap": 10000}
+ ],
+ "builder": [
+  {"section": "ON-CHAIN & MARKET DATA", "only": ["FEE REVENUE", "DEX VOLUMES", "PREDICTION MARKET PROTOCOLS"], "cap": 2500},
+  {"section": "NEWS INTELLIGENCE", "only": ["AI & TECH NEWS"], "cap": 3000},
+  {"section": "SOCIAL INTELLIGENCE", "block": "Reddit", "only": ["AI", "CHAINS"], "cap": 2000},
+  {"section": "AI & TOOLS", "cap": 9000},
+  {"section": "FUNDRAISING", "only": ["CRYPTO / WEB3 ROUNDS", "AI ROUNDS"], "cap": 6000}
+ ],
+ "analyst": [
+  {"section": "CROSS-SOURCE SIGNALS", "cap": 3000},
+  {"section": "GEOPOLITICAL CONTEXT", "only": ["ECONOMIC CALENDAR", "MARKET SENTIMENT"], "cap": 600},
+  {"section": "ON-CHAIN & MARKET DATA", "only": ["MARKET OVERVIEW", "TOTAL DEFI TVL", "CHAIN TVLs", "FEE REVENUE", "STABLECOIN", "TOP STABLECOIN YIELDS", "PREDICTION MARKET PROTOCOLS"], "cap": 6000},
+  {"section": "NEWS INTELLIGENCE", "only": ["@lead"], "cap": 3500},
+  {"section": "FUNDRAISING", "cap": 9000}
+ ],
+ "skeptic": [
+  {"section": "CROSS-SOURCE SIGNALS", "cap": 2000},
+  {"section": "SENTIMENT & MARKET MOOD", "only": ["Narrative Analysis", "Divergences", "Opinion Shifts", "Controversy"], "cap": 6500},
+  {"section": "GEOPOLITICAL CONTEXT", "only": ["CYBER THREATS", "REGULATORY ACTIONS"], "cap": 500},
+  {"section": "ON-CHAIN & MARKET DATA", "only": ["DEX VOLUMES", "FEE REVENUE", "STABLECOIN SUPPLY", "DERIVATIVES"], "cap": 3000},
+  {"section": "NEWS INTELLIGENCE", "only": ["@lead"], "cap": 3500},
+  {"section": "SOCIAL INTELLIGENCE", "block": "Twitter/X", "cap": 6000}
+ ],
+ "policy_analyst": [
+  {"section": "GEOPOLITICAL CONTEXT", "skip": ["PREDICTION MARKETS"], "cap": 5000},
+  {"section": "NEWS INTELLIGENCE", "only": ["KOREA — CRYPTO"], "cap": 7000},
+  {"section": "NEWS INTELLIGENCE", "only": ["KOREA — AI"], "cap": 4000},
+  {"section": "NEWS INTELLIGENCE", "block": "ZDNet Korea", "cap": 4000},
+  {"section": "SOCIAL INTELLIGENCE", "block": "Reddit", "only": ["POLITICS"], "cap": 2500}
+ ],
+ "user_agent": [
+  {"section": "NEWS INTELLIGENCE", "only": ["AI EDUCATION"], "cap": 6000},
+  {"section": "NEWS INTELLIGENCE", "only": ["KOREA — AI"], "cap": 5000},
+  {"section": "NEWS INTELLIGENCE", "block": "ZDNet Korea", "cap": 3000},
+  {"section": "SOCIAL INTELLIGENCE", "block": "Reddit", "cap": 6000},
+  {"section": "SOCIAL INTELLIGENCE", "block": "Twitter/X", "cap": 2000},
+  {"section": "AI & TOOLS", "only": ["HACKER NEWS"], "cap": 1500}
+ ],
+ "macro_strategist": [
+  {"section": "SENTIMENT & MARKET MOOD", "only": ["MARKET SIGNALS"], "cap": 500},
+  {"section": "GEOPOLITICAL CONTEXT", "cap": 6000},
+  {"section": "ON-CHAIN & MARKET DATA", "only": ["MARKET OVERVIEW", "KEY PRICES", "STABLECOIN SUPPLY", "TOP STABLECOIN YIELDS"], "cap": 1800},
+  {"section": "NEWS INTELLIGENCE", "only": ["@lead"], "cap": 2500},
+  {"section": "SOCIAL INTELLIGENCE", "block": "Reddit", "only": ["ECONOMICS", "POLITICS"], "cap": 3500},
+  {"section": "PREDICTION MARKETS", "cap": 5000}
+ ],
+ "ai_engineer": [
+  {"section": "NEWS INTELLIGENCE", "only": ["AI NEWSLETTER"], "cap": 8000},
+  {"section": "NEWS INTELLIGENCE", "only": ["AI & TECH NEWS"], "cap": 3000},
+  {"section": "SOCIAL INTELLIGENCE", "block": "Reddit", "only": ["AI"], "cap": 1500},
+  {"section": "AI & TOOLS", "cap": 9000},
+  {"section": "FUNDRAISING", "only": ["AI ROUNDS"], "cap": 3000}
+ ]
+}

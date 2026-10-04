@@ -5,8 +5,9 @@ Phase B built the typed phases around the bash pipeline's stages; Phase C (docs/
 replaces the middle, from the fixed TENSIONS challenges to the vote:
   - triage writes the questions of the day from config/prompts/debate/questions.md; a programmatic gate
     (recon/debate.py gate_questions) drops bad ones; the question ledger carries them across runs.
-  - takes answer every question from the lens: positions first, a 150-word take last, and up to 6 KB of
-    YOUR LENS DATA per agent (debate.lens_extras, LENS_RAW) after the cached shared prefix.
+  - takes answer every question from the lens: positions first, a 150-word take last. Each agent reads
+    only its own sections (01_diets/<agent>.md from config/diets.json, docs/v2/phase-c-diets.md; RECON_DIETS=0
+    gives every take the shared view again), plus up to 6 KB of YOUR LENS DATA (debate.lens_extras, LENS_RAW).
   - pairing (no LLM) stages up to 3 debates by the widest probability gap that straddles the median,
     within the call budget; a split with no eligible pair is split_unpaired; a day with no split gets
     one red-team call (consensus).
@@ -512,24 +513,11 @@ class Run:
             self._lens = debate.lens_extras(d["raw"], d["package"], d["view"])
         return self._lens
 
-    def shared(self) -> str:
-        """The block every triage and take prompt starts with, byte-identical, so the provider can
-        reuse its cache across the calls."""
-        if self._shared is None:
-            view = read(self.dir / "01_filtered.md", 100000)
-            sector = read(RECON_HOME / "config" / "sector_context.md", 8000)
-            hist = read(self.dir / "00_historical_context.md", 3000)
-            sc = self.scorecard()
-            self._shared = f"""TODAY'S INTELLIGENCE PACKAGE ({self.day}). Every section is included, each trimmed to fit:
-- SECTION 0 (CROSS-SOURCE): the same story seen in several sources.
-- SECTION 1 (SENTIMENT): BettaFish sentiment analysis across social media and news.
-- SECTION 2 (GEOPOLITICAL): World Monitor intelligence from 79 global sources.
-- SECTION 3 (ON-CHAIN): market, DeFi and stablecoin data.
-- SECTION 4 (NEWS): crypto, AI, AI education and Korea headlines.
-- SECTION 5 (SOCIAL): Reddit hot posts and the most-engaged X posts of the last 72 h.
-- SECTION 6 (AI & TOOLS): GitHub trending AI repos, Hacker News and AI tool changelogs.
-- SECTION 7 (FUNDRAISING): crypto, AI and Korea rounds from news.
-- SECTION 8 (PREDICTION MARKETS): Polymarket and Kalshi markets, when collected.
+    def _package_block(self, intro: str, view: str) -> str:
+        sector = read(RECON_HOME / "config" / "sector_context.md", 8000)
+        hist = read(self.dir / "00_historical_context.md", 3000)
+        sc = self.scorecard()
+        return f"""{intro}
 
 {view}
 --- END PACKAGE ---
@@ -545,7 +533,50 @@ SECTOR CONTEXT (crypto and macro landscape; background, not today's data):
 {sc or 'No scorecard today.'}
 --- END PREDICTIONS ---
 """
+
+    def shared(self) -> str:
+        """The block triage (and, with diets off, every take prompt) starts with, byte-identical, so the
+        provider can reuse its cache across the calls."""
+        if self._shared is None:
+            self._shared = self._package_block(f"""TODAY'S INTELLIGENCE PACKAGE ({self.day}). Every section is included, each trimmed to fit:
+- SECTION 0 (CROSS-SOURCE): the same story seen in several sources.
+- SECTION 1 (SENTIMENT): BettaFish sentiment analysis across social media and news.
+- SECTION 2 (GEOPOLITICAL): World Monitor intelligence from 79 global sources.
+- SECTION 3 (ON-CHAIN): market, DeFi and stablecoin data.
+- SECTION 4 (NEWS): crypto, AI, AI education and Korea headlines.
+- SECTION 5 (SOCIAL): Reddit hot posts and the most-engaged X posts of the last 72 h.
+- SECTION 6 (AI & TOOLS): GitHub trending AI repos, Hacker News and AI tool changelogs.
+- SECTION 7 (FUNDRAISING): crypto, AI and Korea rounds from news.
+- SECTION 8 (PREDICTION MARKETS): Polymarket and Kalshi markets, when collected.""",
+                                               read(self.dir / "01_filtered.md", 100000))
         return self._shared
+
+    def diet(self, agent: str) -> str:
+        """The agent's own reading (scripts/build_agent_package.py build_diets, config/diets.json), or ''
+        when diets are off (RECON_DIETS=0) or the run has none (a package built before diets)."""
+        if os.environ.get("RECON_DIETS", "1").strip() == "0":
+            return ""
+        return read(self.dir / "01_diets" / f"{agent}.md", 60000).strip()
+
+    def agent_block(self, agent: str) -> str:
+        """The take prompt's package block: the agent's own reading when it has one, else shared()."""
+        diet = self.diet(agent)
+        if not diet:
+            return self.shared()
+        return self._package_block(
+            f"TODAY'S INTELLIGENCE PACKAGE ({self.day}): YOUR READING. These are the sections and sources you "
+            "follow, picked for your lens; the other analysts read different ones, and nobody reads everything.",
+            diet)
+
+    def own_data(self, agent: str) -> str:
+        """Everything picked for this agent alone: its reading and its lens extras (lens_quote_share)."""
+        return "\n".join(x for x in (self.diet(agent), self.lens_text(agent)) if x)
+
+    def lens_text(self, agent: str) -> str:
+        """YOUR LENS DATA, minus lines the agent's reading already carries."""
+        lx = self.lens().get(agent, {}).get("text") or ""
+        diet = self.diet(agent)
+        return debate.minus_view(lx, diet) if (lx and diet) else lx
 
     def persona(self, agent: str) -> str:
         return read(RECON_HOME / "personas" / f"{agent}.md")
@@ -920,8 +951,8 @@ SECTOR CONTEXT (crypto and macro landscape; background, not today's data):
         return "\n\n".join(extra) or "(no memory or state from earlier runs)"
 
     def take_prompt(self, agent: str, triage: dict) -> str:
-        lx = self.lens().get(agent, {}).get("text") or "(no lens data today: cite the package)"
-        return self.shared() + "\n" + self.questions_block(triage) + "\n" + prompts.render(
+        lx = self.lens_text(agent) or "(no lens data today: cite the package)"
+        return self.agent_block(agent) + "\n" + self.questions_block(triage) + "\n" + prompts.render(
             "take", role=self.role(agent), context=self.take_context(agent), lens_data=lx, citation_rule=CITATION_RULE)
 
     def take_agents(self, triage: dict) -> list[str]:
@@ -970,6 +1001,7 @@ SECTOR CONTEXT (crypto and macro landscape; background, not today's data):
             lx = lens.get(agent, {})
             rec = {"agent": agent, "data": data, "calls": calls,
                    "fed": {"lens_extra_bytes": lx.get("bytes", 0),
+                           "diet_bytes": len(self.diet(agent).encode("utf-8")),
                            "lens_extra_headings": [e for e in lx.get("entries", []) if e.get("found")]}}
             f.write_text(json.dumps(rec, ensure_ascii=False, indent=1), encoding="utf-8")
             (self.dir / f"03_take_{agent}.md").write_text(data.get("take", ""), encoding="utf-8")
@@ -1524,7 +1556,7 @@ SECTOR CONTEXT (crypto and macro landscape; background, not today's data):
         texts = {a: "\n".join([t.get("take", ""), t.get("summary", "")] + take_quotes(t)) for a, t in takes.items()}
         overlap = evidence.citation_overlap(texts)
         qo = debate.question_overlap(takes)
-        ls = debate.lens_quote_share(takes, self.lens())
+        ls = debate.lens_quote_share(takes, {a: {"text": self.own_data(a)} for a in takes})
         overlap = {**overlap, "per_question": qo["per_question"], "mean_per_question": qo["mean"],
                    "lens_quote_share": ls["per_agent"], "lens_quote_share_mean": ls["mean"]}
         nums = {a: {f"{x['scaled']:.4g}" for x in evidence.numbers(tx) if x["value"] >= 100 or x["pct"]
@@ -2067,7 +2099,8 @@ RAW DATA (for cross-referencing numbers; every package section, each trimmed):
             trec = json.loads(read(self.pdir / "takes" / f"{a}.json") or "{}")
             agents.append({
                 "name": a, "desk": "shared", "persona_hash": ph,
-                "fed": {"package_sections": [s["name"] for s in sections], "raw_sections": [],
+                "fed": {"package_sections": (re.findall(r"(?m)^# SECTION: (.+)$", self.diet(a))
+                                             or [s["name"] for s in sections]), "raw_sections": [],
                         "memory_lines": mem.get(a, {}).get("memory_lines", 0), "state_lines": mem.get(a, {}).get("state_lines", 0),
                         "bytes": len(self.take_prompt(a, triage).encode("utf-8")),
                         **(trec.get("fed") or {})},

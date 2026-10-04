@@ -10,8 +10,11 @@ TASK: YOUR TAKE ON TODAY'S PACKAGE.
 {{citation_rule}}
 
 If historical context is provided, reference yesterday's brief: note what changed, what predictions held,
-what was wrong. Continuity matters. Answer each question from your lens. At least one evidence item per
-position must come from YOUR LENS DATA block (if that block says there is none today, cite the package).
+what was wrong. Continuity matters. Answer each question from your lens and your convictions; disagree
+with the obvious answer when your sources or your beliefs give you a reason. You read only your own
+sources today: when they say nothing about a question, give the number your convictions imply, start the
+reason with "Outside my sources:" and leave evidence empty rather than stretch a quote. Otherwise at least
+one evidence item per position must come from your reading or YOUR LENS DATA.
 Odds quoted in the package (prediction markets, futures pricing) are evidence, not your answer: start from
 what your lens sees and give your own number; when it differs from the market or the obvious base rate,
 the reason says why. A prediction-market odds line (a YES/NO probability, a Polymarket or Kalshi price)
@@ -23,7 +26,8 @@ Reply with one JSON object matching the schema, writing the fields in this order
 - positions: one entry for EVERY question of the day above (question_id q1, q2, ...): your probability
   0-100 that the answer is yes, a reason of at most 25 words from your lens, and 1-2 evidence items, each
   a quote copied character for character (at most 200 characters) with its section name, at least one of
-  them from YOUR LENS DATA and not a market odds line. A program checks every quote; a quote that is not there counts against you.
+  them from your reading or YOUR LENS DATA and not a market odds line (none when the question is outside
+  your sources). A program checks every quote; a quote that is not there counts against you.
 - claims: up to 4 key factual claims behind your positions, each with a verbatim quote, section and
   confidence.
 - summary: your main call in one or two sentences (at most 50 words).
