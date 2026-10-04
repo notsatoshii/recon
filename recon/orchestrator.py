@@ -196,12 +196,43 @@ def expiry_note(text: str, made: str) -> str:
     return " (no expiry: no dated horizon)"
 
 
-def run_status(final: str, checks: dict) -> str:
+def run_status(final: str, checks: dict, deliver: dict | None = None) -> str:
     """run.json status (§12.3): 'ok' only with a final brief whose §11.5 checks are clean: all sections in order, no
-    agent names, every printed 'N of M' on the sheet and every split-sheet block in WHERE THE VIEWS SPLIT."""
+    agent names, every printed 'N of M' on the sheet and every split-sheet block in WHERE THE VIEWS SPLIT, and,
+    when Telegram was on for the run (deliver['telegram_on']), every chunk of it sent. A failed or partial send
+    makes the run 'partial' (cron_run.sh alerts on delivery.telegram false)."""
     clean = (checks.get("sections_ok") and not checks.get("agent_names") and not checks.get("count_mismatch")
              and not checks.get("split_missing"))
-    return "ok" if final and clean else ("partial" if final else "failed")
+    d = deliver or {}
+    sent = not d.get("telegram_on") or bool(d.get("telegram"))
+    return "ok" if final and clean and sent else ("partial" if final else "failed")
+
+
+TG_SOFT, TG_HARD = 3800, 4000   # Telegram rejects a message over 4096 characters
+
+
+def tg_chunks(text: str, soft: int = TG_SOFT, hard: int = TG_HARD) -> list[str]:
+    """Cut a brief into Telegram messages of at most `soft` characters: a chunk is closed BEFORE a line that would
+    push it past `soft` (and at a '<b>' header once past 3000), and a single line over `hard` is cut at its last
+    space before `soft` (else at `soft`). Cutting only after a chunk passed 3800 let one 300-900 character
+    paragraph line push it past 4096; Telegram then rejected it in both HTML and plain mode and it was dropped."""
+    pieces: list[str] = []
+    for line in text.split("\n"):
+        while len(line) > hard:
+            cut = line.rfind(" ", soft // 2, soft)
+            cut = cut if cut > 0 else soft
+            pieces.append(line[:cut])
+            line = line[cut:].lstrip(" ")
+        pieces.append(line)
+    chunks, cur = [], ""
+    for line in pieces:
+        if cur.strip() and (len(cur) + len(line) > soft or (line.startswith("<b>") and len(cur) > 3000)):
+            chunks.append(cur.strip())
+            cur = ""
+        cur += line + "\n"
+    if cur.strip():
+        chunks.append(cur.strip())
+    return chunks
 
 
 class Run:
@@ -1902,17 +1933,7 @@ RAW DATA (for cross-referencing numbers; every package section, each trimmed):
         t = re.sub(r"^\|[-| ]+\|$", "", t, flags=re.M)
         t = re.sub(r"^---+$", "", t, flags=re.M)
         t = re.sub(r"\n{3,}", "\n\n", t)
-        chunks, cur = [], ""
-        for line in t.split("\n"):
-            if cur and line.startswith("<b>") and len(cur) > 3000:
-                chunks.append(cur.strip())
-                cur = ""
-            cur += line + "\n"
-            if len(cur) > 3800:
-                chunks.append(cur.strip())
-                cur = ""
-        if cur.strip():
-            chunks.append(cur.strip())
+        chunks = tg_chunks(t)
         sent = 0
         for ch in chunks:
             for body in ({"chat_id": chat, "text": ch, "parse_mode": "HTML"}, {"chat_id": chat, "text": ch}):
@@ -1931,6 +1952,8 @@ RAW DATA (for cross-referencing numbers; every package section, each trimmed):
         brief = read(self.dir / "07_daily_brief.md")
         self.log("DELIVERING...")
         tg = False
+        tg_on = not (self.args.no_telegram or self.dry) and bool(os.environ.get("RECON_TELEGRAM_TOKEN")
+                                                               and os.environ.get("RECON_TELEGRAM_CHAT_ID"))
         if self.args.no_telegram or self.dry:
             self.log(f"Telegram suppressed: {brief[:60]!r}...")
         else:
@@ -1958,7 +1981,7 @@ RAW DATA (for cross-referencing numbers; every package section, each trimmed):
             archived = True
         else:
             self.log("  Archive and knowledge DB skipped (validation, replay or dry run)")
-        return {"telegram": tg, "archived": archived}
+        return {"telegram": tg, "telegram_on": tg_on, "archived": archived}
 
     # ── run.json (schema_version 2, §12.3, §14.1) ──────────
     def ph_record(self, triage, takes, pairing, chs, resps, cc, pos, split, mem, syn, checks, deliver, pkg):
@@ -2064,7 +2087,7 @@ RAW DATA (for cross-referencing numbers; every package section, each trimmed):
         tri_calls = [{"phase": "triage", "tier": c["tier"], "model": c["model"], "in_tok": c["in_tok"], "out_tok": c["out_tok"],
                       "seconds": c["seconds"]} for c in calls if c["phase"] == "triage"]
         final = read(self.dir / "07_daily_brief.md")
-        status = run_status(final, checks)
+        status = run_status(final, checks, deliver)
         red = next((r for r in chs.values() if r.get("type") == "redteam"), None)
         sheet = self.load("split_sheet") if self.art("split_sheet").exists() else None
         tri_art = self.load("triage") if self.art("triage").exists() else {}
@@ -2098,7 +2121,8 @@ RAW DATA (for cross-referencing numbers; every package section, each trimmed):
                       "cached_tok": sum(c.get("cached_tok", 0) for c in calls),
                       "out_tok": sum(c.get("out_tok", 0) for c in calls), "wall_seconds": wall,
                       "budget": self.budget, "ceiling": self.ceiling, "budget_skips": self.budget_skips()},
-            "delivery": {"telegram": bool(deliver.get("telegram")), "brief_words": len(final.split()),
+            "delivery": {"telegram": bool(deliver.get("telegram")), "telegram_on": bool(deliver.get("telegram_on")),
+                         "brief_words": len(final.split()),
                          "archived": deliver.get("archived", False)},
             "phases": self.phase_times,
         }

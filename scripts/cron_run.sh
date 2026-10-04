@@ -7,7 +7,8 @@
 #
 # cron runs lines with /bin/sh, which has no `source`; the v1 lines failed on that silently.
 # This launcher loads the env file itself, takes a lock so two runs never overlap, logs to
-# logs/cron.log, and sends ONE Telegram message when the run fails or no brief lands.
+# logs/cron.log, and sends ONE Telegram message when the run fails, no brief lands, or the brief was not
+# delivered (run.json delivery.telegram false on an untagged run with Telegram on).
 # Pipeline: the Python orchestrator (recon/orchestrator.py, Phase B) since 2026-10-04, after two
 # live validation runs. If it does not finish (no fresh run.json: record, the last phase, writes it after
 # deliver), it is retried once with --resume (only the failed phase and the ones after it run again). The bash pipeline (run_recon.sh) runs on the same
@@ -154,6 +155,17 @@ Log: $DAY_LOG"
 fi
 
 echo "[$(stamp)] cron_run: brief landed in ${mins} min ($(wc -w < "$BRIEF") words)"
+# Delivery: an orchestrator run that finished but did not send every Telegram chunk records delivery.telegram
+# false (status 'partial'). On an untagged run with Telegram on, that brief never reached the chat: alert.
+undelivered=0
+if [ "$PIPELINE" != "bash" ] && [ "${used_bash:-0}" != 1 ] && [ -z "$RUN_ID" ] && [ "$quiet" != 1 ] \
+   && [ -n "${RECON_TELEGRAM_TOKEN:-}" ] && [ -n "${RECON_TELEGRAM_CHAT_ID:-}" ] \
+   && python3 -c 'import json, sys; d = json.load(open(sys.argv[1], encoding="utf-8")).get("delivery") or {}; sys.exit(0 if d.get("telegram") is False else 1)' "$RUN_JSON" 2>/dev/null; then
+    undelivered=1
+    alert "RECON daily brief for $TODAY was written but Telegram delivery failed or was partial (run.json delivery.telegram false). Brief: $BRIEF
+Log: $DAY_LOG"
+fi
 # Run record for the RUBRIC recon page (read-only on the run files; failure is not fatal)
 python3 "$RECON_HOME/recon/export.py" >/dev/null 2>&1 || echo "[$(stamp)] export.py failed (non-fatal)"
+[ "$undelivered" = 1 ] && exit 1
 exit 0
