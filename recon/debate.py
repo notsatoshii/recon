@@ -1687,7 +1687,7 @@ _HO_MOVE = (r"(?!\s+(?:gains?|drops?|rises?|falls?|declines?|loss(?:es)?|increas
             r"|rally|rallies|higher|lower|up|down|advances?|decreases?|climbs?)\b)")
 _HO_CENTS = r"\d{1,3}(?:\.\d+)?\s?(?:¢|cents?\b)"
 _HO_WORD = r"(?:odds|chances?|probabilit(?:y|ies)|likelihood|bets?|bettors?|betting|wagers?|wagering)"
-_HO_VENUE = r"(?:FedWatch|Polymarket|Kalshi|Manifold|Metaculus|PredictIt|Myriad|Limitless)"
+_HO_VENUE = r"(?:Fed\s?Watch|Polymarket|Kalshi|Manifold|Metaculus|PredictIt|Myriad|Limitless)"
 _HO_SUBJ = r"(?:traders|markets?|investors|forecasters|futures|swaps|bettors|users|punters|Wall\s+Street)"
 _HO_VERB = (r"(?:puts?|putting|sees?|seeing|saw|gives?|giving|gave|assigns?|assigning|assigned"
             r"|impl(?:y|ies|ying|ied)|pric(?:e|es|ed|ing)|peg(?:s|ged|ging)?|favou?r(?:s|ed|ing)?)")
@@ -1721,7 +1721,10 @@ _HEADLINE_ODDS = re.compile(
     rf"|{_HO_KO_WORD}(?:은|는|이|가|을|를|도)?\s+(?:[^\s%]+\s+){{0,3}}?(?:약\s*)?{_HO_KO_PCT}"  # '인하 확률은 78%'
     rf"|{_HO_KO_PCT}\s*(?:의\s*)?{_HO_KO_WORD}"                                 # '78% 확률로'
     rf"|{_HO_KO_VENUE}[^\n]{{0,40}}?{_HO_KO_PCT}(?!\s*\(?\s*(?:7d|24h|1d|30d)\b)"  # '페드워치에 따르면 ... 78%'
-    rf"|{_HO_KO_PCT}[^\n]{{0,15}}?{_HO_KO_VENUE}",                              # '78% 베팅'
+    rf"|{_HO_KO_PCT}[^\n]{{0,15}}?{_HO_KO_VENUE}"                               # '78% 베팅'
+    rf"|\b(?:prediction|betting)\s+markets?\s*:[^\n]{{0,120}}?{_HO_UNSIGNED}{_HO_PCT}"  # 'Prediction markets: ... 30%'
+    rf"|\b(?:{_HO_VENUE}|CME|futures|swaps)\s*:\s*{_HO_UNSIGNED}\d{{1,2}}(?:\.\d)?\s?%{_HO_MOVE}"  # 'futures: 78%'
+    rf"|{_HO_UNSIGNED}{_HO_PCT}\s+according\s+to\s+(?:the\s+)?(?:{_HO_VENUE}|CME|(?:prediction|betting)\s+markets?)\b",
     re.I)
 _LADDER = re.compile(r"\bmarket-implied\b")
 _ODDS_CONT = re.compile(r"^\s*(?:YES|NO):?\s*\d{1,3}(?:\.\d+)?\s?%")   # an odds line under its question line
@@ -1840,6 +1843,55 @@ def event_belief_line(line: str, terms: dict | None, kind: str = "") -> bool:
     return False
 
 
+# market_belief_line: belief by meaning, on every question kind (Phase C, 2026-10-04, sixth pass). Threshold and
+# direction questions had no backstop: 'Polymarket YES shares on Bitcoin above $100K ... trade at $0.30', 'Kalshi
+# market ... trades at 0.30', '... 30c on Kalshi', 'October FOMC cut now 78% according to CME' and 'Market consensus
+# now 78% ...' were data, qualified and moved the skeptic 40 -> 55; event_belief_line only read '%' figures, so
+# contract prices got past it on event questions too. A contract price ($0.NN, a bare 0.NN, NNc / NN¢) within ten
+# words of YES/NO or 'contract' or on a line naming a venue or YES/NO shares, or an unsigned 1-99% (_EV_PCT) within six words before or four after a
+# venue or belief subject, is market unless a metric word sits beside it ('CME open interest rose 5%').
+_MB_PRICE = re.compile(r"(?<![\w.,$])(?:\$0?|0)\.\d{2}(?![\d.]|\s?(?:[kmbt]n?|mn|million|billion|trillion)\b|\s?(?:%|percent|per\s?cent|pct\b|bps\b|basis\b))"
+                       r"|(?<![\w.,$])\d{1,2}\s?(?:¢|c\b|cents?\b)", re.I)
+_MB_ANCHOR_PRICE = re.compile(r"\bcontracts?\b|\b(?-i:YES|NO)\b", re.I)
+# A venue, a prediction-market label or YES/NO shares anywhere on the line marks its contract prices.
+_MB_LINE_PRICE = re.compile(rf"\b(?:{_HO_VENUE}|(?:prediction|betting)\s+markets?|(?-i:YES|NO)\s+(?:shares?|contracts?))\b",
+                            re.I)
+_MB_ANCHOR_PCT = re.compile(rf"\b(?:{_HO_VENUE}|CME|(?:prediction|betting)\s+markets?|market\s+consensus"
+                            r"|consensus\s+(?:of\s+)?(?:traders|markets?)|traders|bettors|punters|forecasters)\b", re.I)
+_MB_METRIC = re.compile(r"\b(?:jump\w*|climb\w*|soar\w*|spik\w*|plung\w*|slid\w*|slip\w*|sank|sink\w*|rebound\w*"
+                        r"|volumes?|ratio|positions?|positioning|exposure|leverage|funding|liquidations?|inflows?"
+                        r"|outflows?|flows?|supply|cap|caps|utili[sz]ation|hashrate|fees?|open\w*|dividends?"
+                        r"|pays?|paid|per\s+share|eps)\b", re.I)
+
+
+def market_belief_line(line: str) -> bool:
+    """A line whose number is a market belief by meaning, whatever the question kind: a contract price next to
+    a venue, YES/NO or 'contract', or an unsigned 1-99% next to a venue or belief subject, with no metric word
+    beside it (_MB_* above). 'XYZ shares trade at $0.30', 'Corn futures fell 5 cents' and 'CME open interest rose
+    5%' stay data."""
+    if not line:
+        return False
+    body = re.sub(r"^\s*[-*]\s*(?:\[[^\]]*\]\s*)?", "", line)
+    for rx, anchor, nb, na in ((_MB_PRICE, _MB_ANCHOR_PRICE, 10, 4), (_EV_PCT, _MB_ANCHOR_PCT, 6, 4)):
+        for m in rx.finditer(body):
+            if rx is _EV_PCT and not 1 <= float(m.group(1)) <= 99:
+                continue
+            pre, post = body[:m.start()].split(), body[m.end():].split()
+            near = " ".join(pre[-nb:]) + " # " + " ".join(post[:na])
+            if not (anchor.search(near) or (rx is _MB_PRICE and _MB_LINE_PRICE.search(body))):
+                continue
+            beside = " ".join(pre[-5:]) + " # " + " ".join(post[:2])
+            if _EV_METRIC.search(beside) or _MB_METRIC.search(beside):
+                continue
+            return True
+    return False
+
+
+def headline_odds(line: str) -> bool:
+    """Market odds by content, by wording (_HEADLINE_ODDS) or by meaning (market_belief_line)."""
+    return bool(_HEADLINE_ODDS.search(line or "")) or market_belief_line(line)
+
+
 def market_line_in(section: str, lines: list[str], i: int, keys: set[str], terms: dict | None = None,
                    kind: str = "") -> bool:
     """is_market_line, aware of the neighbouring line and of the run's market questions: line i (0-based) of
@@ -1848,7 +1900,7 @@ def market_line_in(section: str, lines: list[str], i: int, keys: set[str], terms
     question `kind`, a bare percentage on an event or judgment question's own event is market too
     (event_belief_line)."""
     line = lines[i] if 0 <= i < len(lines) else ""
-    if is_market_line(section, line) or odds_below(lines, i) or _HEADLINE_ODDS.search(line or ""):
+    if is_market_line(section, line) or odds_below(lines, i) or headline_odds(line):
         return True
     if event_belief_line(line, terms, kind):
         return True

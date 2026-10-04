@@ -2200,7 +2200,7 @@ class CrossSourceMarketCopyTests(unittest.TestCase):
         for line in ("- Kalshi: $481,547,487 (+3.3% 7d)", "- BTC 30-day implied volatility at 52%",
                      "- Oil prices rose 5% on the week"):
             with self.subTest(line=line):
-                self.assertIsNone(debate._HEADLINE_ODDS.search(line))
+                self.assertFalse(debate.headline_odds(line))
         self.assertEqual(debate.ev_class(loc.locate("- Kalshi: $481,547,487 (+3.3% 7d)"), loc), "data")
 
     BELIEF_PHRASINGS = (
@@ -2254,6 +2254,20 @@ class CrossSourceMarketCopyTests(unittest.TestCase):
         "- [Sat, 3 Oct 2026] Polymarket traders now favour an October Fed cut, 64-36",
         "- [Sat, 3 Oct 2026] An October Fed cut is now a 75% proposition in rate futures",
         "- [Sat, 3 Oct 2026] October Fed cut a 3-in-4 shot, traders say",
+        # Phase C (2026-10-04, sixth pass): contract prices ($0.NN, a bare 0.NN, NNc), a 'Prediction markets:'
+        # label, 'Fed Watch' with a space, CME, the colon form and 'according to' were data on threshold and event
+        # questions, qualified, and moved the skeptic 40 -> 55 (market_belief_line, the _HEADLINE_ODDS tail).
+        "- [Sat, 3 Oct 2026] Prediction markets: Bitcoin above $100K by Dec 31 now 30%",
+        "- [Sat, 3 Oct 2026] Polymarket YES shares on Bitcoin above $100K by Dec 31 trade at $0.30",
+        "- [Sat, 3 Oct 2026] Kalshi market on Bitcoin above $100K by Dec 31 trades at 0.30",
+        "- [Sat, 3 Oct 2026] Bitcoin above $100K by Dec 31 trades at 30c on Kalshi",
+        "- [Sat, 3 Oct 2026] CME Fed Watch: 78% for an October FOMC cut to 4.00%",
+        "- [Sat, 3 Oct 2026] Fed funds futures: 78% October FOMC cut",
+        "- [Sat, 3 Oct 2026] October FOMC cut now 78% according to CME",
+        "- [Sat, 3 Oct 2026] Market consensus now 78% for an October FOMC cut to 4.00%",
+        "- [Sat, 3 Oct 2026] Polymarket YES shares on Powell signalling a cut at the press conference trade at $0.78",
+        "- [Sat, 3 Oct 2026] Powell signalling a cut at the press conference: Kalshi contract 78c",
+        "- [Sat, 3 Oct 2026] October Fed cut contract at 78¢ after payrolls",
     )
     DATA_LINES = (
         "- Kalshi: $481,547,487 (+3.3% 7d)", "- BTC 30-day implied volatility at 52%",
@@ -2267,6 +2281,11 @@ class CrossSourceMarketCopyTests(unittest.TestCase):
         "- Michigan survey lifts inflation expectations to 3.1% in September",
         "- Brent rose 2% as the market priced tighter supply; WTI up 1.5%",
         "- Senate passes the funding bill 52-48 after a late amendment",
+        "- XYZ shares trade at $0.30 after the reverse split", "- DOGE trades at $0.30",
+        "- CME Bitcoin futures open interest rose 5%", "- CME Group reports 25% jump in volume",
+        "- Traders: bitcoin dominance at 55%", "- Fed funds futures: 4.33% effective rate",
+        "- The Fed cut by 0.25 percentage points", "- Polymarket volume hit $0.30B", "- ETH/BTC at 0.03 on Binance",
+        "- Traders cut leverage, with 40% of positions closed", "- CME data: 30% of open interest in December contracts",
     )
 
     def test_more_market_belief_phrasings_are_market_not_qualifying(self):
@@ -2277,26 +2296,68 @@ class CrossSourceMarketCopyTests(unittest.TestCase):
                + "\n".join(self.DATA_LINES) + "\n")
         loc = evidence.Locator({"package": pkg})
         terms = debate.crux_terms(["The Fed cuts rates at the October 2026 FOMC meeting"])
-        for line in self.BELIEF_PHRASINGS:
-            with self.subTest(line=line):
-                self.assertIsNotNone(debate._HEADLINE_ODDS.search(line))
+        for line, kind in ((x, k) for x in self.BELIEF_PHRASINGS for k in ("event", "threshold")):
+            with self.subTest(line=line, kind=kind):
+                self.assertTrue(debate.headline_odds(line))
                 self.assertEqual(debate.ev_class(loc.locate(line), loc), "market")
-                qq = debate.quote_qualifies(line, terms, "event", loc)
+                qq = debate.quote_qualifies(line, terms, kind, loc)
                 self.assertTrue(qq["market"])
                 self.assertFalse(qq["qualifies"])
                 self.assertNotIn(line, debate.market_lines(loc))
                 m = debate.gate_move("skeptic", 40, 55, {"q1": 40}, 80, "narrow", [{"section": "", "quote": line}],
-                                     [], [], [], terms, loc, kind="event")
+                                     [], [], [], terms, loc, kind=kind)
                 self.assertEqual(m["new_evidence"][0]["cls"], "market")
                 self.assertFalse(m["new_evidence"][0]["qualifies"])
                 self.assertEqual(m["gated"], 45)                           # the free move only
-        res = debate.crux_search(terms, {"package": pkg}, [], loc)
-        self.assertFalse([h for h in res["hits"] if h["text"].strip() in self.BELIEF_PHRASINGS])
+        for kind in ("event", "threshold"):
+            res = debate.crux_search(terms, {"package": pkg}, [], loc, kind=kind)
+            self.assertFalse([h for h in res["hits"] if h["text"].strip() in self.BELIEF_PHRASINGS])
         for line in self.DATA_LINES:
             with self.subTest(line=line):
-                self.assertIsNone(debate._HEADLINE_ODDS.search(line))
+                self.assertFalse(debate.headline_odds(line))
                 self.assertEqual(debate.ev_class(loc.locate(line), loc), "data")
 
+
+    def test_contract_prices_and_venue_labels_are_market_on_threshold_and_event_questions(self):
+        # Phase C (2026-10-04, sixth pass), on each line's own crux in a 400-line padded corpus: contract prices
+        # ($0.NN, 0.NN, NNc) beside a venue or YES shares, 'Prediction markets:', 'CME Fed Watch: N%', 'futures:
+        # N%', 'N% according to CME' and 'Market consensus now N%' came back data, qualified, passed the referee
+        # check and gated the skeptic 40 -> 55; two were crux hits. Each is market now, by wording or by meaning
+        # (headline_odds, market_belief_line), whatever the question kind.
+        cases = (
+            ("threshold", "Bitcoin closes above $100K by Dec 31 2026", [
+                "Prediction markets: Bitcoin above $100K by Dec 31 now 30%",
+                "Polymarket YES shares on Bitcoin above $100K by Dec 31 trade at $0.30",
+                "Kalshi market on Bitcoin above $100K by Dec 31 trades at 0.30",
+                "Bitcoin above $100K by Dec 31 trades at 30c on Kalshi"]),
+            ("threshold", "The Fed cuts rates to 4.00% at the October 2026 FOMC meeting", [
+                "CME Fed Watch: 78% for an October FOMC cut to 4.00%",
+                "Fed funds futures: 78% October FOMC cut",
+                "October FOMC cut now 78% according to CME",
+                "Market consensus now 78% for an October FOMC cut to 4.00%"]),
+            ("event", "Powell signals a cut at the October FOMC press conference", [
+                "Polymarket YES shares on Powell signalling a cut at the press conference trade at $0.78",
+                "Powell signalling a cut at the press conference: Kalshi contract 78c"]),
+        )
+        pad = "\n".join(f"- [Fri, 2 Oct 2026] Filler item {i} on shipping volumes in region {i % 17}" for i in range(400))
+        for kind, question, raw in cases:
+            lines = ["- [Sat, 3 Oct 2026] " + x for x in raw]
+            pkg = "# SECTION 4: NEWS INTELLIGENCE\n## NEWS MEDIA\n" + pad + "\n" + "\n".join(lines) + "\n"
+            loc = evidence.Locator({"package": pkg})
+            terms = debate.crux_terms([question])
+            hits = [h["text"].strip() for h in debate.crux_search(terms, {"package": pkg}, [], loc, kind=kind)["hits"]]
+            self.assertFalse(set(hits) & set(lines))
+            for line in lines:
+                with self.subTest(kind=kind, line=line):
+                    self.assertEqual(debate.ev_class(loc.locate(line), loc), "market")
+                    qq = debate.quote_qualifies(line, terms, kind, loc)
+                    self.assertTrue(qq["market"])
+                    self.assertFalse(qq["qualifies"])
+                    m = debate.gate_move("skeptic", 40, 55, {"q1": 40}, 80, "narrow",
+                                         [{"section": "", "quote": line}], [], [], [], terms, loc, kind=kind)
+                    self.assertEqual(m["new_evidence"][0]["cls"], "market")
+                    self.assertFalse(m["new_evidence"][0]["qualifies"])
+                    self.assertEqual(m["gated"], 45)                       # the free move only
 
     def test_event_question_bare_percentage_on_its_own_event_is_market(self):
         # Phase C (2026-10-04, fifth pass): the phrase lists keep leaking, so on an event or judgment question an
