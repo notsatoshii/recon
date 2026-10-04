@@ -2574,8 +2574,12 @@ def split_sheet(day: str, run_id: str, day_type: str, questions: list[dict], tak
             "crux": clean_text(crux, 300) if d else "", "crux_check": cc, "settles_on": settles,
             "carried": carried(q),
         })
-        # held and live splits first, then the other direction blocks, then degree blocks (seventh review)
-        order.append(0 if d and (d.get("held_split") or d.get("live_split")) else 1 if typ == "direction" else 2)
+        # held and live splits first, then the other debated blocks, then the undebated ones; direction before
+        # degree within each (seventh review). §11.1 'debated first': ranking direction above debated before the
+        # [:3] cut let three undebated direction splits push out a debated degree block closed on data, and its
+        # narrowed note with it. A closed degree block still goes when a held split exists (#70, above).
+        order.append((0 if d and (d.get("held_split") or d.get("live_split")) else 1, not d,
+                      0 if typ == "direction" else 1))
     blocks = [b for _, _, b in sorted(zip(order, range(len(blocks)), blocks), key=lambda x: (x[0], x[1]))][:3]
     if not blocks and red_team and red_team.get("data"):
         rt = red_team["data"]

@@ -944,7 +944,7 @@ debaters talked down without data still reaches the reader. Candidates:
    still reaches the reader (review 2026-10-04: `budget_pairs(12, 24, 2, 3)` gives up the third pair on
    a normal day, and a range-35 split with one dissenting lens vanished from the brief).
 
-At most 3 blocks, debated first. A block is a **direction** split when `minority_count ≥ 1`, else a
+At most 3 blocks, debated first: held and live splits, then the other debated blocks, then the undebated ones, direction before degree within each, cut to 3 after ranking (a debated degree block closed on data is not pushed out by three undebated direction splits; it is dropped only when a held split exists, #70). A block is a **direction** split when `minority_count ≥ 1`, else a
 **degree** split (everyone on one side, but ≥ 30 points apart; ≥ `GAP_MIN` on a `split_unpaired`
 day or for an `unpaired[]` question). A take gap under `GAP_MIN` is never a block (plan §3.4). With no block and a red team, the
 sheet holds one **consensus** block. With neither, the sheet says `no split today`.

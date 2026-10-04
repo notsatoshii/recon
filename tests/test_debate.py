@@ -2288,6 +2288,49 @@ class NarrowedNoteTests(unittest.TestCase):
         self.assertEqual(debate.brief_checks(brief, sh)["split_missing"], [])
 
 
+class DebatedFirstTests(unittest.TestCase):
+    """§11.1 'At most 3 blocks, debated first'. The order was held/live, then direction, then degree, cut to 3:
+    q1, a debated degree pair closed 28 -> 9 on data (narrowed_on_data, no held split anywhere), ranked below
+    three unpaired undebated direction splits q2-q4, so the sheet held q2, q3 and q4 only, and the narrowed block
+    and its note (00a88b3) never reached the sheet, where split_missing could not flag it. #70 drops a closed
+    degree block only when a held split exists."""
+
+    DEG = dict(zip(AG, [55, 58, 62, 66, 70, 74, 78, 80, 83]))     # all lean yes, range 28
+    DIR = dict(zip(AG, [30, 35, 40, 45, 60, 62, 65, 70, 72]))     # 5 yes / 4 no, range 42
+
+    def sheet(self, held=False):
+        qs = [{"id": q, "text": f"Question {q}?", "weight": 1, "resolves_on": "2026-10-11", "settles_with": "x",
+               "ledger_id": f"2026-10-04-{q}"} for q in ("q1", "q2", "q3", "q4")]
+        hi = max(self.DEG, key=self.DEG.get)
+        lo = min(self.DEG, key=self.DEG.get)
+        vals = {"q1": self.DEG, **{q: self.DIR for q in ("q2", "q3", "q4")}}
+        tp = {a: {q: v[a] for q, v in vals.items()} for a in AG}
+        fp = {a: dict(tp[a]) for a in AG}
+        fp[hi]["q1"], fp[lo]["q1"] = 70, 61
+        d = {"question_id": "q1", "high": hi, "low": lo, "gap_before": 28, "gap_after": 9, "in_split": True,
+             "live_split": False, "held_split": held, "crux_agreed": True, "narrowed_on_data": True}
+        takes = {a: {"positions": [p for q in vals for p in mk_takes({a: vals[q][a]}, qid=q)[a]["positions"]],
+                     "summary": f"{a} summary", "claims": []} for a in AG}
+        return debate.split_sheet("2026-10-04", "r", "debate", qs, tp, fp, [d], {}, {}, takes, locator(), 20,
+                                  unpaired=["q2", "q3", "q4"])
+
+    def test_debated_degree_block_outranks_undebated_direction_blocks(self):
+        sh = self.sheet()
+        ids = [b["question_id"] for b in sh["blocks"]]
+        self.assertEqual(len(ids), 3)
+        self.assertEqual(ids[0], "q1")
+        self.assertTrue(sh["blocks"][0]["debated"])
+        self.assertTrue(sh["blocks"][0]["narrowed_on_data"])
+        self.assertIn("from 28 to 9 points", sh["blocks"][0]["narrowed_note"])
+        self.assertIn("Narrowed note (copy exactly)", debate.render_split_sheet(sh))
+
+    def test_closed_degree_block_still_dropped_when_a_held_split_exists(self):
+        # the held flag on q1 itself is not a real case (held needs gap_after >= gap_min), but held_any is what #70
+        # reads; the block must go and the three direction blocks fill the sheet
+        ids = [b["question_id"] for b in self.sheet(held=True)["blocks"]]
+        self.assertNotIn("q1", ids)
+        self.assertEqual(ids, ["q2", "q3", "q4"])
+
 class SplitCoverageTests(unittest.TestCase):
     """09-11 c8: a second split-sheet block (6 of 9) left out of WHERE THE VIEWS SPLIT, or the whole section
     replaced by 'The lenses broadly agree today.', gave no flags and run.json recorded 'ok'. Every block must
