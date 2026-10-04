@@ -1926,10 +1926,16 @@ def quote_qualifies(quote: str, terms: dict, kind: str, locator) -> dict:
     would qualify a move: Locator.strict passes (item=True: one line, or a headline and its body inside one list
     item, which the referee reads together; 09-11 c9 q5, §20.7 #77), the line is data, it is not a market line
     (market_at, so a POLYMARKET LIVE MARKETS question line or its CROSS-SOURCE copy is market), and it is about the
-    crux (shares_specific). {qualifies, market, about, strict}."""
+    crux (shares_specific). {qualifies, market, about, strict}. Every line the quote covers is checked with
+    market_at, and the whole quote with is_market_line, headline_odds and event_belief_line (Phase C, 2026-10-04:
+    only the headline line and odds_line were read, so a news headline quoted with its 'Traders put the odds ...
+    at 78%' body qualified and could confirm a closure on market odds)."""
     st = locator.strict(quote, item=True) if quote and locator is not None else {"ok": False}
-    market = bool(st.get("ok")) and (market_at(locator, st["doc"], st["line"], st.get("section", ""), terms, kind)
-                                     or is_market_line(st.get("section", ""), quote))
+    sec = st.get("section", "")
+    market = bool(st.get("ok")) and (
+        any(market_at(locator, st["doc"], n, sec if n == st["line"] else None, terms, kind)
+            for n in (st.get("lines") or [st["line"]]))
+        or is_market_line(sec, quote) or headline_odds(quote) or event_belief_line(quote, terms, kind))
     about = shares_specific(quote, terms or {}, kind) if quote else False
     return {"qualifies": bool(st.get("ok") and st.get("cls") == "data" and not market and about),
             "market": market, "about": about, "strict": st}

@@ -635,14 +635,15 @@ class Locator:
         """§7.2 gate check: {ok, reason, doc, line, section, cls}. `item=True` (the referee's quote check, §8) also
         accepts a quote that runs from a list item's headline into its indented body and stays inside that item
         ('- [Thu, 10 Sep 2026] OpenAI puts Pro subscriptions on hold due to Astra demand' + '  The company said
-        ...'); `line` is then the first line it covers. The gate keeps one line."""
+        ...'); `line` is then the first line it covers and `lines` every line it covers (one line for a one-line
+        hit), so the referee's market check reads the body as well as the headline. The gate keeps one line."""
         key = (quote or "", bool(item))
         if key not in self._strict:
             self._strict[key] = self._strict_check(*key)
         return dict(self._strict[key])
 
-    def _item_occurrences(self, name: str, part: str, span: int = 3, limit: int = 8) -> list[int]:
-        """1-based first lines of the occurrences of a normalised part that cross a line break but stay inside one
+    def _item_occurrences(self, name: str, part: str, span: int = 3, limit: int = 8) -> list[tuple[int, int]]:
+        """(first, last) 1-based lines of the occurrences of a normalised part that cross a line break but stay inside one
         list item: every line after the first is an indented, non-empty continuation (no blank line between),
         at most `span` lines below the first (debate._same_item's item)."""
         text, starts, idx, lens = self._normed(name)
@@ -652,13 +653,13 @@ class Locator:
             k0 = max(0, bisect.bisect_right(starts, pos) - 1)
             k1 = max(0, bisect.bisect_right(starts, pos + len(part) - 1) - 1)
             if 0 < k1 - k0 <= span and idx[k1] - idx[k0] == k1 - k0                     and all(raw[idx[k]][:1] in (" ", "	") for k in range(k0 + 1, k1 + 1)):
-                out.append(idx[k0] + 1)
+                out.append((idx[k0] + 1, idx[k1] + 1))
             pos = text.find(part, pos + 1)
         return out
 
     def _strict_check(self, quote: str, item: bool = False) -> dict:
         q = norm(quote).strip(" .\"'")
-        out = {"ok": False, "reason": "", "doc": None, "line": None, "section": "", "cls": ""}
+        out = {"ok": False, "reason": "", "doc": None, "line": None, "lines": [], "section": "", "cls": ""}
         if len(q) < 8:
             return {**out, "reason": "empty"}
         if re.search(r"\.\.\.|…|\[\.\.\.\]", q):
@@ -668,16 +669,19 @@ class Locator:
             return {**out, "reason": "a number is not in the run folder"}
         if len(q) < STRICT_MIN_CHARS and not nums:
             return {**out, "reason": f"under {STRICT_MIN_CHARS} characters with no number"}
-        hits = []
+        hits, last = [], {}
         for name in self.order():
             hits += [(name, n) for n, single in self._occurrences(name, q) if single]
         if not hits and item:
             for name in self.order():
-                hits += [(name, n) for n in self._item_occurrences(name, q)]
+                for n, m in self._item_occurrences(name, q):
+                    hits.append((name, n))
+                    last.setdefault((name, n), m)
         if not hits:
             return {**out, "reason": "not a single verbatim line"}
         name, line, sec, cls = self._pick(hits)
-        return {"ok": True, "reason": "", "doc": name, "line": line, "section": sec, "cls": cls}
+        return {"ok": True, "reason": "", "doc": name, "line": line,
+                "lines": list(range(line, last.get((name, line), line) + 1)), "section": sec, "cls": cls}
 
     def positions(self, quote: str) -> set[tuple[str, int]]:
         """Every (doc, line) a quote sits on (verbatim occurrences, or the anchor of a partial match)."""

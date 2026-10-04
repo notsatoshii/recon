@@ -2171,6 +2171,30 @@ class CrossSourceMarketCopyTests(unittest.TestCase):
         self.assertNotIn(line, debate.market_lines(loc))                  # a headline is not a priced market
         self.assertFalse(debate.odds_line(line))
 
+    def test_referee_quote_of_news_headline_with_odds_body_is_market(self):
+        # Phase C (2026-10-04): the referee's quote may cover a headline and its indented body (strict item=True), but
+        # the market check read only the first line and odds_line(quote). The body alone was market; quoted with its
+        # news headline it qualified and could confirm a closure on market odds.
+        head = "- [Fri, 2 Oct 2026] Powell faces a split committee ahead of the October FOMC meeting"
+        body = "  Traders put the odds of Powell signalling a cut at the press conference at 78%"
+        pkg = ("# SECTION 4: NEWS INTELLIGENCE\n## NEWS MEDIA\n" + head + "\n" + body + "\n"
+               "- [Fri, 2 Oct 2026] US payrolls rose 254,000 in September as unemployment fell to 4.1%\n")
+        loc = evidence.Locator({"package": pkg})
+        terms = debate.crux_terms(["Powell signals a rate cut at the October 2026 FOMC press conference"])
+        alone = debate.quote_qualifies(body.strip(), terms, "event", loc)
+        self.assertTrue(alone["market"])
+        self.assertFalse(alone["qualifies"])
+        quote = head[2:] + " " + body.strip()
+        st = loc.strict(quote, item=True)
+        self.assertTrue(st["ok"])
+        n = loc.lines["package"].index(head) + 1
+        self.assertEqual((st["line"], st["lines"]), (n, [n, n + 1]))
+        qq = debate.quote_qualifies(quote, terms, "event", loc)
+        self.assertTrue(qq["market"])
+        self.assertFalse(qq["qualifies"])
+        # a one-line hit covers its own line only
+        self.assertEqual(loc.strict(body.strip(), item=True)["lines"], [n + 1])
+
     def test_headline_probability_likelihood_fedwatch_polymarket_are_market(self):
         # Phase C (2026-10-04): only 'odds' / 'chance' counted, so these two rate-day headlines were data, qualified,
         # and moved the skeptic 40 -> 65, the full 25-point allowance, on market odds.
