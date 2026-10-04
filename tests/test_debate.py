@@ -1199,7 +1199,14 @@ class AdapterAndTextTests(unittest.TestCase):
                  "The skeptic (rightly) flags the risk.": "The other view (rightly) flags the risk.",
                  "As a skeptic, I put this at 30%.": "As the other view, I put this at 30%.",
                  "As an analyst, I put this at 40%.": "As the other view, I put this at 40%.",
-                 "The analyst just flagged the gap.": "The other view just flagged the gap."}
+                 "The analyst just flagged the gap.": "The other view just flagged the gap.",
+                 # sentence-final, '?'/'!' breaks, relative and participle continuations (Phase C review)
+                 "I disagree with the skeptic.": "I disagree with the other view.",
+                 "The skeptic who argues for 30% is wrong.": "The other view who argues for 30% is wrong.",
+                 "The trader overweighting momentum misses it.": "The other view overweighting momentum misses it.",
+                 "The skeptic? Wrong on the data.": "The other view? Wrong on the data.",
+                 "Ask the analyst!": "Ask the other view!",
+                 "the trader that reads flows sees a top.": "The other view that reads flows sees a top."}
         for src, want in cases.items():
             with self.subTest(src=src):
                 self.assertEqual(debate.anonymise(src), want)
@@ -1207,7 +1214,9 @@ class AdapterAndTextTests(unittest.TestCase):
         for keep in ("a trader would sell, then buy", "the analyst consensus holds", "a builder and the trader class",
                      "the analyst community still disagrees", "the trader sentiment index fell",
                      "As the analyst community expects, rates hold.", "the analyst weekly notes were thin",
-                     "the trader daily flows fell", "As a trader would, we sell.", "the analyst consensus likely holds"):
+                     "the trader daily flows fell", "As a trader would, we sell.", "the analyst consensus likely holds",
+                     "the analyst meeting ran long", "the trader pricing model broke", "the analyst briefing was short",
+                     "Builder.ai and the builder.ai team shipped"):
             with self.subTest(keep=keep):
                 self.assertNotIn("other view", debate.anonymise(keep))
 
@@ -1218,7 +1227,9 @@ class AdapterAndTextTests(unittest.TestCase):
                      "The trader camp reads the flows as a top.", "The skeptic here overstates the inflation risk.",
                      "The trader-lens view is 70%.", "The skeptic sharply overstates the risk.",
                      "the trader correctly notes the flows.", "The skeptic now concedes the point.",
-                     "The skeptic (rightly) flags the risk.", "As a skeptic, I put this at 30%..."):
+                     "The skeptic (rightly) flags the risk.", "As a skeptic, I put this at 30%...",
+                     "I disagree with the skeptic.", "The skeptic who argues for 30% is wrong.",
+                     "The trader overweighting momentum misses it.", "The skeptic? Wrong on the data."):
             with self.subTest(leak=leak):
                 brief = "### WHERE THE VIEWS SPLIT\n" + leak + "\n"
                 self.assertTrue(debate.brief_checks(brief, None)["agent_names"], leak)

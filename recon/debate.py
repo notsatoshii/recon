@@ -864,7 +864,9 @@ _NAME_RX = re.compile(r"(?:(?P<at>@)(?i:" + "|".join(re.escape(a) for a in sorte
 # A lower-case role noun used as a name in debate-written text: 'the skeptic argues', 'the trader's
 # read', 'the analyst is right'. Followed by a possessive, a common verb, a word ending in a single s
 # (argues, overstates; not 'consensus', 'class', 'thesis', 'basis'), a clause break ('the skeptic,',
-# 'with the analyst;'), or another role ('the skeptic and the trader'); or led by 'As the' ('As the
+# 'with the analyst;', 'I disagree with the skeptic.', 'The skeptic? Wrong.'), a relative or participle
+# continuation ('the skeptic who argues', 'the trader overweighting momentum'), or another role ('the
+# skeptic and the trader'); or led by 'As the' ('As the
 # skeptic, I see 30%') or 'As a' ('As a skeptic, I put this at 30%'). Also a role noun followed by a word that makes it a camp ('the skeptic case', 'the
 # trader camp reads', 'the skeptic view'), a '-lens'/'-side' compound ('the trader-lens view', consumed so
 # 'the other view view' folds to 'the other view'), and one adverb before the verb ('the skeptic here overstates').
@@ -881,10 +883,15 @@ _ROLE_NOUNS = r"view|case|camp|side|lens|position|read|argument|take"
 _ADV_WORD = (r"(?:here|still|also|now|just|even|(?!(?:daily|weekly|monthly|quarterly|yearly|hourly|nightly|"
              r"early|family|rally|supply|assembly|ally)\b)[a-z]+ly)")
 _ROLE_ADV = r"(?:(?:" + _ADV_WORD + r"|\(" + _ADV_WORD + r"\))\s+)?"
+# A participle after the role ('the trader overweighting momentum'); common '-ing' nouns that follow a
+# role used as a noun ('the analyst meeting', 'the trader pricing model') are not participles.
+_ROLE_ING = (r"(?!(?:meeting|briefing|rating|pricing|ranking|morning|evening|funding|setting|thing|building|"
+             r"listing|filing|holding|reading|offering|spring|string|training|trading|timing|ceiling)s?\b)[a-z]{2,}ing\b")
 _ROLE_RX = re.compile(r"\b(?P<the>[Tt]he)\s+(?:" + _ROLES + r")"
                       r"(?:[-‑](?:lens|side)\b(?:['’]s\b)?|(?=['’]s\b)['’]s|(?=\s+(?:" + _ROLE_NOUNS + r")s?\b)"
                       r"|(?=\s+" + _ROLE_ADV + r"(?:" + _ROLE_VERBS + r")\b)|(?=\s+" + _ROLE_ADV + r"[a-z]+[^siu\s]s\b)"
-                      r"|(?=\s*[,;:)])|(?=\s+and\s+the\s+(?:" + _ROLES + r"|other view)\b))"
+                      r"|(?=\s*(?:[,;:)?!]|\.(?!\w)))|(?=\s+(?:who|that|which)\b)|(?=\s+" + _ROLE_ADV + _ROLE_ING + r")"
+                      r"|(?=\s+and\s+the\s+(?:" + _ROLES + r"|other view)\b))"
                       r"|(?<=\bAs )(?P<as_the>the|an?)\s+(?:" + _ROLES + r")\b(?!['’]s\b)(?![ \t]+[a-z])")
 # Two names in a row, after the passes above: 'the other view and the other view' -> 'one view and the other';
 # a role left second in the pair ('the other view and the trader disagree') goes with it.
