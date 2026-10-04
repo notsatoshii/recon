@@ -2491,11 +2491,16 @@ def split_sheet(day: str, run_id: str, day_type: str, questions: list[dict], tak
             base_level = _rng([q1, q3])
             if d and min_agent and min_agent in f:
                 min_level = f"{int(round(f[min_agent]))}%"
+        note = ""
+        if d and d.get("narrowed_on_data"):
+            fq = fin(qid)
+            note = narrowed_note(f.get(min_agent) if min_agent else None, fq.get(min_agent) if min_agent else None,
+                                 d.get("gap_before"), d.get("gap_after"))
         blocks.append({
             "type": typ, "debated": bool(d), "question_id": qid, "ledger_id": q.get("ledger_id", ""),
             "question": anonymise(q.get("text", "")), "resolves_on": q.get("resolves_on", ""),
             "settles_with": anonymise(q.get("settles_with", "")),
-            "narrowed_on_data": bool(d and d.get("narrowed_on_data")),
+            "narrowed_on_data": bool(d and d.get("narrowed_on_data")), "narrowed_note": note,
             "counts": counts_of(f), "count_phrase": count_phrase(f, typ),
             "base_case": {"text": clean_text(base_text, 700), "quote": base_quote, "level": base_level},
             "minority_case": {"text": clean_text(min_text, 900), "quote": min_quote, "source": min_src,
@@ -2525,7 +2530,7 @@ def split_sheet(day: str, run_id: str, day_type: str, questions: list[dict], tak
             blocks.append({
                 "type": "consensus", "debated": False, "question_id": qid, "ledger_id": q.get("ledger_id", ""),
                 "question": anonymise(q.get("text", "")), "resolves_on": q.get("resolves_on", ""),
-                "settles_with": anonymise(q.get("settles_with", "")), "narrowed_on_data": False,
+                "settles_with": anonymise(q.get("settles_with", "")), "narrowed_on_data": False, "narrowed_note": "",
                 "counts": counts_of(f), "count_phrase": count_phrase(f, "consensus"),
                 "base_case": {"text": clean_text(bt, 700), "quote": _first_quote(ev, locator), "level": ""},
                 "minority_case": {"text": clean_text(rt.get("case", ""), 900),
@@ -2548,6 +2553,29 @@ def split_sheet(day: str, run_id: str, day_type: str, questions: list[dict], tak
              "bytes": 0}
     sheet = fit_sheet(sheet)
     return sheet
+
+
+NARROWED_NOTE = "New data narrowed this split today without settling it."
+
+
+def narrowed_note(min_before, min_after, gap_before, gap_after) -> str:
+    """The reader-facing line for a block new data narrowed without settling (narrowed_on_data), with the minority
+    view's take and final values and the pair's gap before and after. The block's case texts and count phrase are
+    pre-debate, so without this the brief gives the old position with no sign it moved (09-11 c11 q3: '58% the
+    better estimate' after the minority view went 58 -> 52 and the gap 27 -> 21)."""
+    bits = []
+    if min_before is not None and min_after is not None and round(min_before) != round(min_after):
+        bits.append(f"the minority view went from {int(round(min_before))}% to {int(round(min_after))}%")
+    if gap_before is not None and gap_after is not None and gap_after < gap_before:
+        bits.append(f"the gap between the views from {int(gap_before)} to {int(gap_after)} points")
+    return NARROWED_NOTE[:-1] + (": " + ", and ".join(bits) if bits else "") + "."
+
+
+def block_note(bl: dict) -> str:
+    """The narrowed note a block carries ('' when not narrowed); an older sheet without the field gets the plain line."""
+    if not bl.get("narrowed_on_data"):
+        return ""
+    return bl.get("narrowed_note") or NARROWED_NOTE
 
 
 def render_split_sheet(sheet: dict) -> str:
@@ -2574,7 +2602,7 @@ def render_split_sheet(sheet: dict) -> str:
         if so.get("observable") or so.get("by_date"):
             out.append(f"Settles on: {so.get('observable', '')}" + (f" by {so['by_date']}" if so.get("by_date") else ""))
         if bl.get("narrowed_on_data"):
-            out.append("Note: new data narrowed this split today without settling it.")
+            out.append(f"Narrowed note (copy exactly): {block_note(bl)}")
         if bl.get("carried"):
             out.append(f"Carried: {bl['carried']}")
         out.append("")
@@ -2700,8 +2728,10 @@ def split_missing(split: str, blocks: list[dict]) -> list[str]:
     count phrase as written, or else by its majority 'N of M' ('all N' on a consensus block or when every lens is on one side); each
     printed 'N of M' / 'all N' covers one block only, so two 7-of-9 blocks need two. A 'broadly agree' line on a
     sheet with a direction or degree block is flagged too (09-11 c8: a second block, or the whole section
-    replaced by 'The lenses broadly agree today.', went unflagged and run.json said 'ok')."""
+    replaced by 'The lenses broadly agree today.', went unflagged and run.json said 'ok'). A block narrowed on data
+    needs its narrowed note as written (09-11 c11 q3: the note was left out and the run said 'ok')."""
     body = _cov_norm(split)
+    whole = body
     out, keys = [], []
     for i, bl in enumerate(blocks, 1):
         cp = _cov_norm(bl.get("count_phrase", ""))
@@ -2719,6 +2749,12 @@ def split_missing(split: str, blocks: list[dict]) -> list[str]:
             continue
         out.append(f"block {i} ({bl.get('type', '')}) not in WHERE THE VIEWS SPLIT: "
                    f"{bl.get('count_phrase') or key} on \"{(bl.get('question') or '')[:80]}\"")
+    # A narrowed block's note must be copied as written, like a count phrase: the case texts are pre-debate.
+    for i, bl in enumerate(blocks, 1):
+        note = block_note(bl)
+        if note and _cov_norm(note) not in whole:
+            out.append(f"block {i} narrowed note not in WHERE THE VIEWS SPLIT: \"{note}\" on "
+                       f"\"{(bl.get('question') or '')[:80]}\"")
     if any(bl.get("type") != "consensus" for bl in blocks) and re.search(r"\bbroadly agree", split or "", re.I):
         out.append(f"'broadly agree' printed with {len(blocks)} split block(s) on the sheet")
     return out

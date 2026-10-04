@@ -259,6 +259,7 @@ AGENT_RUN_SCORE = obj(
 SPLIT_BLOCK = obj(
     type=enum(["direction", "degree", "consensus"]), debated=b(), question_id=s(), ledger_id=s(),
     question=s(), resolves_on=DATE, settles_with=s(), narrowed_on_data=b(),
+    narrowed_note=s("narrowed_on_data blocks: the copy-exactly line with the minority view's and the gap's move; else empty"),
     counts=obj(n=i(), majority=i(), minority=i(), median=num(), range=arr(i())),
     count_phrase=s(),
     base_case=obj(text=s(), quote=s(), level=s("degree blocks: where most lenses sit ('75–90%'); else empty")),

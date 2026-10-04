@@ -1760,7 +1760,7 @@ Start with the line '# RECON DAILY BRIEF'. Use EXACTLY this format — 11 sectio
 - WHAT HAPPENED (5-7 SHORT sentences, one per line. World events first, then markets, then crypto, then AI.)
 - WHAT IT MEANS (3-4 key insights presented as direct analysis, from the lens notes. Say 'the data suggests...' not 'agents agreed...')
 - MARKET MOOD (2-3 actual quotes from the SOCIAL raw section below, each with its @handle or r/subreddit and its URL. Quote real posts, not thread titles. If social data is thin today, say so in one clause.)
-- WHERE THE VIEWS SPLIT (Follow the rules and the split sheet below exactly: up to three blocks, each with the question, the count phrase exactly as given, the base case, the minority view, what it turns on, when we will know.)
+- WHERE THE VIEWS SPLIT (Follow the rules and the split sheet below exactly: up to three blocks, each with the question, the count phrase exactly as given, the base case, the minority view (then the block's narrowed note exactly as given, when it has one), what it turns on, when we will know.)
 - AI NEWSLETTER (Two parts. First 'New developments:' 6-10 bullets on model, tool, pricing, research, and agent-tooling changes from the AI raw data; each bullet: what changed, then one clause on why it matters for someone building AI workflows. Then 'Trending:' 4-6 bullets on the GitHub repos and Hacker News threads gaining attention in AI, each with the repo or thread name, one line on what it does, and its link. Skip anything without a source.)
 - FUNDRAISING (5-10 rounds from the fundraising raw data: company, amount, round, lead investor, sector. Crypto/web3 rounds first, then AI, then Korea if any. Close with one sentence on the pattern.)
 - KOREA (4-8 bullets from the Korea raw data: Korean AI adoption and products, regulation, 가상자산 market and policy, prediction markets. Write in English; keep Korean company and product names in Korean in parentheses the first time.)
@@ -1794,7 +1794,7 @@ Cross-reference every specific number, statistic, and claim in the brief against
 Do NOT remove numbers that ARE in the source data. Do not remove newsletter bullets that cite a source present in the raw data.
 SCORECARD lines are checked against the SCORECARD raw section: a prediction listed there is not unverified, and its expiry is the one written on its line there (a different date is replaced by that one).
 MARKET MOOD quotes are checked against the SOCIAL raw section.
-WHERE THE VIEWS SPLIT: keep every count phrase ("N of M lenses ...") exactly as written; they come from the split sheet below.
+WHERE THE VIEWS SPLIT: keep every count phrase ("N of M lenses ...") and every "New data narrowed this split today ..." note exactly as written; they come from the split sheet below.
 Do NOT add facts, quotes, dates or items that are not already in the draft.
 
 JOB 2 — TONE CHECK:

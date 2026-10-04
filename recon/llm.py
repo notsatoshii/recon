@@ -379,11 +379,13 @@ def _dry_json(schema: dict, prompt: str, agent: str) -> str:
 
 def _dry_brief(prompt: str) -> str:
     """The canned brief: the sections of schemas.BRIEF_SECTIONS; WHERE THE VIEWS SPLIT copies every
-    count phrase on the split sheet and, on a consensus sheet, the words 'case against' (§11.5 checks pass)."""
+    count phrase and narrowed note on the split sheet and, on a consensus sheet, the words 'case against' (§11.5 checks pass)."""
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
     from recon.schemas import BRIEF_SECTIONS
     phrases = re.findall(r"Count phrase \(copy exactly\): (.+)", prompt)
+    notes = re.findall(r"Narrowed note \(copy exactly\): (.+)", prompt)
     split = "\n".join(f"- {p.strip()}." for p in phrases) if phrases else "- The lenses broadly agree today."
+    split += "".join(f"\n- {n.strip()}" for n in notes)
     if "[consensus" in prompt:
         split = "- No real split today. The strongest case against the consensus: dry-run red-team case.\n" + split
     parts = []

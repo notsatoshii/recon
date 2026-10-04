@@ -2139,6 +2139,63 @@ class ThresholdNumberNeedsCruxWordTests(unittest.TestCase):
         self.assertEqual(ok["gated"], 47)
 
 
+class NarrowedNoteTests(unittest.TestCase):
+    """09-11 c11 q3 (OpenAI Pro): new data narrowed the split (narrator 58 -> 52, gap 27 -> 21, narrowed_on_data)
+    and 07_split_sheet.md said so in a plain 'Note:' line, but the brief left it out and still gave the minority
+    view's pre-debate '58%'. split_missing only looked at count phrases, so the run was 'ok'. The note is now a
+    copy-exactly line with the minority view's before/after values and the gap, and a brief without it is flagged."""
+
+    VALS = dict(zip(AG, [31, 58, 35, 37, 39, 40, 43, 62, 36]))   # trader 31 (low), narrator 58 (high, minority)
+    FINALS = {**VALS, "narrator": 52}
+
+    def sheet(self):
+        qs = [{"id": "q3", "text": "Will OpenAI resume new Pro subscription sign-ups by September 18?", "weight": 2,
+               "resolves_on": "2026-09-18", "settles_with": "OpenAI status page", "ledger_id": "2026-09-11-q3"}]
+        d = {"question_id": "q3", "high": "narrator", "low": "trader", "gap_before": 27, "gap_after": 21,
+             "in_split": True, "live_split": True, "held_split": True, "crux_agreed": True, "narrowed_on_data": True}
+        tp = {a: {"q3": v} for a, v in self.VALS.items()}
+        fp = {a: {"q3": v} for a, v in self.FINALS.items()}
+        return debate.split_sheet("2026-09-11", "2026-09-11-c11", "debate", qs, tp, fp, [d], {}, {},
+                                  mk_takes(self.VALS, qid="q3"), locator(), 20)
+
+    def test_note_carries_the_move_and_is_copy_exactly(self):
+        sh = self.sheet()
+        bl = sh["blocks"][0]
+        self.assertTrue(bl["narrowed_on_data"])
+        note = bl["narrowed_note"]
+        self.assertIn("from 58% to 52%", note)
+        self.assertIn("from 27 to 21 points", note)
+        self.assertIn(f"Narrowed note (copy exactly): {note}", debate.render_split_sheet(sh))
+        schemas.validate(json.loads(json.dumps(sh)), schemas.ARTIFACTS["split_sheet"])
+
+    def test_brief_without_the_note_is_flagged(self):
+        sh = self.sheet()
+        bl = sh["blocks"][0]
+        without = (f"### WHERE THE VIEWS SPLIT\n**Will OpenAI resume Pro sign-ups by September 18?**\n"
+                   f"{bl['count_phrase']}\nThe minority view makes 58% the better estimate.\n### RISKS\n- none\n")
+        r = debate.brief_checks(without, sh)
+        self.assertEqual(len(r["split_missing"]), 1)
+        self.assertIn("narrowed", r["split_missing"][0])
+        from recon.orchestrator import run_status
+        self.assertEqual(run_status(without, {**r, "sections_ok": True}), "partial")
+        with_note = without.replace("### RISKS", f"*{bl['narrowed_note']}*\n### RISKS")
+        self.assertEqual(debate.brief_checks(with_note, sh)["split_missing"], [])
+
+    def test_old_sheet_without_note_field_still_checked(self):
+        bl = {"type": "direction", "question": "q", "counts": {"n": 9, "majority": 7, "minority": 2},
+              "count_phrase": "7 of 9 lenses lean no", "narrowed_on_data": True}
+        brief = "### WHERE THE VIEWS SPLIT\n7 of 9 lenses lean no.\n"
+        self.assertEqual(len(debate.brief_checks(brief, {"blocks": [bl]})["split_missing"]), 1)
+        ok = brief + "New data narrowed this split today without settling it.\n"
+        self.assertEqual(debate.brief_checks(ok, {"blocks": [bl]})["split_missing"], [])
+
+    def test_dry_brief_copies_the_note(self):
+        from recon import llm
+        sh = self.sheet()
+        brief = llm._dry_brief("RECON DAILY BRIEF\n" + debate.render_split_sheet(sh))
+        self.assertEqual(debate.brief_checks(brief, sh)["split_missing"], [])
+
+
 class SplitCoverageTests(unittest.TestCase):
     """09-11 c8: a second split-sheet block (6 of 9) left out of WHERE THE VIEWS SPLIT, or the whole section
     replaced by 'The lenses broadly agree today.', gave no flags and run.json recorded 'ok'. Every block must

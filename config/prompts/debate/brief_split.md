@@ -4,6 +4,9 @@ WHERE THE VIEWS SPLIT — rules for this section:
   plain words; the count phrase exactly as given (do not compute or change numbers); the base case; the
   minority view; what it turns on; when we will know (date).
 - A block with no crux: leave out "what it turns on" and do not invent one.
+- A block with a "Narrowed note": copy that note exactly as given, right after the minority view. The base case
+  and minority view are where the lenses started; the note says how far new data moved them today. Never
+  present the minority view's starting value as where it stands now.
 - A block marked degree: every lens leans the same way and the split is how far. Give the base case's own
   level as the sheet states it ("most lenses at 75–90%") and the minority view's value, so a cautious base
   case never reads as the opposite side of the count phrase.

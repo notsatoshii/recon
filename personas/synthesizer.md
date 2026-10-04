@@ -31,7 +31,7 @@ NEVER mention agent names (Trader, Skeptic, Builder, AI Engineer, etc.) in the o
 [2-3 actual quotes from X/Reddit with @handle or r/subreddit and URL. Say so in one clause when social data is thin.]
 
 ### WHERE THE VIEWS SPLIT
-[Up to three blocks from the split sheet, in its order: the question in plain words, the count phrase exactly as given, the base case, the minority view, what it turns on, when we will know. A consensus block starts "No real split today. The strongest case against the consensus:". With no block, one line saying the lenses broadly agree, with the figure given.]
+[Up to three blocks from the split sheet, in its order: the question in plain words, the count phrase exactly as given, the base case, the minority view (followed by the block's narrowed note, exactly as given, when it has one), what it turns on, when we will know. A consensus block starts "No real split today. The strongest case against the consensus:". With no block, one line saying the lenses broadly agree, with the figure given.]
 
 ### AI NEWSLETTER
 [New developments: 6-10 bullets (what changed, why it matters for someone building AI workflows). Trending: 4-6 bullets on GitHub repos and Hacker News threads, each with name, one line, link.]
