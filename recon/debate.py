@@ -855,14 +855,19 @@ _NAME_RX = re.compile(r"(?:(?P<at>@)(?i:" + "|".join(re.escape(a) for a in sorte
 # read', 'the analyst is right'. Followed by a possessive, a common verb, a word ending in a single s
 # (argues, overstates; not 'consensus', 'class', 'thesis', 'basis'), a clause break ('the skeptic,',
 # 'with the analyst;'), or another role ('the skeptic and the trader'); or led by 'As the' ('As the
-# skeptic, I see 30%').
+# skeptic, I see 30%'). Also a role noun followed by a word that makes it a camp ('the skeptic case', 'the
+# trader camp reads', 'the skeptic view'), a '-lens'/'-side' compound ('the trader-lens view', consumed so
+# 'the other view view' folds to 'the other view'), and one adverb before the verb ('the skeptic here overstates').
 _ROLE_VERBS = (r"is|was|has|had|would|will|can|could|should|might|may|must|does|did|says|said|argues|argued|"
                r"thinks|thought|believes|claims|claimed|expects|expected|sees|saw|reads|read|notes|noted|"
                r"overstates|understates|misses|missed|ignores|ignored|concedes|conceded|holds|held|puts|put|"
                r"assumes|assumed|treats|treated|wants|insists|underweights|overweights|relies|leans|cites|cited")
 _ROLES = r"skeptic|trader|narrator|builder|analyst"
+_ROLE_NOUNS = r"view|case|camp|side|lens|position|read|argument|take"
+_ROLE_ADV = r"(?:(?:here|still|also|rightly|wrongly)\s+)?"
 _ROLE_RX = re.compile(r"\b(?P<the>[Tt]he)\s+(?:" + _ROLES + r")"
-                      r"(?:(?=['’]s\b)['’]s|(?=\s+(?:" + _ROLE_VERBS + r")\b)|(?=\s+[a-z]+[^siu\s]s\b)"
+                      r"(?:[-‑](?:lens|side)\b(?:['’]s\b)?|(?=['’]s\b)['’]s|(?=\s+(?:" + _ROLE_NOUNS + r")s?\b)"
+                      r"|(?=\s+" + _ROLE_ADV + r"(?:" + _ROLE_VERBS + r")\b)|(?=\s+" + _ROLE_ADV + r"[a-z]+[^siu\s]s\b)"
                       r"|(?=\s*[,;:)])|(?=\s+and\s+the\s+(?:" + _ROLES + r"|other view)\b))"
                       r"|(?<=\bAs )(?P<as_the>the)\s+(?:" + _ROLES + r")\b(?!['’]s\b)(?![ \t]+[a-z])")
 # Two names in a row, after the passes above: 'the other view and the other view' -> 'one view and the other';

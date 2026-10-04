@@ -1092,11 +1092,20 @@ class AdapterAndTextTests(unittest.TestCase):
                  "Policy-Analyst view holds.": "The other view holds.",
                  "We side with the analyst; the odds hold.": "We side with the other view; the odds hold.",
                  "As the trader sees it, flows lead.": "As the other view sees it, flows lead.",
-                 "As the skeptic I see 30%.": "As the other view I see 30%."}
+                 "As the skeptic I see 30%.": "As the other view I see 30%.",
+                 # role + ordinary noun, role + adverb + verb, role-lens compound (Phase C review)
+                 "The skeptic case rests on sticky inflation.": "The other view case rests on sticky inflation.",
+                 "The trader camp reads the flows as a top.": "The other view camp reads the flows as a top.",
+                 "The skeptic here overstates the inflation risk.": "The other view here overstates the inflation risk.",
+                 "The trader-lens view is 70%.": "The other view is 70%.",
+                 "the narrator still thinks so.": "The other view still thinks so.",
+                 "The builder-side take holds.": "The other view take holds."}
         for src, want in cases.items():
             with self.subTest(src=src):
                 self.assertEqual(debate.anonymise(src), want)
+                self.assertEqual(debate.clean_text(src, 500), want)
         for keep in ("a trader would sell, then buy", "the analyst consensus holds", "a builder and the trader class",
+                     "the analyst community still disagrees", "the trader sentiment index fell",
                      "As the analyst community expects, rates hold."):
             with self.subTest(keep=keep):
                 self.assertNotIn("other view", debate.anonymise(keep))
@@ -1104,7 +1113,9 @@ class AdapterAndTextTests(unittest.TestCase):
     def test_brief_checks_joined_names_and_roles(self):
         for leak in ("The macro-strategist case is that rates hold.", "The AI-engineer read: shipping slips.",
                      "As the skeptic, I see 30%.", "the skeptic and the trader disagree on timing.",
-                     "Policy-Analyst view holds."):
+                     "Policy-Analyst view holds.", "The skeptic case rests on sticky inflation.",
+                     "The trader camp reads the flows as a top.", "The skeptic here overstates the inflation risk.",
+                     "The trader-lens view is 70%."):
             with self.subTest(leak=leak):
                 brief = "### WHERE THE VIEWS SPLIT\n" + leak + "\n"
                 self.assertTrue(debate.brief_checks(brief, None)["agent_names"], leak)
