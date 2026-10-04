@@ -31,7 +31,9 @@ VARS = {
     "red_team": dict(role="R", debate_format=DEBATE_FORMAT, qid="q1", question="Q?", resolves_on="2026-10-11",
                      settles_with="S", median=60, count_phrase="all 9 lenses within 8 points of 60%",
                      majority_reasons="- r", my_p=40, my_reason="r", excerpts="x"),
-    "crux_check": dict(qid="q1", question="Q?", crux="c", side_a="a", side_b="b", data_block="d", excerpts="x"),
+    "crux_check": dict(qid="q1", question="Q?", crux="c", side_a="a", side_b="b",
+                       higher_label="the view that started at 70%", lower_label="the view that started at 40%",
+                       data_block="d", excerpts="x"),
     "brief_split": dict(split_sheet="S", lens_notes="L", questions_line="q"),
 }
 

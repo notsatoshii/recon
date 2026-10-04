@@ -4,6 +4,9 @@ WHERE THE VIEWS SPLIT — rules for this section:
   plain words; the count phrase exactly as given (do not compute or change numbers); the base case; the
   minority view; what it turns on; when we will know (date).
 - A block with no crux: leave out "what it turns on" and do not invent one.
+- A block marked degree: every lens leans the same way and the split is how far. Give the base case's own
+  level as the sheet states it ("most lenses at 75–90%") and the minority view's value, so a cautious base
+  case never reads as the opposite side of the count phrase.
 - A block marked consensus: start with "No real split today. The strongest case against the consensus:"
   and give the red-team case and what would settle it.
 - If the sheet says no split today, write one line saying the lenses broadly agree, with this figure:

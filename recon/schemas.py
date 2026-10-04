@@ -233,6 +233,7 @@ SIDE_MOVE = obj(agent=enum(AGENTS), take=P, requested=nullable(P), gated=P, delt
                 evidence_source=enum(["crux_data", "other", "none"]))
 DEBATE_SCORE = obj(
     question_id=s(), high=enum(AGENTS), low=enum(AGENTS), status=enum(["two-sided", "one-sided", "failed"]),
+    tiers=obj(high=s("the model tier the high side's calls ran on"), low=s()),
     gap_before=i(), gap_after=nullable(i()),
     moves=arr(SIDE_MOVE),
     verdicts=obj(high=s(), low=s()),
@@ -260,8 +261,9 @@ SPLIT_BLOCK = obj(
     question=s(), resolves_on=DATE, settles_with=s(), narrowed_on_data=b(),
     counts=obj(n=i(), majority=i(), minority=i(), median=num(), range=arr(i())),
     count_phrase=s(),
-    base_case=obj(text=s(), quote=s()),
-    minority_case=obj(text=s(), quote=s(), source=enum(["rebuttal", "steelman", "reason", "red_team"])),
+    base_case=obj(text=s(), quote=s(), level=s("degree blocks: where most lenses sit ('75–90%'); else empty")),
+    minority_case=obj(text=s(), quote=s(), source=enum(["rebuttal", "steelman", "reason", "red_team"]),
+                      level=s("degree blocks: the minority view's value ('95%'); else empty")),
     crux=s(), crux_check=nullable(obj(resolved=s(), what_the_data_says=s(), quote=s())),
     settles_on=obj(observable=s(), by_date=DATE),
     carried=s(),

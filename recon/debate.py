@@ -312,6 +312,93 @@ def clamp_weight(w) -> tuple[int, bool]:
     return c, c != v
 
 
+# Resolution verbs of event questions: (question pattern, the forms a news line that reports the event uses).
+# An announcement is also reported as 'X has new …' ('Microsoft has new AI privacy rules for schools').
+_EVENT_VERBS = (
+    (r"announc|unveil|introduc|launch|roll\s+out|releas|publish|debut|ship\b",
+     r"announc\w*|unveil\w*|introduc\w*|launch\w*|roll(?:s|ed)?\s+out|releas\w*|publish\w*|debut\w*|ship(?:s|ped)"
+     r"|ha(?:s|ve)\s+(?:a\s+)?new|adds?|added"),
+    (r"approv|authori[sz]|greenlight|clear\b", r"approv\w*|authori[sz]\w*|greenl\w+|clear(?:s|ed)"),
+    (r"\bpass|enact|\bsign\b|adopt|ratif", r"pass(?:es|ed)|enact\w*|sign(?:s|ed)|adopt\w*|ratif\w*"),
+    (r"\bban\b|prohibit|outlaw", r"ban(?:s|ned)?|prohibit\w*|outlaw\w*"),
+    (r"\bcut\b|\blower\b|\breduce\b", r"cuts?|lower(?:s|ed)|reduc(?:es|ed)"),
+    (r"\bhike\b|\braise\b", r"hike[sd]?|rais(?:es|ed)"),
+    (r"resum|reopen|restart|restor", r"resum\w*|reopen\w*|restart\w*|restor\w*"),
+    (r"\bhalt|\bpause|suspend|shut\s+down", r"halt\w*|paus\w*|suspend\w*|shut(?:s)?\s+down"),
+    (r"\blist\b", r"list(?:s|ed)"),
+    (r"acquir|\bbuy\b|merge", r"acquir\w*|bought|buys|merg(?:es|ed)"),
+    (r"sanction|impose|\blift\b", r"sanction\w*|impos(?:es|ed)|lift(?:s|ed)"),
+    (r"deploy|dispatch|\bsend\b", r"deploy\w*|dispatch\w*|sen(?:ds|t)"),
+)
+# A line that says the event may happen, was discussed or did not happen does not report it.
+_HEDGE = re.compile(r"\?|\b(?:will|would|could|may|might|plans?|planning|planned|expected|expects?|consider\w*|weigh\w*"
+                    r"|mull\w*|propos\w*|seeks?|seeking|aims?|delay\w*|reject\w*|den(?:y|ies|ied)|not|no|never|won't"
+                    r"|fail\w*|rumou?r\w*|reportedly|talks?|discuss\w*|eyes|eyeing|hints?|teases?|options?|soon)\b", re.I)
+# Words of an event question that name no particular object.
+_EVENT_GENERIC = {"major", "new", "concrete", "specific", "official", "formal", "formally", "publicly", "public", "any",
+                  "another", "first", "least", "platform", "company", "companies", "provider", "providers", "firm",
+                  "government", "country", "least", "one", "some", "further", "additional"}
+
+
+def _object_terms(text: str) -> set[str]:
+    """An event question's object terms: acronyms (2+ capitals) as written, other words of 3+ letters as their
+    first 5 letters, without stop words, generic words and dates."""
+    out = set()
+    for tok in re.findall(r"[A-Za-z][A-Za-z0-9]*", text or ""):
+        if re.fullmatch(r"[A-Z][A-Z0-9]+", tok):
+            out.add(tok)
+            continue
+        low = tok.lower()
+        if len(low) < 3 or low in MARKET_STOP or low in _EVENT_GENERIC or _DATE_TOKEN.match(tok):
+            continue
+        out.add(low[:5])
+    return out
+
+
+def settled_line(question: str, locator) -> str:
+    """The first package news line that already reports the event an event question asks about, or ''. It has
+    the question's resolution verb in a reporting form ('announces', 'launched', 'has new'), more than half (and
+    at least two) of the question's object terms (_object_terms, without the verb), every versioned name of the
+    question as written ('GPT-6'), no hedge ('weighs', 'plans to', 'not', '?'), and is a data line (not social,
+    not a market line). On the 09-10 package it finds 'Microsoft has new AI privacy rules for schools' for the
+    school-privacy question and nothing for the Hormuz one."""
+    if locator is None or "package" not in getattr(locator, "lines", {}):
+        return ""
+    best = None
+    for qrx, lrx in _EVENT_VERBS:
+        m = re.search(qrx, question or "", re.I)
+        if m and (best is None or m.start() < best[0]):
+            best = (m.start(), m.end(), lrx)
+    if best is None:
+        return ""
+    verb_word = re.match(r"\S*", (question or "")[best[0]:]).group(0)
+    terms = _object_terms(question) - _object_terms(verb_word)
+    if len(terms) < 2:
+        return ""
+    line_rx = re.compile(rf"\b(?:{best[2]})\b", re.I)
+    # A versioned name in the question ('GPT-6', 'Llama 4') has to be on the line as written: 'GPT-Live-1' does
+    # not report GPT-6. Dates are not names.
+    undated = re.sub(r"\b\d{4}-\d\d-\d\d\b|\b(?:by|on|before)\s+[A-Z][a-z]+\.?\s+\d{1,2}(?:,\s*\d{4})?", " ",
+                     question or "")
+    versions = [v for v in re.findall(r"\b[A-Za-z][\w.]*[-\s]?\d+(?:\.\d+)?\b", undated)
+                if not re.fullmatch(r"(?:19|20)\d\d", v.split()[-1])]
+    lines = locator.lines["package"]
+    for (sec, cls), line in zip(locator.labels("package"), lines):
+        s = line.strip()
+        if not s.startswith("- ") or cls != "data" or is_market_line(sec, s):
+            continue
+        body = _URL.sub(" ", re.sub(r"^\s*-\s*(?:\[[^\]]*\]\s*)?", "", s))
+        if not line_rx.search(body) or _HEDGE.search(body):
+            continue
+        flat = re.sub(r"[\s\-‐-―]", "", body.lower())
+        if any(re.sub(r"[\s\-]", "", v.lower()) not in flat for v in versions):
+            continue
+        shared = len(terms & _object_terms(body))
+        if shared >= 2 and 2 * shared > len(terms):
+            return s
+    return ""
+
+
 def gate_questions(questions: list[dict], day: str, locator, open_ledger: list[dict] | None = None,
                    active: list[str] | None = None, depth: str = "normal", market: list[str] | None = None) -> dict:
     """Apply the §2.4 gate. Returns {kept, dropped, notes, needs_reask}. `locator` is an
@@ -319,7 +406,8 @@ def gate_questions(questions: list[dict], day: str, locator, open_ledger: list[d
     order, clamped weights and cleaned lenses. `market`: the run's prediction-market odds lines
     (market_lines()); a question one of them already prices is dropped (rule 7: the spread probe's
     takes anchored on a quoted market price, 9 of 9 at 60 %). A question whose settled_quote (the package
-    line that already reports what settles it) is found in the package is dropped too (rule 8)."""
+    line that already reports what settles it) is found in the package is dropped too (rule 8), and so is an
+    event question whose event a package news line already reports (rule 9, settled_line)."""
     active = list(active or AGENTS)
     open_ledger = open_ledger or []
     dropped, notes = [], []
@@ -362,6 +450,14 @@ def gate_questions(questions: list[dict], day: str, locator, open_ledger: list[d
                     reason = f"the package already settles it: {sq[:100]!r}"
                 else:
                     notes.append(f"settled_quote not found ({st}) on {text[:60]!r}")
+        if reason is None and kind == "event":
+            # rule 9: the same, found by the program (seventh review, 2026-10-04: the 09-10 c6 triage left
+            # settled_quote empty on the school-privacy question beside 'Microsoft has new AI privacy rules for
+            # schools', and that question led WHERE THE VIEWS SPLIT). A package news line that reports the
+            # question's event (its resolution verb, two of its object terms, no hedge) drops it.
+            hit = settled_line(text, locator)
+            if hit:
+                reason = f"the package already reports it: {hit[:100]!r}"
         if reason:
             dropped.append({"text": text, "reason": reason, "order": n})
             continue
@@ -804,7 +900,14 @@ def _token_parts(tok: str) -> list[str]:
     return [tok]
 
 
-def entities(text: str, vocab: set[str] | None = None) -> list[str]:
+def entities(text: str, vocab: set[str] | None = None, mid_common: bool = True) -> list[str]:
+    """Named things in a text: tokens with a capital or a digit, minus stop words, dates and numbers. A Title-case
+    token (capital, then lower case, no digit) that is a common English word is not an entity anywhere in the
+    sentence (seventh review, 2026-10-04: a mid-sentence 'House', 'Treasury' or 'Senate' in a crux let 'House
+    passes defense appropriations bill' qualify on an unrelated event question); one that the corpus also uses
+    in lower case is dropped only at a sentence start. All-caps tokens and tokens with digits always stay.
+    `mid_common=False` keeps the older rule (common words dropped only at a sentence start), for recall where a
+    missed name costs more than a generic one (market_match)."""
     vocab = vocab or set()
     common_words()          # fail loudly when the list is missing
     out = []
@@ -819,7 +922,9 @@ def entities(text: str, vocab: set[str] | None = None) -> list[str]:
                 continue
             if tok.lower() in STOP or _DATE_TOKEN.match(tok):
                 continue
-            if (initial or k) and tok[0].isupper() and tok[1:].islower() and (is_common(tok) or tok.lower() in vocab):
+            title = tok[0].isupper() and tok[1:].islower() and not re.search(r"\d", tok)
+            start = bool(initial or k)
+            if title and ((is_common(tok) and (start or mid_common)) or (start and tok.lower() in vocab)):
                 continue
             out.append(tok)
     out += _HANGUL.findall(text or "")
@@ -887,9 +992,19 @@ def term_hits(line: str, terms: dict) -> dict:
     ents = [e for e in terms.get("entities", []) if e.lower() not in METRIC_SET and e.lower() not in out_low
             and _ent_in(e, line)]
     pins = [e for e in terms.get("pinned", []) if _ent_in(e, line)]
-    nums = _num_match(evidence.numbers(line), terms.get("numbers", [])) if terms.get("numbers") else []
     low = line.lower()
     mets = [w for w in terms.get("metrics", []) if re.search(rf"(?<!\w){re.escape(w)}(?!\w)", low)]
+    nums = []
+    if terms.get("numbers"):
+        xs = evidence.numbers(line)
+        for y in terms["numbers"]:
+            # A percentage under 10 matches within ±0.051 points, so 'above 1%' would match every '+1.03% 24h' of
+            # an on-chain page: it counts only on a line that also carries a crux entity or metric word (seventh
+            # review, 2026-10-04: 'Solana TVL: $9.12B (+1.03% 24h)' qualified on a stablecoin-supply crux).
+            if y.get("pct") and abs(y.get("scaled", 0)) < 10 and not (ents or mets):
+                continue
+            if any(same_number(x, y) for x in xs):
+                nums.append(y["raw"])
     return {"entities": ents, "numbers": nums, "metrics": mets, "pinned": pins}
 
 
@@ -937,12 +1052,12 @@ def drop_frequent_entities(terms: dict, docs: dict[str, str], max_share: float =
     subj += [a for x in subj for a in SUBJECT_ALIASES.get(x.lower(), ()) if a.lower() not in {y.lower() for y in subj}]
     out_low = {x.lower() for x in subj}
     lines = [l for d in docs.values() for l in (d or "").split("\n") if l.strip()]
-    if not lines or not terms.get("entities"):
+    if not lines:
         return {**terms, "entities": [e for e in terms.get("entities", []) if e.lower() not in out_low],
-                "pinned": pinned, "subject": subj, "frequent_entities": []}
+                "pinned": pinned, "subject": subj, "frequent_entities": [], "frequent_numbers": []}
     limit = max(3, int(max_share * len(lines)))
     keep, dropped = [], []
-    for e in terms["entities"]:
+    for e in terms.get("entities", []):
         if e.lower() in out_low:
             continue
         if _HANGUL.fullmatch(e):
@@ -951,7 +1066,16 @@ def drop_frequent_entities(terms: dict, docs: dict[str, str], max_share: float =
             rx = re.compile(rf"(?<!\w){re.escape(e)}(?!\w)")
             n = sum(1 for l in lines if rx.search(l))
         (dropped if n > limit else keep).append(e)
-    return {**terms, "entities": keep, "pinned": pinned, "subject": subj, "frequent_entities": dropped}
+    # Crux numbers follow the same rule (seventh review): a figure that sits on more than max_share of the lines
+    # (same_number: '1%' on every '+0.98%' and '+1.03%' change of an on-chain page) says nothing about the crux.
+    nkeep, ndropped = [], []
+    if terms.get("numbers"):
+        line_nums = [xs for xs in (evidence.numbers(l) for l in lines) if xs]
+        for y in terms["numbers"]:
+            n = sum(1 for xs in line_nums if any(same_number(x, y) for x in xs))
+            (ndropped if n > limit else nkeep).append(y)
+    return {**terms, "entities": keep, "numbers": nkeep, "pinned": pinned, "subject": subj,
+            "frequent_entities": dropped, "frequent_numbers": [y["raw"] for y in ndropped]}
 
 
 def crux_search(terms: dict, docs: dict[str, str], exclude_quotes, locator=None, top: int = 12,
@@ -964,11 +1088,18 @@ def crux_search(terms: dict, docs: dict[str, str], exclude_quotes, locator=None,
 
     The score uses the same terms as the evidence gate (term_hits: no frequent entity, no pinned question
     subject), so the block each responder is shown, and told is worth +10 a line, is not filled with generic
-    lines about the subject ('BTC dominance: 58.6%' on a BTC price crux). A pinned subject only ranks: among
-    hits of equal score, lines that also name it come first."""
+    lines about the subject ('BTC dominance: 58.6%' on a BTC price crux). A pinned subject (event and judgment
+    questions) counts once, as 2 points and one distinct term, so the subject plus one crux entity or number is
+    a hit; among hits of equal score, lines that also name it come first. `pool` counts the candidate lines at
+    each step: lines with any term or subject entity, lines that would pass with the subject scored as a crux
+    entity, lines that pass, and the hits left after the quote exclusion."""
     excl = [qnorm(q) for q in exclude_quotes if q and len(qnorm(q)) >= 12]
     excl_pos = set(exclude_positions or ())
     hits, seen = [], set()
+    # The candidate pool at each step (seventh review, 2026-10-04: the 09-10 / 09-11 c6 Hormuz and OpenAI Pro
+    # pairs had 0 hits; this says whether the corpus, the subject rule or the quote exclusion emptied it).
+    pool = {"term_lines": set(), "pass_with_subject": set(), "pass": set(), "after_quote_exclusion": 0}
+    subj = [str(x) for x in terms.get("subject", [])]
     for doc in ("raw", "package", "social"):
         text = docs.get(doc) or ""
         lines = text.split("\n")
@@ -977,25 +1108,37 @@ def crux_search(terms: dict, docs: dict[str, str], exclude_quotes, locator=None,
             if len(s) < 12 or s.startswith("#"):
                 continue
             ns = evidence.norm(s)
-            if ns in seen or (doc, n) in excl_pos:
-                continue
-            h = term_hits(s, terms)
-            distinct = len(h["entities"]) + len(h["numbers"]) + len(h["metrics"])
-            score = 3 * len(h["entities"]) + 2 * len(h["numbers"]) + len(h["metrics"])
-            if score < 4 or distinct < 2 or not (h["entities"] or h["numbers"]):
-                continue
-            if any(q in ns or (len(ns) >= 12 and ns in q) for q in excl):
-                continue
             if locator is not None and doc in locator.lines:
                 sec, cls = locator.label(doc, n)
             else:
                 sec, cls = "", ("social" if doc == "social" or evidence.social_line(s) else "data")
             if cls == "social" or is_market_line(sec, s):
                 continue
+            h = term_hits(s, terms)
+            # On an event or judgment question the pinned subject counts once (2 points, one distinct term), so a
+            # line naming the subject plus one crux entity or number is a hit (seventh review). It still never
+            # qualifies a move or a referee quote (shares_specific), and alone it is never a hit.
+            pin = 1 if h["pinned"] else 0
+            distinct = len(h["entities"]) + len(h["numbers"]) + len(h["metrics"]) + pin
+            score = 3 * len(h["entities"]) + 2 * len(h["numbers"]) + len(h["metrics"]) + 2 * pin
+            n_subj = len([e for e in subj if _ent_in(e, s)])
+            if distinct or n_subj:
+                pool["term_lines"].add(ns)
+            if score - 2 * pin + 3 * n_subj >= 4 and distinct - pin + n_subj >= 2:
+                pool["pass_with_subject"].add(ns)
+            if score < 4 or distinct < 2 or not (h["entities"] or h["numbers"]):
+                continue
+            pool["pass"].add(ns)
+            if ns in seen or (doc, n) in excl_pos:
+                continue
+            if any(q in ns or (len(ns) >= 12 and ns in q) for q in excl):
+                continue
             seen.add(ns)
             ctx = [lines[i].strip()[:300] for i in (n - 2, n) if 0 <= i < len(lines) and lines[i].strip()]
             hits.append({"doc": doc, "line": n, "section": sec, "cls": cls, "score": score, "text": s[:400],
                          "terms": h, "context": ctx})
+    pool = {k: (len(v) if isinstance(v, set) else v) for k, v in pool.items()}
+    pool["after_quote_exclusion"] = len(hits)
     hits.sort(key=lambda h: (-h["score"], -len(h["terms"].get("pinned") or []),
                              ("raw", "package", "social").index(h["doc"]), h["line"]))
     hits = hits[:top]
@@ -1012,12 +1155,11 @@ def crux_search(terms: dict, docs: dict[str, str], exclude_quotes, locator=None,
     return {"terms": {"numbers": [x["raw"] for x in terms.get("numbers", [])], "entities": terms.get("entities", []),
                       "metrics": terms.get("metrics", []), "pinned": terms.get("pinned", []),
                       "subject": terms.get("subject", [])},
-            "hits": hits, "block": block(block_bytes), "referee_block": block(referee_bytes)}
+            "hits": hits, "pool": pool, "block": block(block_bytes), "referee_block": block(referee_bytes)}
 
 
 # ── prediction-market lines (phase-e SECTION 8) ────────────────────────────────────────
 
-_PROB = re.compile(r"(?<![\d.])\d{1,3}(?:\.\d)?%|\d{1,2}(?:\.\d)?¢")
 MARKET_STOP = STOP | {"above", "below", "more", "less", "than", "before", "after", "over", "under", "least", "most",
                       "into", "their", "there", "about", "again", "still", "close", "next", "week", "month", "year",
                       "contracts", "leading", "total", "ends", "polymarket", "kalshi", "markets"}  # + the odds-line boilerplate
@@ -1027,10 +1169,15 @@ MARKET_STOP = STOP | {"above", "below", "more", "less", "than", "before", "after
 # ('Fed Rate Hike by September 2026 Meeting? — YES: 59.5% | vol: …'), the POLYMARKET LIVE MARKETS block in
 # SECTION 3 puts 'YES: 40% | 24h vol …' under the question line, the Polymarket collector writes
 # '"…" YES 59%' and 'YES 59%', and Kalshi writes 'top: "…" 59% (+3)'.
-_ODDS = re.compile(r"\bYES:?\s*\d{1,3}(?:\.\d+)?%|\bNO:\s*\d{1,3}(?:\.\d+)?%"
-                   r"|\btop:\s*\"[^\"]{1,120}\"\s*\d{1,3}(?:\.\d+)?%"
-                   r"|\"[^\"]{1,120}\"\s+\d{1,3}(?:\.\d+)?%\s*\((?:[+\-\u2212]|0\b|new\b|flat\b)")
-_ODDS_CONT = re.compile(r"^\s*(?:YES|NO):?\s*\d{1,3}(?:\.\d+)?%")   # an odds line under its question line
+# Kalshi's CRYPTO PRICE LADDERS line ('- BTC at ... close: market-implied median $84,816 (25-75 %: $84,398-$85,223),
+# from 80 strikes | ...') prices every strike of that close. It sits in SECTION 8 and the raw Kalshi block, and the
+# package copies it into SECTION 0 CROSS-SOURCE SIGNALS, so it is recognised by content too (seventh review).
+_ODDS = re.compile(r"\bYES:?\s*\d{1,3}(?:\.\d+)?\s?%|\bNO:\s*\d{1,3}(?:\.\d+)?\s?%"
+                   r"|\btop:\s*\"[^\"]{1,120}\"\s*\d{1,3}(?:\.\d+)?\s?%"
+                   r"|\"[^\"]{1,120}\"\s+\d{1,3}(?:\.\d+)?\s?%\s*\((?:[+\-\u2212]|0\b|new\b|flat\b)"
+                   r"|\bmarket-implied\b")
+_LADDER = re.compile(r"\bmarket-implied\b")
+_ODDS_CONT = re.compile(r"^\s*(?:YES|NO):?\s*\d{1,3}(?:\.\d+)?\s?%")   # an odds line under its question line
 
 
 def odds_line(line: str) -> bool:
@@ -1039,12 +1186,17 @@ def odds_line(line: str) -> bool:
 
 
 def is_market_line(section: str, line: str) -> bool:
-    """A prediction-market odds line: a line in the PREDICTION MARKETS section (package SECTION 8, raw Polymarket
-    and Kalshi blocks) carrying a probability, or a line that carries odds by its content in any section
-    (odds_line: World Monitor's Polymarket block in GEOPOLITICAL CONTEXT, POLYMARKET LIVE MARKETS in ON-CHAIN).
-    Market odds are what traders believe, not data about the crux: they never qualify a move (§7.2), are not
-    crux hits (§6) and cannot confirm a closure (§8)."""
-    return ((section or "").upper().startswith(MARKET_SECTION) and bool(_PROB.search(line or ""))) or odds_line(line)
+    """A prediction-market line: any content line in the PREDICTION MARKETS section (package SECTION 8, raw
+    Polymarket and Kalshi blocks), whatever it carries (seventh review, 2026-10-04: the Kalshi ladder's '25–75 %'
+    has no digit right before '%', so a probability test let it pass as data), or a line that carries odds by
+    its content in any section (odds_line: World Monitor's Polymarket block in GEOPOLITICAL CONTEXT, POLYMARKET
+    LIVE MARKETS in ON-CHAIN, a ladder line copied into CROSS-SOURCE SIGNALS). Market lines are what traders
+    believe, not data about the crux: they never qualify a move (§7.2), are not crux hits (§6) and cannot
+    confirm a closure (§8)."""
+    s = (line or "").strip()
+    if (section or "").upper().startswith(MARKET_SECTION) and s and not s.startswith(("#", "<!--")) and s != "---":
+        return True
+    return odds_line(line)
 
 
 def ev_class(loc: dict, locator) -> str:
@@ -1083,21 +1235,28 @@ def _stems(text: str) -> set[str]:
 
 
 def market_match(question: str, lines: list[str]) -> str:
-    """The first odds line that prices this question, or ''. A line prices it when it carries a probability
-    and shares at least one entity of the question plus a second specific term: another entity, one of the
-    question's numbers (same figure, §6 rules), or two content words ('Fed' + 'hike' + 'rate')."""
+    """The first market line that prices this question, or ''. A line prices it when it shares at least one
+    entity of the question (or its other common name: 'Bitcoin' / 'BTC', SUBJECT_ALIASES) plus a second specific
+    term: another entity, one of the question's numbers (same figure, §6 rules), or two content words ('Fed' +
+    'hike' + 'rate'). A price ladder ('market-implied median …', every strike of a daily close) prices any
+    question on its asset that carries a currency figure."""
     if not lines:
         return ""
-    q_ents = [e for e in entities(question) if e.lower() not in MARKET_STOP]
+    q_ents = [e for e in entities(question, mid_common=False) if e.lower() not in MARKET_STOP]
     if not q_ents:
         return ""
+    groups = [[e, *SUBJECT_ALIASES.get(e.lower(), ())] for e in q_ents]
     q_nums = evidence.numbers(question)
-    ent_stems = {w[:4] for e in q_ents for w in re.findall(r"[a-z]{4,}", e.lower())}
+    q_cur = any(x.get("cur") for x in q_nums)
+    ent_stems = {w[:4] for g in groups for e in g for w in re.findall(r"[a-z]{4,}", e.lower())}
     q_words = _stems(question) - ent_stems
     for line in lines:
-        ents = {e.lower() for e in q_ents if re.search(rf"(?<!\w){re.escape(e)}(?!\w)", line, re.I)}
+        ents = {g[0].lower() for g in groups
+                if any(re.search(rf"(?<!\w){re.escape(e)}(?!\w)", line, re.I) for e in g)}
         if not ents:
             continue
+        if q_cur and _LADDER.search(line):
+            return line
         nums = _num_match(evidence.numbers(line), q_nums) if q_nums else []
         if len(ents) >= 2 or nums or len(q_words & _stems(line)) >= 2:
             return line
@@ -1215,6 +1374,12 @@ def gate_move(agent: str, take_p: int, requested, own_take_values, other_take_p:
             flags.append("update without evidence, capped")
     gated = max(0, min(100, gated))
     toward = other_take_p - take_p
+    # A side may close the split but never pass the other side's take (seventh review, 2026-10-04: at a gap of 20
+    # a 25-point allowance let 40 go to 65 past 60, and gap_after then read 'narrowed from 20 to 5' for sides that
+    # had swapped). cap_pair() stops both sides at each other's gated value once both have answered.
+    if toward and (gated - other_take_p) * (1 if toward > 0 else -1) > 0:
+        gated = int(other_take_p)
+        flags.append("stopped at the other view")
     moved = gated - take_p
     if verdict == "concede" and abs(moved) < 5:
         flags.append("verbal concession")
@@ -1266,7 +1431,8 @@ def cap_pair(move_high: dict | None, move_low: dict | None, keys_high, keys_low)
     """Cap the pair's total closure: the high side's move down plus the low side's move up may not exceed
     pair_allowance(). Each side keeps its free part (up to FREE_MOVE towards the other side); the evidence parts
     beyond it are scaled down together to fit. Moves away from the other side are left alone. Idempotent.
-    Returns (move_high, move_low, capped); the moves are copies, flagged 'pair evidence cap'."""
+    Neither side ends past the other (_no_cross). Returns (move_high, move_low, changed); the moves are copies,
+    flagged 'pair evidence cap' or 'stopped at the other view'."""
     def toward(m, side):
         if not m:
             return 0
@@ -1275,7 +1441,8 @@ def cap_pair(move_high: dict | None, move_low: dict | None, keys_high, keys_low)
     th, tl = toward(move_high, "high"), toward(move_low, "low")
     allowed = pair_allowance(keys_high, keys_low)
     if th + tl <= allowed:
-        return move_high, move_low, False
+        mh, ml, crossed = _no_cross(move_high, move_low)
+        return mh, ml, crossed
     fh, fl = min(th, FREE_MOVE), min(tl, FREE_MOVE)
     eh, el = th - fh, tl - fl
     pool = max(0, allowed - fh - fl)
@@ -1297,7 +1464,28 @@ def cap_pair(move_high: dict | None, move_low: dict | None, keys_high, keys_low)
             m["flags"] = list(m.get("flags") or []) + ([f"pair evidence cap {allowed}"]
                                                       if not any(str(f).startswith("pair evidence cap") for f in m.get("flags") or []) else [])
         out.append(m)
-    return out[0], out[1], True
+    mh, ml, _ = _no_cross(out[0], out[1])
+    return mh, ml, True
+
+
+def _no_cross(move_high: dict | None, move_low: dict | None) -> tuple[dict | None, dict | None, bool]:
+    """The high side may not end below the low side (gate_move stops each at the other's take; two sides moving
+    towards each other can still pass). The side that moved further towards the other stops at the other's gated
+    value, flagged 'stopped at the other view'; the moves are copies. (move_high, move_low, changed)."""
+    if not (move_high and move_low) or move_high["gated"] >= move_low["gated"]:
+        return move_high, move_low, False
+    th = move_high["take"] - move_high["gated"]
+    tl = move_low["gated"] - move_low["take"]
+    mh, ml = dict(move_high), dict(move_low)
+    if th >= tl:
+        mover, at = mh, ml["gated"]
+    else:
+        mover, at = ml, mh["gated"]
+    mover["gated"] = int(at)
+    mover["delta"] = int(mover["gated"] - mover["take"])
+    if "stopped at the other view" not in (mover.get("flags") or []):
+        mover["flags"] = list(mover.get("flags") or []) + ["stopped at the other view"]
+    return mh, ml, True
 
 
 # ── §9.1 per-debate scores ─────────────────────────────────────────────────────────────
@@ -1310,6 +1498,12 @@ def _ev_counts(items: list[dict]) -> dict:
             "data": sum(1 for e in items if e.get("status") in ("verified", "partial") and e.get("cls") == "data")}
 
 
+def side_tier(agent: str) -> str:
+    """The tier an agent's take, challenge, red-team and response calls run on (§15.0): the side that formed a
+    position defends it on the same model."""
+    return LENS_TIER.get(agent, "analyst")
+
+
 def score_debate(pr: dict, ch_by: dict, resp_of: dict, crux_check: dict | None, gap_min: int) -> dict:
     """pr: a PAIR; ch_by[side]: the challenge record written BY that side ('high'/'low') or None;
     resp_of[side]: that side's response record (with 'move', 'data') or None."""
@@ -1320,32 +1514,42 @@ def score_debate(pr: dict, ch_by: dict, resp_of: dict, crux_check: dict | None, 
     fin_lo = resp_of["low"]["move"]["gated"] if resp_of.get("low") else pr["p_low"]
     nresp = len(moves)
     status = "two-sided" if nresp == 2 else ("one-sided" if nresp == 1 else "failed")
-    gap_after = None if status == "failed" else int(abs(fin_hi - fin_lo))
+    # The gate never lets a side pass the other (gate_move, cap_pair); an older artifact whose sides swapped
+    # closed the split completely, so it counts as 0, never as the distance between the swapped values.
+    gap_after = None if status == "failed" else int(max(0, fin_hi - fin_lo))
     # Closed on data: a side moved more than the free move towards the other side on qualifying crux
     # data (the free 5 points never count). That alone does not end the split: a responder can copy a
     # crux-hit line. The split only stops being live when the neutral crux check ran on THIS debate and
     # confirmed the data: resolved 'yes', or 'partly' leaning the way the mover moved. Otherwise the
     # block stays and is marked narrowed_on_data.
-    closed, movers = False, []
+    # A mover is any side whose gated move towards the other side is more than the free move, whatever its
+    # evidence source (seventh review, 2026-10-04: a side that came down 15 on 'other' evidence beside a side
+    # that came up 15 on crux data is two movers; counting only the crux-data side let the referee confirm a
+    # split that both sides had collapsed). A side holds when its gated move is at most FREE_MOVE either way.
+    closed, movers, held_sides = False, [], 0
     for side, m in (("high", resp_of.get("high")), ("low", resp_of.get("low"))):
         if not m:
             continue
         mv = m["move"]
         toward = (mv["delta"] < 0) if side == "high" else (mv["delta"] > 0)
-        if mv["evidence_source"] == "crux_data" and toward and abs(mv["delta"]) > FREE_MOVE:
-            closed = True
-            movers.append("lower" if side == "high" else "higher")
+        if toward and abs(mv["delta"]) > FREE_MOVE:
+            movers.append({"lean": "lower" if side == "high" else "higher", "source": mv["evidence_source"]})
+            if mv["evidence_source"] == "crux_data":
+                closed = True
+        elif abs(mv["delta"]) <= FREE_MOVE:
+            held_sides += 1
     cc = crux_check or {}
-    # The referee confirms a closure only when exactly one side moved on crux data and its verdict points the
-    # way that side moved ('yes' and 'partly' alike: a 'yes, leans higher' after the high side came down says
-    # the data favours the high view), and its quote would qualify a move: a strict single data line, not
-    # social, not a market odds line, about the pair's crux (ph_cruxcheck sets quote_qualifies; an artifact
-    # without it confirms nothing). When both sides moved towards each other on crux data, any lean but
-    # 'neither' matches one of them, and a lean towards one view says the other side was right to stay put:
-    # it cannot confirm both moves, so it confirms neither and the block stays.
+    # The referee confirms a closure only when exactly one side moved, it moved on crux data, the other side
+    # answered and held (|delta| <= FREE_MOVE), the verdict points the way the mover moved ('yes' and 'partly'
+    # alike: a 'yes, leans higher' after the high side came down says the data favours the high view; 'higher'
+    # is the view that started higher, crux_check.md), and its quote would qualify a move: a strict single
+    # data line, not social, not a market odds line, about the pair's crux (ph_cruxcheck sets quote_qualifies;
+    # an artifact without it confirms nothing). Two movers confirm nothing: a lean towards one view says the
+    # other side was wrong to move, so the block stays.
     quote_ok = cc.get("quote_qualifies") is True
-    confirmed = bool(closed and crux_check and quote_ok and len(movers) == 1
-                     and cc.get("resolved") in ("yes", "partly") and cc.get("leans") == movers[0])
+    confirmed = bool(closed and crux_check and quote_ok and len(movers) == 1 and held_sides == 1
+                     and movers[0]["source"] == "crux_data"
+                     and cc.get("resolved") in ("yes", "partly") and cc.get("leans") == movers[0]["lean"])
     if closed and cc.get("resolved") == "no":
         closed = False
     ga = gap_after if gap_after is not None else gap_before
@@ -1405,6 +1609,8 @@ def score_debate(pr: dict, ch_by: dict, resp_of: dict, crux_check: dict | None, 
     useful = bool(status != "failed" and (data_move or cc_useful or (gap_after is not None and ga >= gap_before and agreed)))
     return {
         "question_id": pr["question_id"], "high": hi, "low": lo, "status": status,
+        "tiers": {s: str((((resp_of.get(s) or {}).get("calls") or [{}])[0] or {}).get("tier") or side_tier(a))
+                  for s, a in (("high", hi), ("low", lo))},
         "gap_before": gap_before, "gap_after": gap_after,
         "moves": [{k: v for k, v in m.items() if k != "flags"} for m in moves],
         "verdicts": {"high": rdata("high", "verdict"), "low": rdata("low", "verdict")},
@@ -1673,8 +1879,9 @@ def split_sheet(day: str, run_id: str, day_type: str, questions: list[dict], tak
         if ok:
             cands.append((1, -int(q.get("weight", 1) or 1) * rng, q["id"]))
     cands.sort()
-    blocks = []
-    for _, _, qid in cands[:3]:
+    blocks, order = [], []
+    held_any = any(d.get("held_split") for d in debates)
+    for _, _, qid in cands:
         q = qby[qid]
         # A debated block is about the split the debate was on: its type, counts and count phrase come from
         # the take values (gap_before), not from post-debate finals, so a direction split two responders
@@ -1688,11 +1895,16 @@ def split_sheet(day: str, run_id: str, day_type: str, questions: list[dict], tak
             dd = dby.get(qid)
             if rng < need and not (dd and dd.get("gap_before", 0) >= gap_min):
                 continue
+            # A degree split the debate closed below gap_min is not a split worth a block when a held split
+            # exists (seventh review, 2026-10-04: 09-10 led with a 27 -> 17 degree block above the held Hormuz split).
+            if dd and held_any and dd.get("gap_after") is not None and dd["gap_after"] < gap_min:
+                continue
         side = st["majority_side"]
         on_maj = (lambda v: v > 50) if side == "yes" else ((lambda v: v < 50) if side == "no" else (lambda v: v >= 50))
         d = dby.get(qid)
         base_text, base_quote, min_text, min_quote, min_src, crux = "", "", "", "", "reason", ""
         wcm_dates = []
+        min_agent = None
         if d:
             hi, lo = d["high"], d["low"]
             med = st["median"]
@@ -1762,17 +1974,31 @@ def split_sheet(day: str, run_id: str, day_type: str, questions: list[dict], tak
         else:
             settles = {"observable": "", "by_date": min(wcm_dates) if wcm_dates else ""}
         settles = {"observable": anonymise(settles.get("observable", "")), "by_date": settles.get("by_date", "")}
+        # A degree block: every lens leans the same way and the split is how far, so the base case states its own
+        # level ('most lenses at 75–90%') and the minority its value: a cautious base case under 'all 9 lenses
+        # lean yes' must not read as the opposite side (seventh review, 2026-10-04).
+        base_level = min_level = ""
+        if typ == "degree" and f:
+            vals = sorted(f.values())
+            q1, q3 = statistics.quantiles(vals, n=4, method="inclusive")[::2] if len(vals) >= 2 else (vals[0], vals[0])
+            base_level = _rng([q1, q3])
+            if d and min_agent and min_agent in f:
+                min_level = f"{int(round(f[min_agent]))}%"
         blocks.append({
             "type": typ, "debated": bool(d), "question_id": qid, "ledger_id": q.get("ledger_id", ""),
             "question": anonymise(q.get("text", "")), "resolves_on": q.get("resolves_on", ""),
             "settles_with": anonymise(q.get("settles_with", "")),
             "narrowed_on_data": bool(d and d.get("narrowed_on_data")),
             "counts": counts_of(f), "count_phrase": count_phrase(f, typ),
-            "base_case": {"text": clean_text(base_text, 700), "quote": base_quote},
-            "minority_case": {"text": clean_text(min_text, 900), "quote": min_quote, "source": min_src},
+            "base_case": {"text": clean_text(base_text, 700), "quote": base_quote, "level": base_level},
+            "minority_case": {"text": clean_text(min_text, 900), "quote": min_quote, "source": min_src,
+                              "level": min_level},
             "crux": clean_text(crux, 300) if d else "", "crux_check": cc, "settles_on": settles,
             "carried": carried(q),
         })
+        # held and live splits first, then the other direction blocks, then degree blocks (seventh review)
+        order.append(0 if d and (d.get("held_split") or d.get("live_split")) else 1 if typ == "direction" else 2)
+    blocks = [b for _, _, b in sorted(zip(order, range(len(blocks)), blocks), key=lambda x: (x[0], x[1]))][:3]
     if not blocks and red_team and red_team.get("data"):
         rt = red_team["data"]
         qid = red_team.get("question_id") or rt.get("question_id")
@@ -1794,9 +2020,10 @@ def split_sheet(day: str, run_id: str, day_type: str, questions: list[dict], tak
                 "question": anonymise(q.get("text", "")), "resolves_on": q.get("resolves_on", ""),
                 "settles_with": anonymise(q.get("settles_with", "")), "narrowed_on_data": False,
                 "counts": counts_of(f), "count_phrase": count_phrase(f, "consensus"),
-                "base_case": {"text": clean_text(bt, 700), "quote": _first_quote(ev, locator)},
+                "base_case": {"text": clean_text(bt, 700), "quote": _first_quote(ev, locator), "level": ""},
                 "minority_case": {"text": clean_text(rt.get("case", ""), 900),
-                                  "quote": _first_quote(rt.get("evidence"), locator, data_only=False), "source": "red_team"},
+                                  "quote": _first_quote(rt.get("evidence"), locator, data_only=False), "source": "red_team",
+                                  "level": ""},
                 "crux": clean_text((rt.get("crux") or {}).get("claim", ""), 300), "crux_check": cc, "settles_on": settles,
                 "carried": carried(q),
             })
@@ -1825,9 +2052,11 @@ def render_split_sheet(sheet: dict) -> str:
         out.append(f"## Block {n} [{bl['type']}{', undebated' if not bl['debated'] and bl['type'] != 'consensus' else ''}]")
         out.append(f"Question: {bl['question']}")
         out.append(f"Count phrase (copy exactly): {bl['count_phrase']}")
-        out.append(f"Base case: {bl['base_case']['text']}" + (f" (data: \"{bl['base_case']['quote']}\")" if bl['base_case']['quote'] else ""))
+        blv, mlv = bl["base_case"].get("level"), bl["minority_case"].get("level")
+        out.append(f"Base case{f' (most lenses at {blv})' if blv else ''}: {bl['base_case']['text']}"
+                   + (f" (data: \"{bl['base_case']['quote']}\")" if bl['base_case']['quote'] else ""))
         label = "Red-team case" if bl["type"] == "consensus" else "Minority view"
-        out.append(f"{label}: {bl['minority_case']['text']}"
+        out.append(f"{label}{f' (at {mlv})' if mlv else ''}: {bl['minority_case']['text']}"
                    + (f" (data: \"{bl['minority_case']['quote']}\")" if bl['minority_case']['quote'] else ""))
         if bl.get("crux"):
             out.append(f"What it turns on: {bl['crux']}")
@@ -1928,6 +2157,8 @@ HEAD_NAMES = re.compile(r"(?im)^#{1,6}\s*\**\s*(trader|narrator|builder|analyst|
                         r"|macro[ _]strategist|ai[ _]engineer)\b")
 LABEL_NAMES = re.compile(r"(?m)^\s*(?:[-*•]\s*)?(?:\*\*)?(Trader|Narrator|Builder|Analyst|Skeptic|Policy Analyst|User Agent"
                          r"|Macro Strategist|AI Engineer)(?:\*\*)?\s*(?:\*\*)?:")
+# 'USER: WRONG': the scorecard header of user_agent's state file ('user_state.md' -> '### USER') as a label
+USER_LABEL = re.compile(r"(?m)^\s*(?:[-*•]\s*)?(?:\*\*)?USER(?:\*\*)?\s*:|^#{1,6}\s*\**\s*USER\s*$")
 THE_NAMES = re.compile(r"(?i)\bthe (policy analyst|user agent|macro strategist|ai engineer)\b(?!s\b)")
 SPACED_NAMES = re.compile(r"(?i)\b(policy analyst|user agent|macro strategist|ai engineer)\b(?!s\b)")
 TITLE_NAMES = re.compile(r"\b(Trader|Narrator|Builder|Analyst|Skeptic|Policy Analyst|User Agent|Macro Strategist|AI Engineer)"
@@ -1951,7 +2182,7 @@ def brief_section(brief: str, name: str) -> str:
 
 def brief_checks(brief: str, sheet: dict | None) -> dict:
     whole = []
-    for rx in (SNAKE_NAMES, UPPER_NAMES, HEAD_NAMES, LABEL_NAMES, THE_NAMES):
+    for rx in (SNAKE_NAMES, UPPER_NAMES, HEAD_NAMES, LABEL_NAMES, USER_LABEL, THE_NAMES):
         whole += [(m.start(), m.group(0).strip()) for m in rx.finditer(brief or "")]
     seen_at, agent_names = set(), []
     for st, g in sorted(whole):

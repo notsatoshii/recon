@@ -180,19 +180,21 @@ def main():
     all_predictions = []
 
     # 1. Agent state files
+    # (agent, state file stem): user_agent's state file is user_state.md
     agents = [
-        "trader", "narrator", "builder", "analyst", "skeptic",
-        "policy_analyst", "user", "macro_strategist"
+        ("trader", "trader"), ("narrator", "narrator"), ("builder", "builder"), ("analyst", "analyst"),
+        ("skeptic", "skeptic"), ("policy_analyst", "policy_analyst"), ("user_agent", "user"),
+        ("macro_strategist", "macro_strategist"), ("ai_engineer", "ai_engineer"),
     ]
-    for agent in agents:
-        state_file = STATE_DIR / f"{agent}_state.md"
+    for agent, stem in agents:
+        state_file = STATE_DIR / f"{stem}_state.md"
         preds = extract_predictions_from_state(agent, state_file)
         all_predictions.extend(preds)
 
     # 2. Agent memory files (legacy format)
     memory_agents = [
         "trader", "narrator", "builder", "analyst", "skeptic",
-        "policy_analyst", "user_agent", "macro_strategist"
+        "policy_analyst", "user_agent", "macro_strategist", "ai_engineer"
     ]
     for agent in memory_agents:
         memory_file = MEMORY_DIR / f"{agent}.md"

@@ -1046,7 +1046,10 @@ SECTOR CONTEXT (crypto and macro landscape; background, not today's data):
                 their_p=p[t][qid], their_reason=debate.anonymise(theirs.get("reason", "")),
                 their_summary=debate.anonymise(takes[t].get("summary", "")), their_evidence=ev_lines(their_ev),
                 excerpts=debate.excerpts([my_ev, their_ev], self.locator()))
-            data, meta = self.call("challenges", f"{c}__{t}__{qid}", "analyst", prompt, schema="debate_challenge", agent=c)
+            # The side defends its position on the tier that formed it (skeptic and macro strategist: `lens`), not on
+            # the analyst model that clusters at the median (seventh review, 2026-10-04).
+            data, meta = self.call("challenges", f"{c}__{t}__{qid}", debate.side_tier(c), prompt, schema="debate_challenge",
+                                   agent=c)
             data["question_id"] = qid
             checks = {"flags": debate.challenge_checks(data), "evidence": self.ev_checked(data.get("evidence")),
                       "words": {"rebuttal": debate.words(data.get("rebuttal")),
@@ -1076,7 +1079,7 @@ SECTOR CONTEXT (crypto and macro landscape; background, not today's data):
                 count_phrase=debate.count_phrase(vals, "consensus"), majority_reasons=reasons,
                 my_p=vals.get(a, int(round(med))), my_reason=debate.anonymise(mine.get("reason", "")),
                 excerpts=debate.excerpts([mine.get("evidence") or [], maj_ev], self.locator()))
-            data, meta = self.call("challenges", f"redteam__{a}__{qid}", "analyst", prompt, schema="red_team", agent=a)
+            data, meta = self.call("challenges", f"redteam__{a}__{qid}", debate.side_tier(a), prompt, schema="red_team", agent=a)
             data["question_id"] = qid
             prob, nflags = debate.norm_p(data.get("probability"), list(vals.values()))
             data["probability"] = prob if prob is not None else int(round(med))
@@ -1207,7 +1210,8 @@ SECTOR CONTEXT (crypto and macro landscape; background, not today's data):
                 rebuttal=an.get("rebuttal", ""), their_evidence=ev_lines(an.get("evidence")),
                 would_change=f"{wcm.get('observable', '')} at {wcm.get('level', '')} by {wcm.get('by_date') or 'no date'}",
                 excerpts=debate.excerpts([my_ev, their_ev], self.locator()), crux_data=entry["block"])
-            data, meta = self.call("responses", f"{agent}__{qid}", "analyst", prompt, schema="debate_response", agent=agent)
+            data, meta = self.call("responses", f"{agent}__{qid}", debate.side_tier(agent), prompt, schema="debate_response",
+                                   agent=agent)
             data["question_id"] = qid
             move = gate(rec, data)
             out = {"agent": agent, "question_id": qid, "opponent": other, "data": data, "move": move, "calls": [meta]}
@@ -1234,7 +1238,8 @@ SECTOR CONTEXT (crypto and macro landscape; background, not today's data):
                     r["move"] = gate(by_key[k], r["data"], shared)
                 self.log(f"  [{x['question_id']}] {len(shared)} crux line(s) qualified for both sides: allowance shared")
             # The pair's total closure is capped (§7.2): FREE_MOVE per side + 10 per distinct qualifying line across
-            # both sides, the 20-point item cap once per pair, so two different lines per side cannot close 50.
+            # both sides, the 20-point item cap once per pair, so two different lines per side cannot close 50; and
+            # the sides never swap (cap_pair stops the further mover at the other's gated value).
             mh, ml, capped = debate.cap_pair(rh["move"] if rh else None, rl["move"] if rl else None, keys[kh], keys[kl])
             if capped:
                 if rh:
@@ -1242,7 +1247,7 @@ SECTOR CONTEXT (crypto and macro landscape; background, not today's data):
                 if rl:
                     rl["move"] = ml
                 self.log(f"  [{x['question_id']}] pair closure capped at "
-                         f"{debate.pair_allowance(keys[kh], keys[kl])} points")
+                         f"{debate.pair_allowance(keys[kh], keys[kl])} points, neither side past the other")
             if shared or capped:
                 for k, r in ((kh, rh), (kl, rl)):
                     if r:
@@ -1314,22 +1319,31 @@ SECTOR CONTEXT (crypto and macro landscape; background, not today's data):
             cruxes = [x for x in cruxes if x]
             crux = cruxes[0] if agreed and cruxes else " / ".join(dict.fromkeys(cruxes))
 
+            # Both values are shown and each side is named by its take (seventh review, 2026-10-04): after a
+            # collapse to 55 / 55 there is no 'view with the higher probability', so 'higher' must mean the view
+            # that started higher, the one score_debate maps it to.
             def side(a):
                 r = resps.get(f"{a}__{qid}")
-                val = r["move"]["gated"] if r else p[a][qid]
                 why = (r or {}).get("data", {}).get("reason") or position(takes[a], qid).get("reason", "")
-                return f"{val}% — {debate.anonymise(why)}"
+                now = f"; after the debate {r['move']['gated']}%" if r else ""
+                return f"took {p[a][qid]}%{now} — {debate.anonymise(why)}"
             side_a, side_b = side(hi), side(lo)
+            higher_label = f"the view that started at {p[hi][qid]}%"
+            lower_label = f"the view that started at {p[lo][qid]}%"
             ev = [position(takes[hi], qid).get("evidence") or [], position(takes[lo], qid).get("evidence") or []]
         else:
             rec = c["rec"]
             crux = rec["anon"].get("crux", {}).get("claim", "")
             vals = [p[x][qid] for x in p if qid in p[x]]
-            side_a = f"{rec['data'].get('probability')}% — {rec['anon'].get('case', '')[:600]}"
-            side_b = f"median {statistics.median(vals):.0f}% — the consensus view: {rec['anon'].get('consensus_view', '')}"
+            med = statistics.median(vals)
+            rt_p = rec["data"].get("probability")
+            red = (f"the case against the consensus, at {rt_p}%", f"{rec['anon'].get('case', '')[:600]}")
+            cons = (f"the consensus view, median {med:.0f}%", f"{rec['anon'].get('consensus_view', '')}")
+            (higher_label, side_a), (lower_label, side_b) = (red, cons) if (rt_p or 0) > med else (cons, red)
             ev = [rec["data"].get("evidence") or [], []]
         prompt = prompts.render("crux_check", qid=qid, question=debate.anonymise(q["text"]), crux=debate.anonymise(crux),
-                                side_a=side_a, side_b=side_b, data_block=c["entry"].get("referee_block", ""),
+                                side_a=side_a, side_b=side_b, higher_label=higher_label, lower_label=lower_label,
+                                data_block=c["entry"].get("referee_block", ""),
                                 excerpts=debate.excerpts(ev, self.locator()))
         try:
             data, meta = self.call("cruxcheck", qid, "analyst", prompt, schema="crux_check", agent="referee")
@@ -1624,12 +1638,18 @@ SECTOR CONTEXT (crypto and macro landscape; background, not today's data):
 
     def synth_scorecard(self) -> str:
         """The scorecard as the synthesizer reads it: no '### ANALYST' agent headers and no 'Agents: review
-        your predictions' line, so no agent name reaches the brief through SCORECARD."""
-        names = {a.upper() for a in AGENTS} | {a.upper().replace("_", " ") for a in AGENTS}
-        out = []
+        your predictions' line, so no agent name reaches the brief through SCORECARD. Under '## Pending
+        Predictions' every '### <name>' line is an agent header (score_yesterday.py groups by agent, and a state
+        file's name is not always the agent's: 'user_state.md' printed '### USER'), so all of them go."""
+        names = {a.upper() for a in AGENTS} | {a.upper().replace("_", " ") for a in AGENTS} | {"USER"}
+        out, pending = [], False
         for line in self.scorecard().splitlines():
             s = line.strip()
+            if re.match(r"^#{1,2}\s", s):
+                pending = s.lstrip("#").strip().upper().startswith("PENDING PREDICTIONS")
             if s.startswith("#") and s.lstrip("#").strip().upper() in names:
+                continue
+            if pending and re.match(r"^#{3,}\s*[\w ]+$", s):
                 continue
             if re.search(r"(?i)\bagents?\b.*\breview your predictions\b", s):
                 continue

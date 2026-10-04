@@ -1081,5 +1081,263 @@ class LensTierTests(unittest.TestCase):
         self.assertEqual(retries, [2, 3])
 
 
+# ── seventh review (2026-10-04) ──────────────────────────────────────────────────────────
+
+LADDER_BTC = ("- BTC at 2026-10-04 21:00 UTC (Oct 04 5 pm ET close): market-implied median $84,816 (25–75 %: "
+              "$84,398–$85,223), from 80 strikes | event KXBTCD-26OCT0417 | 24h vol 261,505 contracts | "
+              "https://kalshi.com/markets/kxbtcd")
+LADDER_ETH = ("- ETH at 2026-10-04 21:00 UTC (Oct 04 5 pm ET close): market-implied median $2,693 (25–75 %: "
+              "$2,670–$2,715), from 40 strikes | event KXETHD-26OCT0417 | 24h vol 18,771 contracts | "
+              "https://kalshi.com/markets/kxethd")
+
+
+class SeventhReviewScoreTests(unittest.TestCase):
+    def test_other_plus_crux_data_is_two_movers(self):
+        # high 70 -> 55 on 'other' evidence, low 40 -> 55 on crux data: two movers, nothing confirmed, block stays
+        resp = {"high": side_rec(70, 55, "other"), "low": side_rec(40, 55, "crux_data")}
+        cc = {"resolved": "yes", "leans": "higher", "quote_qualifies": True}
+        s = debate.score_debate(PR, {}, resp, cc, 20)
+        self.assertTrue(s["in_split"])
+        self.assertNotIn("confirmed", s["effect"])
+        for lean in ("higher", "lower"):
+            self.assertTrue(debate.score_debate(PR, {}, resp, {**cc, "leans": lean}, 20)["in_split"])
+        # an argument-only mover (source 'none', capped at 5) is not a mover: one crux-data mover, confirmed
+        one = {"high": side_rec(70, 66), "low": side_rec(40, 55, "crux_data")}
+        s = debate.score_debate(PR, {}, one, cc, 20)
+        self.assertFalse(s["in_split"])
+        self.assertIn("confirmed", s["effect"])
+
+    def test_confirm_needs_the_other_side_to_hold(self):
+        cc = {"resolved": "yes", "leans": "lower", "quote_qualifies": True}
+        # the low side moved 10 away from the high side: it did not hold
+        resp = {"high": side_rec(70, 48, "crux_data"), "low": side_rec(40, 30)}
+        self.assertTrue(debate.score_debate(PR, {}, resp, cc, 20)["in_split"])
+        # one-sided: the other side never answered, so it did not hold either
+        self.assertTrue(debate.score_debate(PR, {}, {"high": side_rec(70, 48, "crux_data")}, cc, 20)["in_split"])
+
+    def test_tiers_recorded(self):
+        s = debate.score_debate(PR, {}, {"high": side_rec(70, 65), "low": side_rec(40, 45)}, None, 20)
+        self.assertEqual(s["tiers"], {"high": "lens", "low": "analyst"})           # skeptic vs trader
+        r = side_rec(70, 65)
+        r["calls"] = [{"tier": "synth"}]
+        self.assertEqual(debate.score_debate(PR, {}, {"high": r}, None, 20)["tiers"]["high"], "synth")
+        schemas.validate(json.loads(json.dumps(s)), schemas.ARTIFACTS["debate_score"])
+        self.assertEqual(debate.side_tier("macro_strategist"), "lens")
+
+    def test_swapped_sides_close_to_zero(self):
+        pr = {**PR, "p_high": 60, "p_low": 40}
+        s = debate.score_debate(pr, {}, {"high": side_rec(60, 60), "low": side_rec(40, 65, "crux_data")}, None, 20)
+        self.assertEqual(s["gap_after"], 0)
+
+
+class SeventhReviewGateTests(unittest.TestCase):
+    def setUp(self):
+        self.loc = locator()
+        self.terms = debate.crux_terms([CRUX])
+        self.hits = [{"doc": "package", "line": 5, "text": HIT_A}, {"doc": "package", "line": 6, "text": HIT_B}]
+
+    def test_never_past_the_other_take(self):
+        # gap 20, two qualifying lines (25 points allowed): 40 asks for 65, stops at the other take of 60
+        m = debate.gate_move("trader", 40, 65, {"q1": 40}, 60, "concede",
+                             [{"section": "", "quote": HIT_A}, {"section": "", "quote": HIT_B}], [], [], self.hits,
+                             self.terms, self.loc)
+        self.assertEqual(m["gated"], 60)
+        self.assertIn("stopped at the other view", m["flags"])
+        down = debate.gate_move("skeptic", 60, 30, {"q1": 60}, 40, "concede",
+                                [{"section": "", "quote": HIT_A}, {"section": "", "quote": HIT_B}], [], [], self.hits,
+                                self.terms, self.loc)
+        self.assertEqual(down["gated"], 40)
+
+    def test_cap_pair_stops_crossing(self):
+        mk = lambda agent, take, gated: {"agent": agent, "take": take, "requested": gated, "gated": gated,
+                                         "delta": gated - take, "flags": []}
+        mh, ml, changed = debate.cap_pair(mk("skeptic", 60, 45), mk("trader", 40, 52), {"a"}, {"b", "c"})
+        self.assertTrue(changed)
+        self.assertGreaterEqual(mh["gated"], ml["gated"])
+        self.assertEqual((mh["gated"], ml["gated"]), (52, 52))           # the further mover stops where the other is
+        self.assertIn("stopped at the other view", mh["flags"])
+        again = debate.cap_pair(mh, ml, {"a"}, {"b", "c"})
+        self.assertFalse(again[2])                                         # idempotent
+        s = debate.score_debate({**PR, "p_high": 60, "p_low": 40}, {}, {"high": {"move": {**side_rec(60, 52)["move"], **mh},
+                                                                                 "data": {}},
+                                                                        "low": {"move": {**side_rec(40, 52)["move"], **ml},
+                                                                                "data": {}}}, None, 20)
+        self.assertEqual(s["gap_after"], 0)
+
+
+class SeventhReviewMarketTests(unittest.TestCase):
+    """The real Kalshi ladder lines (2026-10-04-e1 collection) are market lines wherever they sit."""
+
+    def setUp(self):
+        pkg = ("# RECON INTELLIGENCE PACKAGE -- 2026-10-04\n# SECTION 0: CROSS-SOURCE SIGNALS\n" + LADDER_BTC + "\n"
+               "# SECTION 3: ON-CHAIN & MARKET DATA\n- BTC: $84,790 (-0.4% 24h)\n"
+               "# SECTION 8: PREDICTION MARKETS\n## CRYPTO PRICE LADDERS (nearest daily close ≥ 12 h out)\n\n"
+               + LADDER_BTC + "\n" + LADDER_ETH + "\n")
+        raw = "# Kalshi Intelligence\n## CRYPTO PRICE LADDERS (nearest daily close ≥ 12 h out)\n\n" + LADDER_ETH + "\n"
+        self.docs = {"package": pkg, "raw": raw, "social": ""}
+        self.loc = evidence.Locator({"package": pkg, "raw": raw})
+
+    def test_ladder_is_market_class(self):
+        self.assertTrue(debate.odds_line(LADDER_BTC))
+        self.assertTrue(debate.is_market_line("CROSS-SOURCE SIGNALS", LADDER_BTC))
+        self.assertTrue(debate.is_market_line("PREDICTION MARKETS", "- anything in SECTION 8 without odds"))
+        self.assertFalse(debate.is_market_line("PREDICTION MARKETS", "## CRYPTO PRICE LADDERS"))
+        for line in (LADDER_BTC, LADDER_ETH):
+            self.assertEqual(debate.ev_class(self.loc.locate(line), self.loc), "market")
+        self.assertEqual(debate.ev_class(self.loc.locate("- BTC: $84,790 (-0.4% 24h)"), self.loc), "data")
+
+    def test_ladder_never_qualifies_or_hits(self):
+        terms = debate.drop_frequent_entities(debate.crux_terms(["Bitcoin closes above $84,800 on Kalshi's close"]),
+                                              self.docs, subject=["BTC"])
+        self.assertTrue(debate.shares_specific(LADDER_BTC, terms))        # it carries the crux number ...
+        m = debate.gate_move("trader", 40, 65, {"q1": 40}, 80, "narrow", [{"section": "", "quote": LADDER_BTC}],
+                             [], [], [], terms, self.loc)
+        self.assertFalse(m["new_evidence"][0]["qualifies"])              # ... and still never qualifies
+        self.assertEqual(m["new_evidence"][0]["cls"], "market")
+        res = debate.crux_search(terms, self.docs, [], self.loc)
+        self.assertFalse([h for h in res["hits"] if "market-implied" in h["text"]])
+
+    def test_gate_rule_7_drops_a_priced_price_question(self):
+        lines = debate.market_lines(self.loc)
+        self.assertIn(LADDER_BTC, lines)
+        self.assertIn(LADDER_ETH, lines)
+        for text in ("Will BTC close above $87,500 on 2026-10-11?", "Will Bitcoin fall below $80,000 by 2026-10-11?",
+                     "Will ETH close above $2,800 on 2026-10-09?"):
+            with self.subTest(text=text):
+                self.assertTrue(debate.market_match(text, lines))
+        self.assertFalse(debate.market_match("Will Solana TVL exceed $10B by 2026-10-11?", lines))
+        r = debate.gate_questions([q("Will BTC close above $87,500 on 2026-10-11?", bq="- BTC: $84,790 (-0.4% 24h)")],
+                                  "2026-10-04", self.loc, market=lines)
+        self.assertEqual(r["kept"], [])
+        self.assertIn("prediction market already prices it", r["dropped"][0]["reason"])
+
+
+class SeventhReviewTermTests(unittest.TestCase):
+    def test_small_percentage_needs_a_crux_word(self):
+        docs = {"raw": "- Solana TVL: $9.12B (+1.03% 24h)\n- Aave fees: $1.2M (0.98%)\n- Stablecoin supply rose 1.02% to $310B"}
+        t = debate.drop_frequent_entities(debate.crux_terms(["stablecoin supply grows above 1% this week"]), docs)
+        self.assertFalse(debate.shares_specific("- Solana TVL: $9.12B (+1.03% 24h)", t, "threshold"))
+        self.assertFalse(debate.shares_specific("- Aave fees: $1.2M (0.98%)", t, "threshold"))
+        self.assertTrue(debate.shares_specific("- Stablecoin supply rose 1.02% to $310B", t, "threshold"))   # metric word
+
+    def test_frequent_numbers_dropped(self):
+        docs = {"raw": "\n".join([f"- token {i}: +1.0{i % 5}% 24h volume" for i in range(200)] + ["- USDC supply $75.2B"])}
+        t = debate.drop_frequent_entities(debate.crux_terms(["USDC supply holds $75.2B, a 1% weekly volume rise"]), docs)
+        self.assertIn("1%", t["frequent_numbers"])
+        self.assertEqual([x["raw"] for x in t["numbers"]], ["$75.2B"])
+
+    def test_mid_sentence_common_words_are_not_entities(self):
+        ents = debate.entities("Lawmakers in the House and the Treasury expect the Senate to vote; Kalshi and the Fed watch")
+        for w in ("House", "Treasury", "Senate"):
+            self.assertNotIn(w, ents)
+        for w in ("Kalshi", "Fed"):
+            self.assertIn(w, ents)
+        self.assertIn("GPT-5", debate.entities("the GPT-5 release"))      # digits stay
+        self.assertIn("SEC", debate.entities("the SEC rules"))           # all caps stay
+        t = debate.crux_terms(["The Senate passes the CLARITY Act after the House and Treasury sign off"])
+        for line in ("- House passes defense appropriations bill after overnight session",
+                     "- Treasury yields rise as traders weigh the Fed path"):
+            with self.subTest(line=line):
+                self.assertFalse(debate.shares_specific(line, t, "event"))
+        self.assertTrue(debate.shares_specific("- Senators move CLARITY Act to the floor", t, "event"))
+        # market_match keeps the older rule: a named body mid-sentence still finds its market
+        self.assertTrue(debate.market_match("Will the Supreme Court rule on tariffs by 2026-10-30?",
+                                            ['- [politics] Supreme Court tariff ruling by Oct 30? — YES 41%']))
+
+    def test_pinned_subject_plus_one_crux_entity_is_a_hit(self):
+        docs = {"raw": "- Hormuz escort talks: UAE hosts the Korean team\n- Hormuz traffic disrupted again\n"
+                       "- UAE port volumes steady"}
+        t = debate.drop_frequent_entities({"numbers": [], "entities": ["UAE", "Hormuz"], "metrics": []}, docs,
+                                          keep_always=["Hormuz"], subject=["Hormuz"])
+        res = debate.crux_search(t, docs, [])
+        self.assertEqual([h["text"] for h in res["hits"]], ["- Hormuz escort talks: UAE hosts the Korean team"])
+        self.assertEqual(res["pool"], {"term_lines": 3, "pass_with_subject": 1, "pass": 1, "after_quote_exclusion": 1})
+        self.assertFalse(debate.shares_specific("- Hormuz traffic disrupted again", t, "event"))
+        quoted = debate.crux_search(t, docs, ["- Hormuz escort talks: UAE hosts the Korean team"])
+        self.assertEqual(quoted["pool"]["after_quote_exclusion"], 0)
+
+
+class SeventhReviewSettledTests(unittest.TestCase):
+    """09-10 c6: the triage left settled_quote empty beside 'Microsoft has new AI privacy rules for schools'."""
+
+    def setUp(self):
+        self.loc = evidence.Locator({"package": read(FIX / "2026-09-10" / "00_data_package.md")})
+
+    def test_0910_package_drops_the_school_privacy_question(self):
+        privacy = "Will a major AI platform announce new school-specific privacy controls by 2026-09-24?"
+        hormuz = "Will South Korea announce a concrete Hormuz security contribution by 2026-09-20?"
+        qs = [q(privacy, kind="event", bq="", domain="ai_product", resolves="2026-09-24"),
+              q(hormuz, kind="event", bq="", domain="korea", resolves="2026-09-20")]
+        r = debate.gate_questions(qs, "2026-09-10", self.loc)
+        self.assertEqual([k["text"] for k in r["kept"]], [hormuz])
+        self.assertEqual(r["dropped"][0]["text"], privacy)
+        self.assertIn("the package already reports it", r["dropped"][0]["reason"])
+        self.assertIn("Microsoft has new AI privacy rules for schools", r["dropped"][0]["reason"])
+
+    def test_no_false_settles(self):
+        for text in ("Will OpenAI resume new Pro subscriptions by 2026-09-18?",
+                     "Will the SEC approve a spot SOL ETF by 2026-10-20?",
+                     "Will OpenAI release GPT-6 by 2026-10-20?"):
+            with self.subTest(text=text):
+                self.assertEqual(debate.settled_line(text, self.loc), "")
+        hedged = evidence.Locator({"package": "# SECTION 4: NEWS INTELLIGENCE\n"
+                                              "- [x.com] South Korea weighs role in Hormuz security after talks\n"
+                                              "- Microsoft plans to launch AI privacy rules for schools\n"})
+        self.assertEqual(debate.settled_line("Will South Korea announce a Hormuz security role by 2026-09-20?", hedged), "")
+        self.assertEqual(debate.settled_line("Will Microsoft launch AI privacy rules for schools by 2026-09-30?", hedged), "")
+
+
+class SeventhReviewSheetTests(unittest.TestCase):
+    def test_held_split_before_degree_and_closed_degree_left_out(self):
+        qs = [{"id": "q1", "text": "Will a major AI platform add school privacy controls by 09-24?", "weight": 3,
+               "resolves_on": "2026-09-24", "settles_with": "an announcement", "ledger_id": "x-q1"},
+              {"id": "q2", "text": "Will South Korea announce a Hormuz role by 09-20?", "weight": 1,
+               "resolves_on": "2026-09-20", "settles_with": "Yonhap", "ledger_id": "x-q2"}]
+        v1 = dict(zip(AG, [68, 80, 68, 85, 90, 95, 98, 84, 88]))        # degree: all lean yes
+        v2 = dict(zip(AG, [35, 40, 67, 45, 47, 52, 55, 60, 38]))        # direction
+        tp = {a: {"q1": v1[a], "q2": v2[a]} for a in AG}
+        takes = {a: {"positions": [{"question_id": qq, "probability": tp[a][qq], "reason": f"r {qq}",
+                                    "evidence": [{"section": "", "quote": "- Current: $86,610,000,000"}]}
+                                   for qq in ("q1", "q2")], "summary": "", "claims": []} for a in AG}
+        d1 = {"question_id": "q1", "high": "policy_analyst", "low": "builder", "gap_before": 27, "gap_after": 17,
+              "in_split": True, "live_split": False, "held_split": False, "crux_agreed": False, "narrowed_on_data": False}
+        d2 = {"question_id": "q2", "high": "builder", "low": "trader", "gap_before": 32, "gap_after": 27,
+              "in_split": True, "live_split": True, "held_split": True, "crux_agreed": False, "narrowed_on_data": False}
+        sh = debate.split_sheet("2026-09-10", "r", "debate", qs, tp, tp, [d1, d2], {}, {}, takes, locator(), 20)
+        self.assertEqual([b["question_id"] for b in sh["blocks"]], ["q2"])
+        # without a held split the degree block stays, after the live direction block, with its levels
+        d2b = {**d2, "held_split": False, "live_split": True}
+        sh = debate.split_sheet("2026-09-10", "r", "debate", qs, tp, tp, [d1, d2b], {}, {}, takes, locator(), 20)
+        self.assertEqual([b["question_id"] for b in sh["blocks"]], ["q2", "q1"])
+        deg = sh["blocks"][1]
+        self.assertEqual(deg["type"], "degree")
+        self.assertTrue(deg["base_case"]["level"].endswith("%"))
+        self.assertIn(deg["minority_case"]["level"], ("95%", "68%"))
+        text = debate.render_split_sheet(sh)
+        self.assertIn("Base case (most lenses at ", text)
+        schemas.validate(json.loads(json.dumps(sh)), schemas.ARTIFACTS["split_sheet"])
+
+
+class SeventhReviewScorecardTests(unittest.TestCase):
+    def test_user_header_never_reaches_the_synthesizer(self):
+        import types
+        from recon import orchestrator
+        card = ("## Market Snapshot\n- BTC: $84,000\n\n## Pending Predictions\n"
+                "*Agents: review your predictions below.*\n\n### USER\n- [2026-10-01] adoption up\n\n"
+                "### AI_ENGINEER\n- [2026-10-01] new model\n\n### SOMEONE NEW\n- [2026-10-02] x\n")
+        out = orchestrator.Run.synth_scorecard(types.SimpleNamespace(scorecard=lambda: card))
+        self.assertNotIn("USER", out)
+        self.assertNotIn("AI_ENGINEER", out)
+        self.assertNotIn("SOMEONE NEW", out)
+        self.assertIn("## Market Snapshot", out)
+        self.assertIn("- [2026-10-01] adoption up", out)
+        self.assertTrue(debate.brief_checks("## SCORECARD\nUSER: WRONG\n", None)["agent_names"])
+
+    def test_score_yesterday_lists_every_agent(self):
+        src = read(REPO / "scripts" / "score_yesterday.py")
+        self.assertIn('("user_agent", "user")', src)
+        self.assertEqual(src.count('"ai_engineer"'), 3)
+
+
 if __name__ == "__main__":
     unittest.main()

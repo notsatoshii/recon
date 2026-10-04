@@ -86,6 +86,16 @@ def report(root: Path, run_id: str, old: dict | None, gap_min_probe: int | None)
     by_tier: dict[str, int] = {}
     for a, n in endpoints.items():
         by_tier[tier_of.get(a, "analyst")] = by_tier.get(tier_of.get(a, "analyst"), 0) + n
+    # Debate sides per tier (DEBATE_SCORE.tiers, seventh review): how far each tier's side moved towards the other
+    # side, so a lens-tier endpoint defended on its own model can be compared with one defended on the analyst model.
+    side_moves: dict[str, list[int]] = {}
+    for dd in debates:
+        tiers = dd.get("tiers") or {}
+        for mv in dd.get("moves") or []:
+            side = "high" if mv.get("agent") == dd.get("high") else "low"
+            toward = -mv.get("delta", 0) if side == "high" else mv.get("delta", 0)
+            t = tiers.get(side) or "unrecorded"
+            side_moves.setdefault(t, []).append(int(toward))
     n_end = sum(endpoints.values())
     other_tier = sum(v for k, v in by_tier.items() if k != "analyst")
     lens = {a: (t.get("fed") or {}).get("lens_extra_bytes", 0) for a, t in takes.items()}
@@ -128,6 +138,7 @@ def report(root: Path, run_id: str, old: dict | None, gap_min_probe: int | None)
         "verbal_concessions": flags.count("verbal concession"), "soft_moves": soft, "soft_requests": soft_req,
         "endpoints": endpoints, "endpoints_by_tier": by_tier,
         "endpoint_share_off_analyst_tier": round(other_tier / n_end, 2) if n_end else None,
+        "side_moves_by_tier": {t: {"sides": len(v), "mean_toward": round(sum(v) / len(v), 1)} for t, v in side_moves.items()},
         "moves_capped": sum(1 for f in flags if f.endswith("capped") or f.startswith("evidence move capped")),
         "new_evidence_source": {k: srcs.count(k) for k in ("crux_data", "challenger", "own", "other")},
         "leakage": ch_flags.count("persona leakage"), "agreement_openers": ch_flags.count("opens by agreeing"),
@@ -164,6 +175,7 @@ def report(root: Path, run_id: str, old: dict | None, gap_min_probe: int | None)
         "lens-quote share >= 0.5": m["lens_quote_share"] is None or m["lens_quote_share"] >= 0.5,
     }
     m["bar"] = bar
+    tier_moves = "; ".join(f"{t} {v['sides']}, {v['mean_toward']}" for t, v in sorted(m["side_moves_by_tier"].items()))
     lines = [f"# Replay report — {run_id} (day {m['day']}, status {m['status']})", "",
              "Cold-start replay: no memory, state, ledger or historical context, unlike the original run.", "",
              "| metric | new | old |", "|---|---|---|",
@@ -181,6 +193,8 @@ def report(root: Path, run_id: str, old: dict | None, gap_min_probe: int | None)
              f"| debate endpoints per agent; by take tier (share off the analyst tier) | "
              f"{', '.join(f'{a} {n}' for a, n in sorted(endpoints.items())) or '—'}; {by_tier or '—'} "
              f"({m['endpoint_share_off_analyst_tier']}) | — |",
+             f"| debate sides by call tier: sides, mean move towards the other side | "
+             f"{tier_moves or '—'} | — |",
              f"| moves capped; new evidence sources | {m['moves_capped']}; {m['new_evidence_source']} | — |",
              f"| persona leakage, agreement openers | {m['leakage']}, {m['agreement_openers']} of {m['challenges']} | openers {o.get('agreement_openers', '—')} |",
              f"| citation overlap (mean Jaccard; per question; lens-quote share) | {m['citation_overlap']}; "
