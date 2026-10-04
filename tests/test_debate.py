@@ -1899,6 +1899,38 @@ class CrossSourceMarketCopyTests(unittest.TestCase):
         self.assertNotIn(line, debate.market_lines(loc))                  # a headline is not a priced market
         self.assertFalse(debate.odds_line(line))
 
+    def test_headline_probability_likelihood_fedwatch_polymarket_are_market(self):
+        # Phase C (2026-10-04): only 'odds' / 'chance' counted, so these two rate-day headlines were data, qualified,
+        # and moved the skeptic 40 -> 65, the full 25-point allowance, on market odds.
+        fed = "- [Fri, 2 Oct 2026] Traders price a 78% probability of an October Fed cut as CME FedWatch odds firm"
+        poly = "- [Fri, 2 Oct 2026] Polymarket bettors give 64% likelihood that the Fed cuts in October"
+        pkg = ("# SECTION 4: NEWS INTELLIGENCE\n## NEWS MEDIA\n" + fed + "\n" + poly + "\n"
+               "- [Fri, 2 Oct 2026] US payrolls rose 254,000 in September as unemployment fell to 4.1%\n"
+               "# SECTION 3: ON-CHAIN\n## PREDICTION MARKET VOLUME\n- Kalshi: $481,547,487 (+3.3% 7d)\n")
+        loc = evidence.Locator({"package": pkg})
+        terms = debate.crux_terms(["The Fed cuts rates at the October 2026 FOMC meeting"])
+        for line in (fed, poly):
+            with self.subTest(line=line):
+                self.assertEqual(debate.ev_class(loc.locate(line), loc), "market")
+                qq = debate.quote_qualifies(line, terms, "event", loc)
+                self.assertTrue(qq["market"])
+                self.assertFalse(qq["qualifies"])
+                self.assertNotIn(line, debate.market_lines(loc))
+        m = debate.gate_move("skeptic", 40, 65, {"q1": 40}, 80, "narrow",
+                             [{"section": "", "quote": fed}, {"section": "", "quote": poly}],
+                             [], [], [], terms, loc, kind="event")
+        self.assertEqual([x["cls"] for x in m["new_evidence"]], ["market", "market"])
+        self.assertFalse(any(x["qualifies"] for x in m["new_evidence"]))
+        self.assertEqual(m["gated"], 45)                                   # the free move only
+        res = debate.crux_search(terms, {"package": pkg}, [], loc)
+        self.assertFalse([h for h in res["hits"] if "FedWatch" in h["text"] or "Polymarket" in h["text"]])
+        # A venue's volume change and options implied volatility stay data.
+        for line in ("- Kalshi: $481,547,487 (+3.3% 7d)", "- BTC 30-day implied volatility at 52%",
+                     "- Oil prices rose 5% on the week"):
+            with self.subTest(line=line):
+                self.assertIsNone(debate._HEADLINE_ODDS.search(line))
+        self.assertEqual(debate.ev_class(loc.locate("- Kalshi: $481,547,487 (+3.3% 7d)"), loc), "data")
+
 
 class ScorecardExpiryTests(unittest.TestCase):
     """09-11 c9 SCORECARD: the synthesizer computed the expiries itself and shipped 'Over the next session, ...'

@@ -1507,8 +1507,25 @@ _ODDS = re.compile(r"\bYES:?\s*\d{1,3}(?:\.\d+)?\s?%|\bNO:\s*\d{1,3}(?:\.\d+)?\s
 # or forecasters believe, not data about the question. Market for evidence (market_line_in, so market_at,
 # ev_class, crux_search and quote_qualifies), but not an odds line for the question gate's market rule
 # (market_lines), where a news headline is not a priced market.
-_HEADLINE_ODDS = re.compile(r"\b(?:odds|chances?)\b(?:\W+\w+){0,5}?\W+\d{1,3}(?:\.\d+)?\s?%"
-                            r"|\d{1,3}(?:\.\d+)?\s?%\s+(?:odds|chances?)\b", re.I)
+# Phase C (2026-10-04): the belief words are wider than 'odds' and 'chance'. 'Traders price a 78% probability of an
+# October Fed cut as CME FedWatch odds firm' and 'Polymarket bettors give 64% likelihood that the Fed cuts' were
+# classed data and qualified the full 25-point move. A venue name (FedWatch, Polymarket, Kalshi) counts only next
+# to an unsigned percentage that is not a period change, so DeFiLlama's '- Kalshi: $433,518,327 (+7.0% 7d)' volume
+# line stays data; bare 'implied' does not count ('30-day implied volatility at 52%' is options data), only
+# 'implied at 78%' or '78% implied'.
+_HO_PCT = r"\d{1,3}(?:\.\d+)?\s?%"
+_HO_WORD = r"(?:odds|chances?|probabilit(?:y|ies)|likelihood|bets?|bettors?|betting)"
+_HO_VENUE = r"(?:FedWatch|Polymarket|Kalshi)"
+_HEADLINE_ODDS = re.compile(
+    rf"\b{_HO_WORD}\b(?:\W+\w+){{0,5}}?\W+{_HO_PCT}"                            # 'Hike Odds Reach 64%'
+    rf"|{_HO_PCT}\s+(?:\w+\s+)?(?:{_HO_WORD}|{_HO_VENUE}|implied)\b"            # '78% probability', '54.5% Polymarket odds'
+    rf"|\b{_HO_VENUE}\b(?:\W+\w+){{0,5}}?\W+(?<![+\-−.\d]){_HO_PCT}"       # 'Polymarket bettors give 64%'
+    r"(?!\s*\(?\s*(?:7d|24h|1d|30d|wow|yoy|mom)\b)"                              # ... not '(+7.0% 7d)'
+    rf"|\b(?:price[sd]?|pricing)\s+(?:in\s+)?(?:an?\s+|about\s+|around\s+|roughly\s+|nearly\s+)?{_HO_PCT}"
+    rf"|\bimplied\s+(?:at\s+)?{_HO_PCT}"                                       # 'a cut is implied at 80%'
+    rf"|\b(?:traders|markets?|investors|forecasters)\s+(?:now\s+)?(?:put|see|give|assign)\b"
+    rf"(?:\W+\w+){{0,6}}?\W+{_HO_PCT}",                                          # 'traders put a cut at 90%'
+    re.I)
 _LADDER = re.compile(r"\bmarket-implied\b")
 _ODDS_CONT = re.compile(r"^\s*(?:YES|NO):?\s*\d{1,3}(?:\.\d+)?\s?%")   # an odds line under its question line
 
