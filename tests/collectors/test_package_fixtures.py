@@ -86,5 +86,50 @@ class PackageFixtureTests(unittest.TestCase):
                     shutil.rmtree(run, ignore_errors=True)
 
 
+class SocialFillerTests(unittest.TestCase):
+    """09-11 c15 MARKET MOOD quoted '@Polymarket: Welcome to Polymarket HQ.' (F14: 3 Polymarket
+    mentions, target 0): a post with no claim, number or stance must not reach the view or the
+    social extract the brief quotes from."""
+
+    BLOCK = "\n".join([
+        "# Twitter/X Intelligence", "## 2026-09-11 06:00 UTC", "## CRYPTO", "### @Polymarket (4 tweets)",
+        "- [Sep 10, 2026 14:31] (4452♥ 363🔁 464💬) Welcome to Polymarket HQ. "
+        "https://t.co/x https://x.com/Polymarket/status/1",
+        "- [Sep 10, 2026 12:14] (6♥) NEW POLYMARKET: Will Trump create a $5,000 dividend? "
+        "https://x.com/Polymarket/status/2",
+        "### @nansen_ai (2 tweets)",
+        "- [Sep 10, 2026 11:00] (90♥) Nansen Meridian Buildathon. Starting next week. https://x.com/nansen_ai/status/3",
+        "- [Sep 10, 2026 10:00] (80♥) Does this mean $MASK airdrop is coming? https://x.com/nansen_ai/status/4",
+        "### @EmberCN (1 tweets)",
+        "- [Sep 10, 2026 09:00] (70♥) 鲸鱼价值的 BTC 多单，距离清算价格还有很近的距离。 https://x.com/EmberCN/status/5",
+        "### @someone (1 tweets)",
+        "- [Sep 10, 2026 08:00] (60♥) Stablecoin supply keeps rising while exchange balances fall, which looks "
+        "like accumulation to me https://x.com/someone/status/6",
+    ])
+
+    def test_parse_tweets_drops_posts_without_claim_number_or_stance(self):
+        tweets, _ = bap.parse_tweets(self.BLOCK)
+        bodies = " | ".join(t["rest"] for t in tweets)
+        self.assertNotIn("Welcome to Polymarket HQ", bodies)
+        self.assertNotIn("Nansen Meridian Buildathon", bodies)
+        for kept in ("$5,000 dividend", "$MASK airdrop", "BTC", "accumulation to me"):
+            self.assertIn(kept, bodies)
+
+    def test_0911_view_and_social_extract_leave_out_the_hq_tweet(self):
+        run = Path(tempfile.mkdtemp(prefix="recon-pkg-"))
+        try:
+            for f in FILES:
+                shutil.copy(PACKAGE_FIXTURES / "2026-09-11" / f, run / f)
+            with contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(bap.build(run), 0)
+            social = (run / "01_social.md").read_text(encoding="utf-8")
+            view = (run / "01_filtered.md").read_text(encoding="utf-8")
+            self.assertIn("## X (top by engagement)", social)
+            self.assertNotIn("Welcome to Polymarket HQ", social)
+            self.assertNotIn("Welcome to Polymarket HQ", view)
+        finally:
+            shutil.rmtree(run, ignore_errors=True)
+
+
 if __name__ == "__main__":
     unittest.main()

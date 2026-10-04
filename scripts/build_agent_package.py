@@ -119,15 +119,39 @@ def fair_share(chunks: list[str], budget: int) -> str:
 
 
 def drop_noise(text: str) -> str:
-    out = []
+    """Drop error/empty source headers, and tweet lines with no claim, number or stance (is_filler)
+    together with their '*Also in:' line (the cross-source section repeats tweets)."""
+    out, skip_also = [], False
     for line in text.split("\n"):
+        if skip_also and line.lstrip().startswith("*Also in:"):
+            skip_also = False
+            continue
+        skip_also = False
         if NOISE.match(line):
+            continue
+        t = TWEET.match(line)
+        if t and is_filler(re.sub(r"^(RT\s+)*(@\w+:\s*)?", "", t.group("rest").strip())):
+            skip_also = True
             continue
         out.append(line)
     return re.sub(r"\n{3,}", "\n\n", "\n".join(out))
 
 
 # ── X / Twitter ──────────────────────────────────────────────
+
+# A post with no number, no cashtag and under FILLER_WORDS Latin words carries no claim, number or
+# stance ("Welcome to Polymarket HQ.", "Nansen Meridian Buildathon. Starting next week.", "See more
+# coverage here:"); 09-11 c15 quoted the first in MARKET MOOD. CJK text is exempt (no word spaces).
+FILLER_WORDS = 8
+_CJK = re.compile("[぀-ヿ㐀-鿿가-힯]")
+
+
+def is_filler(text: str) -> bool:
+    body = re.sub(r"https?://\S+|@\w+", " ", text)
+    if re.search(r"\d|\$[A-Za-z]", body) or _CJK.search(body):
+        return False
+    return len(re.findall(r"[A-Za-z][\w'’-]*", body)) < FILLER_WORDS
+
 
 TWEET = re.compile(r"^- \[(?P<when>[A-Z][a-z]{2} \d\d, \d{4} \d\d:\d\d)\] \((?P<eng>[^)]*)\) (?P<rest>.*)$")
 
@@ -160,7 +184,7 @@ def parse_tweets(block: str) -> tuple[list[dict], datetime | None]:
         if rest.startswith("RT "):  # reposts carry the original's counts and are mostly off-topic
             continue
         text =re.sub(r"https://(t\.co|x\.com)/\S+", "", rest).strip()
-        if len(text) < 25:  # link-only or near-empty tweets
+        if len(text) < 25 or is_filler(text):  # link-only, near-empty or no claim/number/stance
             continue
         who = handle
         um = re.match(r"(RT )?(@\w+): ", rest)
