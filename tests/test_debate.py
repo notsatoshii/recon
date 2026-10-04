@@ -2152,3 +2152,103 @@ class SplitCoverageTests(unittest.TestCase):
         good = debate.brief_checks(self.C8, self.sheet(self.B1))
         self.assertEqual(run_status(self.C8, {**good, "sections_ok": True}), "ok")
         self.assertEqual(run_status("", {**good, "sections_ok": True}), "failed")
+
+
+class SyndicatedCopyTests(unittest.TestCase):
+    """09-11 c8: Google News carries one story as several 'Title - Outlet' copies ('... - Bloomberg.com' in the
+    package and raw AI ROUNDS, '... - Bloomberg News - TradingView' in raw). _core kept the outlet, so the copies
+    were different lines: a challenger's quote came back as 'other' evidence on the copy, crux_search returned the
+    copy as a hit neither side quoted, both copies counted as two lines, and a copy on each side shared nothing.
+    One story is one line (evidence.story_key). The lines are the real c8 ones (URLs cut)."""
+
+    BLOOM_Q = "AI Startup Cognition Raises $2 Billion at a $48 Billion Value - Bloomberg.com"
+    TV_Q = "AI startup Cognition raises $2 billion at a $48 billion value - Bloomberg News - TradingView"
+    WSJ_Q = "Peter Thiel-Backed AI Startup Cognition Raises Funds at $48 Billion Valuation - WSJ"
+    BLOOM = "- [Tue, 08 Sep 2026] " + BLOOM_Q + " https://news.google.com/rss/articles/CBMirwFBVV95cUxNX1lj"
+    TV = "- [Tue, 08 Sep 2026] " + TV_Q + " https://news.google.com/rss/articles/CBMi2AFBVV95cUxQa2Rz"
+    WSJ = "- [Wed, 09 Sep 2026] " + WSJ_Q + " https://news.google.com/rss/articles/CBMiwgFBVV95cUxOUkJB"
+    CRUX = "Cognition closes its round at a $48 billion valuation"
+
+    def setUp(self):
+        filler = [f"- [wire] Unrelated headline number {i} about markets and weather" for i in range(40)]
+        pkg = "\n".join(["# SECTION 4: NEWS INTELLIGENCE"] + filler + [self.BLOOM])
+        raw = "\n".join(["# Fundraising Intelligence", "", "## AI ROUNDS", "", self.WSJ, self.BLOOM] + filler[:5]
+                        + [self.TV])
+        self.docs = {"package": pkg, "raw": raw, "social": ""}
+        self.loc = evidence.Locator({"package": pkg, "raw": raw})
+        self.terms = debate.crux_terms([self.CRUX])
+        self.raw_lines = raw.split("\n")
+
+    def at(self, text):
+        return self.raw_lines.index(text) + 1
+
+    def gm(self, ev, own=(), oth=(), hits=(), take=40, other=70, requested=65, shared=None):
+        return debate.gate_move("trader", take, requested, {"q1": take}, other, "narrow",
+                                [{"section": "", "quote": q} for q in ev], list(own), list(oth), list(hits),
+                                self.terms, self.loc, shared_lines=shared)
+
+    def test_copies_are_one_line(self):
+        k = debate.line_key(self.loc, "raw", self.at(self.BLOOM))
+        self.assertEqual(debate.line_key(self.loc, "raw", self.at(self.TV)), k)
+        self.assertEqual(debate.line_key(self.loc, "package", 42), k)
+        self.assertEqual(k, "ai startup cognition raises $2 billion at a $48 billion value")
+        # a different story about the same round stays a different line
+        self.assertNotEqual(debate.line_key(self.loc, "raw", self.at(self.WSJ)), k)
+        # a data segment after ' - ' is not an outlet
+        self.assertEqual(evidence.story_key("- BTC dominance climbs to 58.6% this week - up 1.2% on the day"),
+                         "btc dominance climbs to 58.6% this week - up 1.2% on the day")
+        self.assertEqual(evidence.story_key("- Fed holds rates - Reuters"), "fed holds rates - reuters")
+        # c8 market lines: two games of one series are two markets, not copies
+        g2, g4 = (evidence.story_key(f"- LoL: KT Rolster Challengers vs DN Soopers Challengers - Game {n} Winner")
+                  for n in (2, 4))
+        self.assertNotEqual(g2, g4)
+
+    def test_challenger_copy_is_cited_before(self):
+        m = self.gm([self.TV_Q], oth=[self.BLOOM_Q])
+        self.assertEqual(m["new_evidence"][0]["new_evidence_source"], "challenger")
+        self.assertFalse(m["new_evidence"][0]["qualifies"])
+        self.assertEqual(m["gated"], 45)
+        own = self.gm([self.TV_Q], own=[self.BLOOM_Q])
+        self.assertEqual(own["new_evidence"][0]["new_evidence_source"], "own")
+
+    def test_both_copies_are_one_line(self):
+        m = self.gm([self.BLOOM_Q, self.TV_Q])
+        self.assertEqual(m["gated"], 55)        # 5 free + 10 for one story, not 25 for two
+        keys = debate.qualifying_lines(m, [{"quote": self.BLOOM_Q}, {"quote": self.TV_Q}], self.loc)
+        self.assertEqual(len(keys), 1)
+
+    def test_a_copy_on_each_side_is_shared(self):
+        hi = self.gm([self.BLOOM_Q], take=70, other=40, requested=45)
+        lo = self.gm([self.TV_Q])
+        kh = debate.qualifying_lines(hi, [{"quote": self.BLOOM_Q}], self.loc)
+        kl = debate.qualifying_lines(lo, [{"quote": self.TV_Q}], self.loc)
+        self.assertEqual(kh, kl)
+        self.assertEqual(debate.pair_allowance(kh, kl), 20)
+        hi2 = self.gm([self.BLOOM_Q], take=70, other=40, requested=45, shared=kh & kl)
+        self.assertEqual(hi2["gated"], 60)      # 5 free + 5 for the shared story
+
+    def test_crux_search_drops_the_quoted_storys_copies(self):
+        excl = [self.BLOOM_Q]
+        res = debate.crux_search(self.terms, self.docs, excl, self.loc,
+                                 exclude_positions=debate.quote_positions(excl, self.loc))
+        texts = [h["text"] for h in res["hits"]]
+        self.assertNotIn(self.TV, texts)
+        self.assertFalse(any("bloomberg" in t.lower() for t in texts))
+        self.assertIn(self.WSJ, texts)          # a different story stays a hit
+
+    def test_copy_does_not_confirm_a_closure(self):
+        """Gap-30 pair: the high side quoted the Bloomberg copy; the low side moves on the TradingView copy and the
+        referee quotes it. The opponent's own story cannot close the split, so it stays in the brief."""
+        excl = [self.BLOOM_Q]
+        res = debate.crux_search(self.terms, self.docs, excl, self.loc,
+                                 exclude_positions=debate.quote_positions(excl, self.loc))
+        lo = self.gm([self.TV_Q], oth=[self.BLOOM_Q], hits=res["hits"], requested=55)
+        self.assertEqual(lo["gated"], 45)
+        self.assertNotEqual(lo["evidence_source"], "crux_data")
+        hi = self.gm([], take=70, other=40, requested=70)
+        pr = {"question_id": "q3", "high": "analyst", "low": "trader", "p_high": 70, "p_low": 40}
+        resp = {"high": {"move": hi, "data": {"verdict": "hold"}}, "low": {"move": lo, "data": {"verdict": "narrow"}}}
+        cc = {"resolved": "yes", "leans": "higher", "quote_qualifies": True}
+        s = debate.score_debate(pr, {}, resp, cc, 20)
+        self.assertFalse(s["closed_on_data"])
+        self.assertTrue(s["in_split"])

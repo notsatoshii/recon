@@ -1347,13 +1347,27 @@ def crux_search(terms: dict, docs: dict[str, str], exclude_quotes, locator=None,
     excl_pos = set(exclude_positions or ())
     side_norms = [[qnorm(q) for q in (sq or []) if q and len(qnorm(q)) >= 12] for sq in (sides or ())]
     side_pos = [quote_positions(sq, locator) for sq in (sides or ())]
+    # Story keys (09-11 c8): a syndicated copy of a quoted line ('... - Bloomberg News - TradingView' beside the
+    # quoted '... - Bloomberg.com') is the same story, so it counts as quoted, never as a hit neither side quoted.
+    all_lines = {d: (docs.get(d) or "").split("\n") for d in ("raw", "package", "social")}
+
+    def text_at(d, n):
+        if locator is not None and d in locator.lines:
+            return locator.line_text(d, n)
+        ls = all_lines.get(d) or []
+        return ls[n - 1] if 1 <= n <= len(ls) else ""
+
+    def keys_of(quotes, pos):
+        out = {evidence.story_key(text_at(d, n)) for d, n in pos} | {evidence.story_key(q) for q in quotes or [] if q}
+        return {k for k in out if len(k) >= 12}
+    excl_keys = keys_of(exclude_quotes, excl_pos)
+    side_keys = [keys_of(sq, side_pos[i]) for i, sq in enumerate(sides or ())]
     passed: list[tuple] = []   # (doc, n, ns) of every line that passed, quoted or not
     hits, seen = [], set()
     # The candidate pool at each step (seventh review, 2026-10-04: the 09-10 / 09-11 c6 Hormuz and OpenAI Pro
     # pairs had 0 hits; this says whether the corpus, the subject rule or the quote exclusion emptied it).
     pool = {"term_lines": set(), "pass_with_subject": set(), "pass": set(), "after_quote_exclusion": 0}
     subj = [str(x) for x in terms.get("subject", [])]
-    all_lines = {d: (docs.get(d) or "").split("\n") for d in ("raw", "package", "social")}
     mkeys = _market_keys(locator) if locator is not None else market_question_keys(all_lines)
     for doc in ("raw", "package", "social"):
         lines = all_lines[doc]
@@ -1389,11 +1403,12 @@ def crux_search(terms: dict, docs: dict[str, str], exclude_quotes, locator=None,
                 continue
             pool["pass"].add(ns)
             passed.append((doc, n, ns))
-            if ns in seen or (doc, n) in excl_pos:
+            sk = evidence.story_key(s) or ns
+            if sk in seen or (doc, n) in excl_pos or sk in excl_keys:
                 continue
             if any(q in ns or (len(ns) >= 12 and ns in q) for q in excl):
                 continue
-            seen.add(ns)
+            seen.add(sk)
             ctx = [lines[i].strip()[:300] for i in (n - 2, n) if 0 <= i < len(lines) and lines[i].strip()]
             hits.append({"doc": doc, "line": n, "section": sec, "cls": cls, "score": score, "text": s[:400],
                          "terms": h, "context": ctx})
@@ -1414,7 +1429,8 @@ def crux_search(terms: dict, docs: dict[str, str], exclude_quotes, locator=None,
         return "\n".join(out) or "(nothing found on disk for this crux)"
 
     def quoted_by(i, doc, n, ns):
-        return (doc, n) in side_pos[i] or any(q in ns or (len(ns) >= 12 and ns in q) for q in side_norms[i])
+        return ((doc, n) in side_pos[i] or evidence.story_key(all_lines[doc][n - 1]) in side_keys[i]
+                or any(q in ns or (len(ns) >= 12 and ns in q) for q in side_norms[i]))
 
     shared: list[dict] = []
     both = [(d, n) for d, n, ns in passed if quoted_by(0, d, n, ns) and quoted_by(1, d, n, ns)] \
@@ -1425,7 +1441,7 @@ def crux_search(terms: dict, docs: dict[str, str], exclude_quotes, locator=None,
         for doc, n in both:
             for m in _same_item(all_lines[doc], n):
                 s = all_lines[doc][m - 1].strip()
-                ns = evidence.norm(s)
+                ns = evidence.story_key(s) or evidence.norm(s)
                 if len(s) < 12 or s.startswith("#") or ns in sseen:
                     continue
                 if locator is not None and doc in locator.lines:
@@ -1719,11 +1735,22 @@ EVIDENCE_MOVE_MAX = 20        # at most this many points beyond FREE_MOVE, howev
 
 
 def line_key(locator, doc, line) -> str:
-    """What makes two qualifying lines the same fact: the line's _core() text (no URL, X bracket, engagement
-    counts, list dash), so a headline repeated in CROSS-SOURCE and NEWS, or in the package and the raw file,
-    is one line. Falls back to 'doc:line' when the line has no core text."""
-    core = evidence._core(locator.line_text(doc, line)) if locator is not None and doc else ""
+    """What makes two qualifying lines the same fact: the line's story key (evidence.story_key: the _core() text,
+    no URL, X bracket, engagement counts or list dash, and no syndication tail ' - <outlet>'), so a headline
+    repeated in CROSS-SOURCE and NEWS, in the package and the raw file, or carried by two outlets
+    ('... - Bloomberg.com', '... - Bloomberg News - TradingView', 09-11 c8) is one line. Falls back to 'doc:line'
+    when the line has no core text."""
+    core = evidence.story_key(locator.line_text(doc, line)) if locator is not None and doc else ""
     return core or f"{doc}:{line}"
+
+
+def story_keys(quotes, locator, positions=None) -> set:
+    """The story keys a set of quotes stands on: the key of every line they sit on (`positions`, else
+    quote_positions()) plus each quote's own key; keys under 12 characters are left out."""
+    pos = quote_positions(quotes, locator) if positions is None else positions
+    out = {evidence.story_key(locator.line_text(d, n)) for d, n in pos} if locator is not None else set()
+    out |= {evidence.story_key(q) for q in quotes or [] if q}
+    return {k for k in out if len(k) >= 12}
 
 
 def quote_positions(quotes, locator) -> set:
@@ -1741,8 +1768,10 @@ def gate_move(agent: str, take_p: int, requested, own_take_values, other_take_p:
 
     own_quotes: this side's take and challenge quotes; other_quotes: the other side's; crux_hits: this
     pair's crux-search hits ({doc, line, text}). An item's source is decided by where it sits, not by
-    exact text: `own`/`challenger` when it sits on a line a quote of that side sits on, or overlaps one
-    of those quotes as text; `crux_data` when it sits on a crux hit line; else `other`.
+    exact text: `own`/`challenger` when it sits on a line a quote of that side sits on, overlaps one
+    of those quotes as text, or is the same story (story_keys: a syndicated copy, '... - Bloomberg.com' quoted and
+    '... - Bloomberg News - TradingView' cited, 09-11 c8); `crux_data` when it sits on a crux hit line (or a copy
+    of one); else `other`.
 
     An item qualifies when Locator.strict passes (single verbatim line, no '...', every number found,
     40+ characters or a number), its line is data (social by content counts as social), its source is
@@ -1769,20 +1798,25 @@ def gate_move(agent: str, take_p: int, requested, own_take_values, other_take_p:
     oth_n = [x for x in (qnorm(q) for q in other_quotes or [] if q) if len(x) >= 12]
     hit_pos = {(h.get("doc"), h.get("line")) for h in crux_hits or []}
     hit_txt = [evidence.norm(h.get("text", "")) for h in crux_hits or []]
+    # Story keys (09-11 c8): a syndicated copy of a line a side quoted ('... - Bloomberg.com' quoted, '... -
+    # Bloomberg News - TradingView' cited) is that side's evidence, not new data.
+    own_k, oth_k = story_keys(own_quotes, locator, own_pos), story_keys(other_quotes, locator, oth_pos)
+    hit_k = {k for k in (evidence.story_key(h.get("text", "")) for h in crux_hits or []) if len(k) >= 12}
     items, qual_lines = [], set()
     for e in new_evidence or []:
         q = (e.get("quote") or "").strip()
         loc = locator.locate(q) if q else {"status": "empty", "cls": ""}
         nq = qnorm(q)
         pos = locator.positions(q) if q else set()
+        qk = story_keys([q], locator, pos) if q else set()
 
         def overlaps(lst):
             return any(nq and (nq in o or o in nq) for o in lst)
-        if nq and (pos & own_pos or overlaps(own_n)):
+        if nq and (pos & own_pos or overlaps(own_n) or qk & own_k):
             src = "own"
-        elif nq and (pos & oth_pos or overlaps(oth_n)):
+        elif nq and (pos & oth_pos or overlaps(oth_n) or qk & oth_k):
             src = "challenger"
-        elif nq and (pos & hit_pos or any(nq in h for h in hit_txt)):
+        elif nq and (pos & hit_pos or any(nq in h for h in hit_txt) or qk & hit_k):
             src = "crux_data"
         else:
             src = "other"

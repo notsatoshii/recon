@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import bisect
 import calendar
+import functools
 import math
 import re
 from datetime import date, timedelta
@@ -417,6 +418,40 @@ def social_line(line: str) -> bool:
 def _core(line: str) -> str:
     """A line without its URL, X bracket and engagement counts: what makes two renderings the same item."""
     return norm(_CORE_STRIP.sub(" ", line or "")).strip(" .\"'")
+
+
+# A syndication tail: ' - Bloomberg.com', ' - Bloomberg News - TradingView' (Google News 'Title - Outlet').
+_SYND_TAIL = re.compile(r"\s+-\s+([^-]{1,40}?)\s*$")
+_PUB_LOWER = {"of", "the", "and", "&", "on", "de", "la", "for", "in", "at"}
+_PUB_BAD = re.compile(r"[$%€£₩?!:;,()\[\]\"]|(?<![A-Za-z0-9])\d+(?![A-Za-z0-9])")
+
+
+def _publisher(seg: str) -> bool:
+    """An outlet name: 1-5 words, each capitalised, a domain ('coindesk.com') or a connector ('of', 'the'),
+    no currency, percentage or standalone number ('9to5Mac' and 'WDBJ7' pass; 'up 1.2%' and 'Game 4 Winner', a
+    market's game line, do not, nor does 'France 24': a missed copy is safer than two facts merged)."""
+    words = seg.split()
+    if not 1 <= len(words) <= 5 or _PUB_BAD.search(seg):
+        return False
+    real = [w for w in words if w.lower() not in _PUB_LOWER]
+    return bool(real) and all(w[:1].isupper() or w[:1].isdigit() or "." in w.strip(".") for w in real)
+
+
+@functools.lru_cache(maxsize=1 << 16)
+def story_key(line: str) -> str:
+    """What makes two lines the same story: _core() without trailing syndication segments (' - <outlet>', up to
+    three: '... - Bloomberg News - TradingView'), case-folded. Google News carries one story as several copies
+    ('AI Startup Cognition Raises $2 Billion at a $48 Billion Value - Bloomberg.com' and 'AI startup Cognition
+    raises ... - Bloomberg News - TradingView', 09-11 c8): they are one line. A segment is stripped only while at
+    least four words stay before it."""
+    t = re.sub(r"\s+", " ", _CORE_STRIP.sub(" ", (line or "").translate(_TRANS))).strip(" .\"'")
+    for _ in range(3):
+        m = _SYND_TAIL.search(t)
+        head = t[:m.start()].rstrip() if m else ""
+        if not m or len(head.split()) < 4 or not _publisher(m.group(1)):
+            break
+        t = head
+    return norm(t).strip(" .\"'") or _core(line)
 
 
 class Locator:
