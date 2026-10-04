@@ -224,3 +224,52 @@ class LoneOutlierTests(unittest.TestCase):
         text, m = replay_report.report(self.root, "2026-09-11-c11", None, None)
         self.assertEqual(m["lone_outliers"], [{"question_id": "q3", "agent": AGENTS[8], "range": 27, "trimmed_range": 11}])
         self.assertIn(f"| q3 27 (11 without {AGENTS[8]}) |", text)
+
+
+class OldExportTests(unittest.TestCase):
+    """The old column compares against the v1 export of the same day. Replays run on the droplet, where the exports
+    are <repo>/exports/runs, but the default --old-dir was the laptop's ~/innovlabs/recon-exports/runs: the 09-11
+    c13 report found nothing and printed '— calls, 0.00 M input' for a 61-call, 1.36 M-input run."""
+    OLD = {"usage": {"calls": 61, "by_tier": {"analyst": {"calls": 40, "in_tok": 975048},
+                                              "fast": {"calls": 19, "in_tok": 287843},
+                                              "synth": {"calls": 2, "in_tok": 101678}}},
+           "agents": [], "synthesis": {"final": "brief words here"}}
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.base = Path(self.tmp.name)
+        self.root = self.base / "briefs"
+        write_run(self.root, "2026-09-11-x", [("q4", OPENAI, [35, 35, 38, 43, 55, 64, 67, 68, 72])], 1)
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def run_report(self, *extra):
+        err = io.StringIO()
+        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(err):
+            replay_report.main(["2026-09-11-x", "--root", str(self.root), *extra])
+        return (self.root / "2026-09-11-x" / "replay_report.md").read_text(encoding="utf-8"), err.getvalue()
+
+    def test_default_old_dir_is_the_repo_exports(self):
+        runs = self.base / "repo" / "exports" / "runs"
+        runs.mkdir(parents=True)
+        (runs / "2026-09-11.json").write_text(json.dumps(self.OLD), encoding="utf-8")
+        orig = replay_report.REPO
+        replay_report.REPO = self.base / "repo"
+        try:
+            self.assertEqual(replay_report.default_old_dir(), runs)
+            text, err = self.run_report()
+        finally:
+            replay_report.REPO = orig
+        self.assertIn("| 61 calls, 1.36 M input |", text)
+        self.assertIn(f"Old run: {runs / '2026-09-11.json'}.", text)
+        self.assertEqual(err, "")
+
+    def test_missing_old_export_is_empty_not_zero(self):
+        empty = self.base / "none"
+        empty.mkdir()
+        text, err = self.run_report("--old-dir", str(empty))
+        self.assertNotIn("0.00 M input", text)
+        self.assertIn("| no old export |", text)
+        self.assertIn("Old run: NO EXPORT", text)
+        self.assertIn("no old export at", err)

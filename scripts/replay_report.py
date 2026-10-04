@@ -47,6 +47,15 @@ def items(d: Path, phase: str) -> dict:
     return {f.stem: jload(f, {}) for f in sorted((d / "phases" / phase).glob("*.json"))}
 
 
+def default_old_dir() -> Path:
+    """Where the v1 exports live: <repo>/exports/runs on the droplet, where the replays run, else the laptop's
+    ~/innovlabs/recon-exports/runs. The default was only the laptop path, so a replay report on the droplet found
+    no old run and printed '— calls, 0.00 M input' as if the old run had used nothing (09-11 c13: 61 calls,
+    1.36 M input in exports/runs/2026-09-11.json)."""
+    cands = [REPO / "exports" / "runs", Path.home() / "innovlabs" / "recon-exports" / "runs"]
+    return next((c for c in cands if c.is_dir()), cands[0])
+
+
 def old_metrics(old: dict | None) -> dict:
     if not old:
         return {}
@@ -118,7 +127,8 @@ def render_ratios(per_debate: list[dict]) -> str:
                      + (" (< 0.6)" if x.get("below_bar") else "") for x in per_debate)
 
 
-def report(root: Path, run_id: str, old: dict | None, gap_min_probe: int | None) -> tuple[str, dict]:
+def report(root: Path, run_id: str, old: dict | None, gap_min_probe: int | None,
+           old_src: str | None = None) -> tuple[str, dict]:
     d = root / run_id
     run = jload(d / "run.json", {}) or {}
     tri = jload(d / "phases" / "triage.json", {}) or {}
@@ -242,6 +252,8 @@ def report(root: Path, run_id: str, old: dict | None, gap_min_probe: int | None)
     tier_moves = "; ".join(f"{t} {v['sides']}, {v['mean_toward']}" for t, v in sorted(m["side_moves_by_tier"].items()))
     lines = [f"# Replay report — {run_id} (day {m['day']}, status {m['status']})", "",
              "Cold-start replay: no memory, state, ledger or historical context, unlike the original run.", "",
+             *([f"Old run: {old_src}." if o else f"Old run: NO EXPORT ({old_src or 'none given'}); the old column is empty, "
+                "not zero.", ""] if old_src or not o else []),
              "| metric | new | old |", "|---|---|---|",
              f"| questions kept / dropped by the gate | {m['questions_kept']} / {m['questions_dropped']} | — |",
              f"| take spread per question | {'; '.join(spread)} | — |",
@@ -275,7 +287,7 @@ def report(root: Path, run_id: str, old: dict | None, gap_min_probe: int | None)
              f"| brief: sections ok, words, agent names, count mismatches | {m['sections_ok']}, {m['words']}, {len(m['agent_names'])}, {len(m['count_mismatch'])} | words {o.get('words', '—')} |",
              f"| calls (incl. re-asks), budget skips, input / cached / output tokens, wall | {m['calls']}, {m['budget_skips']}, "
              f"{(m['in_tok'] or 0) / 1e6:.2f} M / {(m['cached_tok'] or 0) / 1e6:.2f} M / {(m['out_tok'] or 0) / 1e3:.1f} K, {m['wall']} s | "
-             f"{o.get('calls', '—')} calls, {(o.get('in_tok') or 0) / 1e6:.2f} M input |",
+             + (f"{o.get('calls', '—')} calls, {(o.get('in_tok') or 0) / 1e6:.2f} M input |" if o else "no old export |"),
              f"| lens extras >= 2 KB | {lens_ok}/{len(lens)}: {', '.join(f'{a} {b}' for a, b in sorted(lens.items()))} | — |",
              "", "## Pass-bar items for this run (§15.5)", ""]
     lines += [f"- {'PASS' if v else 'FAIL'}: {k}" for k, v in bar.items()]
@@ -387,7 +399,7 @@ def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description="Phase C replay report")
     ap.add_argument("runs", nargs="+")
     ap.add_argument("--root", default=str(REPO / "briefs"))
-    ap.add_argument("--old-dir", default=str(Path.home() / "innovlabs" / "recon-exports" / "runs"))
+    ap.add_argument("--old-dir", default=None, help="v1 exports (<old-dir>/<day>.json); default: default_old_dir()")
     ap.add_argument("--stability", nargs=2, metavar=("RUN", "RERUN"))
     ap.add_argument("--probe", default=None, help="briefs/spread_probe.md, for GAP_MIN")
     ap.add_argument("--spread", nargs="+", default=[], metavar="RUN",
@@ -401,8 +413,12 @@ def main(argv=None) -> int:
     allm = []
     for rid in a.runs:
         day = rid[:10]
-        old = jload(Path(a.old_dir) / f"{day}.json")
-        text, m = report(root, rid, old, gp)
+        old_path = Path(a.old_dir) if a.old_dir else default_old_dir()
+        old_path = old_path / f"{day}.json"
+        old = jload(old_path)
+        if not old:
+            print(f"replay_report: no old export at {old_path}; the old column is empty", file=sys.stderr)
+        text, m = report(root, rid, old, gp, str(old_path))
         (root / rid / "replay_report.md").write_text(text, encoding="utf-8")
         allm.append(m)
         print(f"| {day} | **Phase C replay {rid}** ({m['day_type']}): {m['questions_kept']} questions, {m['pairs']} pairs, "
