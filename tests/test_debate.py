@@ -1979,6 +1979,38 @@ class ScorecardExpiryTests(unittest.TestCase):
         self.assertIn("no expiry: no dated horizon", mvp)
         self.assertNotIn("USER", out)                                  # the #67 header rule still holds
 
+    def test_iso_dates_the_orchestrator_writes_are_horizons(self):
+        """agentmem.update_state stores '<text> (p=60%; resolves 2026-09-18; metric)' and score_yesterday copies
+        it into the scorecard; the parser read only month names, so a dated prediction was reported as
+        'no expiry'. The structured 'resolves YYYY-MM-DD' wins over any horizon in the text."""
+        for text, hz, exp in (("BTC holds 60k by 2026-09-18", "by 2026-09-18", "2026-09-18"),
+                              ("spreads stay wide through 2026-09-30", "through 2026-09-30", "2026-09-30"),
+                              ("vote lands on 2026-10-02", "on 2026-10-02", "2026-10-02"),
+                              ("no ETF approval before 2026-11-01", "before 2026-11-01", "2026-11-01"),
+                              ("Over the next 2-3 years x (p=60%; resolves 2026-09-18; BTC close)",
+                               "resolves 2026-09-18", "2026-09-18"),
+                              ("Within the next week, y by 2026-12-01 (resolves 2026-09-20)",
+                               "resolves 2026-09-20", "2026-09-20")):
+            self.assertEqual(evidence.prediction_expiry(text, "2026-09-10"), {"horizon": hz, "expiry": exp}, text)
+        self.assertEqual(evidence.prediction_expiry("closes at 2026-13-45 maybe", "2026-09-10")["expiry"], "")
+        import score_yesterday
+        from recon import agentmem, orchestrator
+        with tempfile.TemporaryDirectory() as td:
+            st = Path(td) / "trader_state.md"
+            agentmem.update_state(st, "trader", "2026-09-10",
+                                  {"summary": "s", "prediction": {"text": "BTC closes above $80k",
+                                                                  "probability": 60, "resolves_on": "2026-09-18",
+                                                                  "metric": "BTC daily close"}}, None, [], {})
+            preds = score_yesterday.extract_predictions_from_state("trader", st)
+        self.assertEqual(len(preds), 1)
+        note = orchestrator.expiry_note(preds[0]["prediction"], preds[0]["date"])
+        self.assertEqual(note, ' (expiry 2026-09-18, from "resolves 2026-09-18")')
+        card = score_yesterday.build_scorecard(preds, {}, None)
+        out = self.synth(card)
+        line = next(l for l in out.splitlines() if "BTC closes above" in l)
+        self.assertIn("expiry 2026-09-18", line)
+        self.assertNotIn("no expiry", line)
+
     def test_sub_bullets_take_their_parent_date(self):
         out = self.synth("## Pending Predictions\n### TRADER\n- [2026-06-20] **\n"
                          "  - Strategy forced selling within 60 days if BTC drops\n  - no horizon here\n")

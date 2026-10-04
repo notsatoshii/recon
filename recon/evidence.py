@@ -169,6 +169,10 @@ _H_WORD = re.compile(r"(?i)\b(?P<w>tomorrow|today)\b")
 _H_BY = re.compile(r"\b(?:[Bb]y|[Bb]efore|[Uu]ntil)\s+(?:(?:the\s+)?end\s+of\s+(?=[A-Z]))?(?:(?P<mon>" + _MON +
                    r")\.?(?:\s+(?P<d>[0-3]?\d)(?:st|nd|rd|th)?(?!\d))?(?:,?\s+(?P<y>(?:19|20)\d\d))?"
                    r"|(?P<q>Q[1-4])\s+(?P<qy>(?:19|20)\d\d)|(?P<ye>year[- ]end|(?:the\s+)?end\s+of\s+(?:the\s+)?year\b))")
+# 'by 2026-09-18', 'through 2026-09-30', 'on 2026-10-02': ISO dates, the format the orchestrator writes itself
+_H_ISO = re.compile(r"(?i)\b(?:by|before|until|through|thru|on)\s+(?:the\s+)?(?P<iso>(?:19|20)\d\d-\d\d-\d\d)\b")
+# '(p=60%; resolves 2026-09-18; metric)': agentmem's structured resolves_on, which outranks any prose horizon
+_H_RES = re.compile(r"(?i)\bresolves\s+(?:on\s+|by\s+)?(?P<iso>(?:19|20)\d\d-\d\d-\d\d)\b")
 
 
 def _plus(made: date, n: float, unit: str) -> date:
@@ -200,7 +204,8 @@ def _by_date(m: re.Match, made: date) -> date:
 def prediction_expiry(text: str, made: str) -> dict:
     """{horizon, expiry} for a scorecard prediction made on `made` (YYYY-MM-DD). The horizon is the first one
     the prediction states, as written ('Over the next session'); a range counts to its upper end ('3-6 months'
-    -> +6 months); a session is a day; 'by April 17' is the first April 17 on or after `made`. No horizon ->
+    -> +6 months); a session is a day; 'by April 17' is the first April 17 on or after `made`; 'by/through/on
+    2026-09-18' is that date, and agentmem's structured 'resolves 2026-09-18' wins over any prose. No horizon ->
     both ''. Computed here so the synthesizer copies an expiry instead of deriving one: 09-11 c9 printed
     +3 years for 'Over the next session, ... over the next 2-3 years' (§20.7 #79)."""
     t = (text or "").translate(_TRANS)
@@ -208,7 +213,18 @@ def prediction_expiry(text: str, made: str) -> dict:
         d0 = date.fromisoformat(made)
     except ValueError:
         return {"horizon": "", "expiry": ""}
+    for m in _H_RES.finditer(t):
+        try:
+            return {"horizon": m.group(0).strip(), "expiry": date.fromisoformat(m.group("iso")).isoformat()}
+        except ValueError:
+            continue
     found = []
+    for m in _H_ISO.finditer(t):
+        try:
+            found.append((m.start(), m.group(0), date.fromisoformat(m.group("iso"))))
+            break
+        except ValueError:
+            continue
     m = _H_NUM.search(t)
     if m:
         n = m.group("n").lower()
