@@ -776,14 +776,18 @@ LEAKAGE = re.compile(r"ROADMAP|BUILD NOW|content angle|Post now|allocation:|port
 AGREE = re.compile(r"\b(correctly|is right|rightly|sound|agree|aligned|fair point)\b", re.I)
 
 
+_JOIN = r"[ _-]"    # joiner inside a multi-word agent name: 'macro strategist', 'macro_strategist', 'macro-strategist'
+
+
 def _name_forms(agent: str) -> list[str]:
-    """Regex forms that name an agent: multi-word names in any case, joined by a space or an underscore
-    ('policy_analyst', 'the policy analyst', 'AI engineer', 'User Agent', 'MACRO STRATEGIST'); single
+    """Regex forms that name an agent: multi-word names in any case, joined by a space, an underscore or
+    a hyphen ('policy_analyst', 'the policy analyst', 'AI-engineer', 'User Agent', 'MACRO STRATEGIST',
+    'Policy-Analyst' as one name, not 'Policy-' plus 'Analyst'); single
     words in Title Case ('Trader') and UPPER ('TRADER'). Lower-case single words ('a trader would sell',
     'analyst consensus') are common nouns here; anonymise() catches 'the skeptic argues' separately."""
     w = agent.split("_")
     if len(w) > 1:
-        return ["(?i:" + r"[ _]".join(re.escape(x) for x in w) + ")"]
+        return ["(?i:" + _JOIN.join(re.escape(x) for x in w) + ")"]
     return [re.escape(agent.capitalize()), re.escape(agent.upper())]
 
 
@@ -791,14 +795,22 @@ _NAMES_ALT = "|".join(f for a in sorted(AGENTS, key=len, reverse=True) for f in 
 _NAME_RX = re.compile(r"(?:(?P<at>@)(?i:" + "|".join(re.escape(a) for a in sorted(AGENTS, key=len, reverse=True))
                       + r")|(?P<the>\b[Tt]he\s+)?\b(?:" + _NAMES_ALT + r"))(?!s\b)(?!\.ai\b)(?!\w)")
 # A lower-case role noun used as a name in debate-written text: 'the skeptic argues', 'the trader's
-# read', 'the analyst is right'. Followed by a possessive, a common verb, or a word ending in a single s
-# (argues, overstates; not 'consensus', 'class', 'thesis', 'basis').
+# read', 'the analyst is right'. Followed by a possessive, a common verb, a word ending in a single s
+# (argues, overstates; not 'consensus', 'class', 'thesis', 'basis'), a clause break ('the skeptic,',
+# 'with the analyst;'), or another role ('the skeptic and the trader'); or led by 'As the' ('As the
+# skeptic, I see 30%').
 _ROLE_VERBS = (r"is|was|has|had|would|will|can|could|should|might|may|must|does|did|says|said|argues|argued|"
                r"thinks|thought|believes|claims|claimed|expects|expected|sees|saw|reads|read|notes|noted|"
                r"overstates|understates|misses|missed|ignores|ignored|concedes|conceded|holds|held|puts|put|"
                r"assumes|assumed|treats|treated|wants|insists|underweights|overweights|relies|leans|cites|cited")
-_ROLE_RX = re.compile(r"\b(?P<the>[Tt]he)\s+(?:skeptic|trader|narrator|builder|analyst)"
-                      r"(?:(?=['’]s\b)['’]s|(?=\s+(?:" + _ROLE_VERBS + r")\b)|(?=\s+[a-z]+[^siu\s]s\b))")
+_ROLES = r"skeptic|trader|narrator|builder|analyst"
+_ROLE_RX = re.compile(r"\b(?P<the>[Tt]he)\s+(?:" + _ROLES + r")"
+                      r"(?:(?=['’]s\b)['’]s|(?=\s+(?:" + _ROLE_VERBS + r")\b)|(?=\s+[a-z]+[^siu\s]s\b)"
+                      r"|(?=\s*[,;:)])|(?=\s+and\s+the\s+(?:" + _ROLES + r"|other view)\b))"
+                      r"|(?<=\bAs )(?P<as_the>the)\s+(?:" + _ROLES + r")\b(?!['’]s\b)(?![ \t]+[a-z])")
+# Two names in a row, after the passes above: 'the other view and the other view' -> 'one view and the other';
+# a role left second in the pair ('the other view and the trader disagree') goes with it.
+_PAIR_RX = re.compile(r"\b(?P<the>[Tt]he) other view\s+and\s+the\s+(?:other view|" + _ROLES + r")\b(?P<poss>['’]s)?")
 
 
 def leakage_flags(text: str) -> bool:
@@ -816,10 +828,16 @@ def anonymise(text: str) -> str:
 
     def sub_role(m):
         poss = m.group(0)[-2:] if re.search(r"['’]s$", m.group(0)) else ""
-        return ("The other view" if m.group("the").startswith("T") else "the other view") + poss
+        return ("The other view" if (m.group("the") or "").startswith("T") else "the other view") + poss
+
+    def sub_pair(m):
+        one = "One view and the other" if m.group("the").startswith("T") else "one view and the other"
+        return one + (m.group("poss") or "")
     t = _NAME_RX.sub(sub, text or "")
     t = _ROLE_RX.sub(sub_role, t)
-    t = re.sub(r"(^|[.!?]\s+)the other view", lambda m: m.group(1) + "The other view", t)
+    t = _PAIR_RX.sub(sub_pair, t)
+    t = re.sub(r"\b(other view)\s+view\b", r"\1", t)   # 'Policy-Analyst view' -> 'the other view', not '... view view'
+    t = re.sub(r"(^|[.!?]\s+)(the other view|one view and)", lambda m: m.group(1) + m.group(2)[0].upper() + m.group(2)[1:], t)
     return t
 
 
@@ -2516,22 +2534,24 @@ def lens_notes(takes: dict, active: list[str], locator, cap: int = LENS_NOTES_CA
 
 # ── §11.5 checks before delivery ───────────────────────────────────────────────────────
 
+# Snake case only across the whole brief. A hyphenated name counts there with 'the' (THE_NAMES) or in upper case;
+# 'the User-Agent header' is real tech news, so a hyphenated user-agent counts only in the two debate-fed sections.
 SNAKE_NAMES = re.compile(r"(?i)\b(policy_analyst|user_agent|macro_strategist|ai_engineer)\b")
 # Checked across the whole brief: upper-case names ('MACRO_STRATEGIST', 'ANALYST'), '### NAME' headings,
 # 'Analyst: WRONG' labels, and 'the macro strategist' (multi-word names with 'the'). Title-case single names
 # and bare spaced names stay limited to the two debate-fed sections, where real news cannot hit them.
-UPPER_NAMES = re.compile(r"\b(TRADER|NARRATOR|BUILDER|ANALYST|SKEPTIC|POLICY[ _]ANALYST|USER[ _]AGENT|MACRO[ _]STRATEGIST"
-                         r"|AI[ _]ENGINEER)\b(?!S\b)")
-HEAD_NAMES = re.compile(r"(?im)^#{1,6}\s*\**\s*(trader|narrator|builder|analyst|skeptic|policy[ _]analyst|user[ _]agent"
-                        r"|macro[ _]strategist|ai[ _]engineer)\b")
+UPPER_NAMES = re.compile(r"\b(POLICY[ _-]ANALYST|USER[ _-]AGENT|MACRO[ _-]STRATEGIST|AI[ _-]ENGINEER|TRADER|NARRATOR"
+                         r"|BUILDER|ANALYST|SKEPTIC)\b(?!S\b)")
+HEAD_NAMES = re.compile(r"(?im)^#{1,6}\s*\**\s*(trader|narrator|builder|analyst|skeptic|policy[ _-]analyst|user[ _-]agent"
+                        r"|macro[ _-]strategist|ai[ _-]engineer)\b")
 LABEL_NAMES = re.compile(r"(?m)^\s*(?:[-*•]\s*)?(?:\*\*)?(Trader|Narrator|Builder|Analyst|Skeptic|Policy Analyst|User Agent"
                          r"|Macro Strategist|AI Engineer)(?:\*\*)?\s*(?:\*\*)?:")
 # 'USER: WRONG': the scorecard header of user_agent's state file ('user_state.md' -> '### USER') as a label
 USER_LABEL = re.compile(r"(?m)^\s*(?:[-*•]\s*)?(?:\*\*)?USER(?:\*\*)?\s*:|^#{1,6}\s*\**\s*USER\s*$")
-THE_NAMES = re.compile(r"(?i)\bthe (policy analyst|user agent|macro strategist|ai engineer)\b(?!s\b)")
-SPACED_NAMES = re.compile(r"(?i)\b(policy analyst|user agent|macro strategist|ai engineer)\b(?!s\b)")
-TITLE_NAMES = re.compile(r"\b(Trader|Narrator|Builder|Analyst|Skeptic|Policy Analyst|User Agent|Macro Strategist|AI Engineer)"
-                         r"\b(?!s)(?!\.ai)(?! [A-Z][a-z])")
+THE_NAMES = re.compile(r"(?i)\bthe (policy[ _-]analyst|user[ _]agent|macro[ _-]strategist|ai[ _-]engineer)\b(?!s\b)")
+SPACED_NAMES = re.compile(r"(?i)\b(policy[ _-]analyst|user[ _-]agent|macro[ _-]strategist|ai[ _-]engineer)\b(?!s\b)")
+TITLE_NAMES = re.compile(r"\b(Policy[ -]Analyst|User[ -]Agent|Macro[ -]Strategist|AI[ -]Engineer|Trader|Narrator|Builder"
+                         r"|Analyst|Skeptic)\b(?!s)(?!\.ai)(?! [A-Z][a-z])")
 PROCESS = re.compile(r"(?i)\b(our|the) (agents?|lenses|analysts) (debated|conceded|challenged|voted)\b"
                      r"|\bvot(e|ed) of (the )?(agents|lenses)\b|\bour lenses\b|\bthe debate showed\b")
 _NOFM = re.compile(r"\b(\d+) of (\d+)\b")
@@ -2563,6 +2583,9 @@ def brief_checks(brief: str, sheet: dict | None) -> dict:
         body = brief_section(brief, sec)
         hits = [(m.start(), m.group(0)) for m in TITLE_NAMES.finditer(body)]
         hits += [(m.start(), m.group(0)) for m in SPACED_NAMES.finditer(body)
+                 if not any(st == m.start() for st, _ in hits)]
+        # lower-case role nouns used as names: the forms anonymise() rewrites ('As the skeptic,', 'the skeptic and the trader')
+        hits += [(m.start(), m.group(0)) for m in _ROLE_RX.finditer(body)
                  if not any(st == m.start() for st, _ in hits)]
         agent_names += [f"{g} ({sec})" for _, g in sorted(hits)]
     split = brief_section(brief, "WHERE THE VIEWS SPLIT")

@@ -993,6 +993,37 @@ class AdapterAndTextTests(unittest.TestCase):
             with self.subTest(keep=keep):
                 self.assertNotIn("other view", debate.anonymise(keep))
 
+    def test_anonymise_joined_names_and_roles(self):
+        # hyphen-joined names, 'As the <role>', 'the <role>,' and '<role> and the <role>' (Phase C review)
+        cases = {"The macro-strategist case is that rates hold.": "The other view case is that rates hold.",
+                 "The AI-engineer read: shipping slips.": "The other view read: shipping slips.",
+                 "As the skeptic, I see 30%.": "As the other view, I see 30%.",
+                 "the skeptic and the trader disagree on timing": "One view and the other disagree on timing",
+                 "Policy-Analyst view holds.": "The other view holds.",
+                 "We side with the analyst; the odds hold.": "We side with the other view; the odds hold.",
+                 "As the trader sees it, flows lead.": "As the other view sees it, flows lead.",
+                 "As the skeptic I see 30%.": "As the other view I see 30%."}
+        for src, want in cases.items():
+            with self.subTest(src=src):
+                self.assertEqual(debate.anonymise(src), want)
+        for keep in ("a trader would sell, then buy", "the analyst consensus holds", "a builder and the trader class",
+                     "As the analyst community expects, rates hold."):
+            with self.subTest(keep=keep):
+                self.assertNotIn("other view", debate.anonymise(keep))
+
+    def test_brief_checks_joined_names_and_roles(self):
+        for leak in ("The macro-strategist case is that rates hold.", "The AI-engineer read: shipping slips.",
+                     "As the skeptic, I see 30%.", "the skeptic and the trader disagree on timing.",
+                     "Policy-Analyst view holds."):
+            with self.subTest(leak=leak):
+                brief = "### WHERE THE VIEWS SPLIT\n" + leak + "\n"
+                self.assertTrue(debate.brief_checks(brief, None)["agent_names"], leak)
+        for leak in ("### RISKS\n- the macro-strategist sees a hike\n", "### RISKS\nMACRO-STRATEGIST flagged it.\n"):
+            with self.subTest(leak=leak):
+                self.assertTrue(debate.brief_checks("# RECON DAILY BRIEF\n" + leak, None)["agent_names"], leak)
+        news = "### AI NEWSLETTER\n- Browsers rotate the User-Agent header; a trader, an analyst; and more.\n"
+        self.assertEqual(debate.brief_checks(news, None)["agent_names"], [])
+
     def test_brief_checks(self):
         sheet = {"day_type": "debate", "blocks": [{"type": "direction", "counts": {"n": 9, "majority": 7, "minority": 2}}]}
         clean = ("### WHAT IT MEANS\nAnalysts expect regulatory challenges and a debate over CLARITY; the Senate voted. "
