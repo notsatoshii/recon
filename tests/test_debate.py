@@ -1984,6 +1984,18 @@ class CrossSourceMarketCopyTests(unittest.TestCase):
         "- [Sat, 3 Oct 2026] Swaps fully price an October Fed cut and 90% for December",
         "- [Sat, 3 Oct 2026] Investors put the odds of an October Fed cut at 80 per cent",
         "- [Sat, 3 Oct 2026] An October Fed cut is at 71¢ on Kalshi",
+        # Phase C (2026-10-04, third pass): a long gap after the belief word or venue, the venue two words after
+        # the percentage, 'N% priced in', 'with N% certainty' and wagers were data and qualified.
+        "- [Sat, 3 Oct 2026] Odds that the Fed cuts in October jump to 78% on CME FedWatch",
+        "- [Sat, 3 Oct 2026] Traders now expect an October Fed cut with 90% certainty",
+        "- [Sat, 3 Oct 2026] An October Fed cut is now 85% priced in after payrolls",
+        "- [Sat, 3 Oct 2026] Traders boost wagers on an October Fed cut to 78%",
+        "- [Sat, 3 Oct 2026] Polymarket contract on an October Fed cut jumps to 64%",
+        "- [Sat, 3 Oct 2026] Odds of a Fed rate cut in October rise to 78%",
+        "- [Sat, 3 Oct 2026] Probability of a December Fed rate cut climbs to 64%",
+        "- [Sat, 3 Oct 2026] Chances of an October Fed rate cut now stand at 90%",
+        "- [Sat, 3 Oct 2026] Traders boost bets on an October Fed cut to 78%",
+        "- [Sat, 3 Oct 2026] Fed cut seen 78% likely, on CME FedWatch",
     )
     DATA_LINES = (
         "- Kalshi: $481,547,487 (+3.3% 7d)", "- BTC 30-day implied volatility at 52%",

@@ -1585,17 +1585,23 @@ _ODDS = re.compile(r"\bYES:?\s*\d{1,3}(?:\.\d+)?\s?%|\bNO:\s*\d{1,3}(?:\.\d+)?\s
 # verbs 'pricing'/'priced' count with 'at N%' a few words on (not the noun: 'Producer prices rose at a 0.3% pace'
 # and 'priced the note at 99.5% of par' stay data); a price in cents counts next to Polymarket or Kalshi or after
 # 'contract trades at' ('Corn futures fell 5 cents a bushel' stays data).
+# Phase C (2026-10-04, third pass): 'Odds that the Fed cuts in October jump to 78%', 'Polymarket contract on an
+# October Fed cut jumps to 64%', '78% on CME FedWatch', '85% priced in', 'with 90% certainty' and 'boost wagers on
+# ... to 78%' were data, qualified, and moved the skeptic 40 -> 55. The belief word and the venue reach 10 words to
+# the percentage, a venue may follow the percentage by up to 3 words, and wager(s)/wagering are belief words.
 _HO_PCT = r"\d{1,3}(?:\.\d+)?\s?(?:%|percent\b|per\s?cent\b|pct\b)"
 _HO_CENTS = r"\d{1,3}(?:\.\d+)?\s?(?:¢|cents?\b)"
-_HO_WORD = r"(?:odds|chances?|probabilit(?:y|ies)|likelihood|bets?|bettors?|betting)"
+_HO_WORD = r"(?:odds|chances?|probabilit(?:y|ies)|likelihood|bets?|bettors?|betting|wagers?|wagering)"
 _HO_VENUE = r"(?:FedWatch|Polymarket|Kalshi)"
 _HO_SUBJ = r"(?:traders|markets?|investors|forecasters|futures|swaps|bettors)"
 _HO_VERB = (r"(?:puts?|putting|sees?|seeing|saw|gives?|giving|gave|assigns?|assigning|assigned"
             r"|impl(?:y|ies|ying|ied)|pric(?:e|es|ed|ing))")
 _HEADLINE_ODDS = re.compile(
-    rf"\b{_HO_WORD}\b(?:\W+\w+){{0,5}}?\W+{_HO_PCT}"                            # 'Hike Odds Reach 64%'
+    rf"\b{_HO_WORD}\b(?:\W+\w+){{0,10}}?\W+{_HO_PCT}"                           # 'Hike Odds Reach 64%'
     rf"|{_HO_PCT}\s+(?:\w+\s+)?(?:{_HO_WORD}|{_HO_VENUE}|implied)\b"            # '78% probability', '54.5% Polymarket odds'
-    rf"|\b{_HO_VENUE}\b(?:\W+\w+){{0,5}}?\W+(?<![+\-−.\d]){_HO_PCT}"       # 'Polymarket bettors give 64%'
+    rf"|{_HO_PCT}(?:\W+\w+){{0,3}}?\W+{_HO_VENUE}\b"                            # '78% on CME FedWatch'
+    rf"|{_HO_PCT}\s+priced\b|\bwith\s+{_HO_PCT}\s+certainty\b"                  # '85% priced in', 'with 90% certainty'
+    rf"|\b{_HO_VENUE}\b(?:\W+\w+){{0,10}}?\W+(?<![+\-−.\d]){_HO_PCT}"      # 'Polymarket bettors give 64%'
     r"(?!\s*\(?\s*(?:7d|24h|1d|30d|wow|yoy|mom)\b)"                              # ... not '(+7.0% 7d)'
     rf"|\b(?:price[sd]?|pricing)\s+(?:in\s+)?(?:an?\s+|about\s+|around\s+|roughly\s+|nearly\s+)?{_HO_PCT}"
     rf"|\b(?:pricing|priced)\b(?:\W+\w+){{0,6}}?\s+at\s+{_HO_PCT}(?!\s+of\s+par)"  # 'pricing an October cut at 85%'
