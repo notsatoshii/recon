@@ -1576,6 +1576,56 @@ class SharedCruxPoolTests(unittest.TestCase):
         self.assertEqual(prompts, [])
 
 
+class GenericCruxKeywordTests(unittest.TestCase):
+    """09-11 c9 q5 (OpenAI Pro, policy_analyst / user_agent): the only crux hit was the GPT-6 Astra launch headline,
+    which says nothing about Pro capacity or reopening. It matched on the crux entity Astra, the pinned OpenAI and
+    the keyword 'next' ('within the next week'), and the gate qualified it as crux_data. Time and generic words
+    (next, week, remain, user, accept, offer) are no crux keywords, and where the cruxes have keywords a crux entity
+    needs one beside it (entity_backed). The Pro-hold line (Astra + 'demand' + OpenAI Pro) stays a hit.
+    Cruxes, question and lines are the real c9 ones."""
+
+    Q = "Will OpenAI resume new Pro subscription sign-ups by 2026-09-18?"
+    CRUXES = [
+        "OpenAI can add enough usable capacity and manage Astra demand to reopen at least some new Pro sign-ups by "
+        "2026-09-18.",
+        "OpenAI’s subscription-availability page accepting new Pro subscriptions, or an official announcement "
+        "that sign-ups have resumed.",
+        "The official subscription page remains closed to new Pro users with no reopening announcement.",
+        "OpenAI can add enough usable capacity within the next week to reopen new Pro sign-ups before 2026-09-18.",
+        "OpenAI's subscription-availability page or an official announcement showing new Pro sign-ups have resumed.",
+        "An official OpenAI announcement or subscription page offering new Pro purchases again.",
+    ]
+    HOLD = "- [Thu, 10 Sep 2026] OpenAI puts Pro subscriptions on hold due to Astra demand"
+    LAUNCH = "- [Fri, 11 Sep 2026] GPT-6 Astra: The next generation in intelligence for work - OpenAI"
+
+    def setUp(self):
+        from types import SimpleNamespace
+        from recon.orchestrator import Run
+        filler = [f"- [wire] Unrelated headline number {i} about markets and weather" for i in range(150)]
+        pkg = "\n".join(["# SECTION 4: NEWS INTELLIGENCE"] + filler[:75] + [self.HOLD, self.LAUNCH] + filler[75:])
+        self.docs = {"raw": "", "social": "", "package": pkg}
+        self.loc = evidence.Locator({"package": pkg})
+        self.terms = Run.search_terms(SimpleNamespace(corpus_docs=lambda: self.docs), self.CRUXES, self.Q, "event")
+
+    def test_time_and_generic_words_are_no_crux_keywords(self):
+        kws = self.terms["keywords"]
+        for w in ("next", "week", "remain", "user", "accept", "offer"):
+            self.assertNotIn(debate._kw_base(w), kws, w)
+        for w in ("capacity", "demand", "reopen"):
+            self.assertIn(debate._kw_base(w), kws, w)
+        self.assertEqual(debate.keyword_hits(self.LAUNCH, kws), [])
+
+    def test_launch_headline_is_no_hit_and_no_qualifying_quote(self):
+        res = debate.crux_search(self.terms, self.docs, [], self.loc)
+        self.assertEqual([h["text"] for h in res["hits"]], [self.HOLD])
+        launch = self.LAUNCH[2:]
+        self.assertFalse(debate.shares_specific(launch, self.terms, "event"))
+        self.assertTrue(debate.shares_specific(self.HOLD[2:], self.terms, "event"))
+        # the same entity alone still counts where the cruxes have no keywords (threshold and direction questions)
+        bare = {k: v for k, v in self.terms.items() if k != "keywords"}
+        self.assertTrue(debate.shares_specific(launch, bare, "event"))
+
+
 class MarketQuestionLineTests(unittest.TestCase):
     """Fourth review #48, closed at the reader (ninth review): a POLYMARKET LIVE MARKETS question line
     ('- US x Iran Effective Ceasefire by September 4?') carries its odds on the next line, and the package copies

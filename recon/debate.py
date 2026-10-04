@@ -1048,6 +1048,20 @@ CRUX_BOILERPLATE = {
     "outlets", "source", "sources", "rather", "level", "claim", "claims", "observable", "observed",
 }
 
+# Time words and generic verbs and nouns a crux uses to frame any outcome ('within the next week', 'remains closed
+# to new users', 'accepting', 'offering ... again'): they say nothing about what this disagreement turns on, so
+# they are never crux keywords either (ninth review, 2026-10-04: on 09-11 c9 q5 'next' was the only keyword on
+# 'GPT-6 Astra: The next generation in intelligence for work - OpenAI', which was gated as crux_data).
+CRUX_GENERIC = {
+    "next", "week", "weeks", "weekly", "weekend", "month", "months", "monthly", "year", "years", "yearly", "hour",
+    "hours", "minute", "minutes", "time", "times", "timing", "soon", "later", "last", "past", "recent", "recently",
+    "current", "currently", "early", "earlier", "late", "ahead", "upcoming", "ongoing", "already", "longer",
+    "remain", "remains", "remained", "remaining", "stay", "stays", "keep", "keeps", "continue", "continues",
+    "user", "users", "customer", "customers", "people", "person", "accept", "accepts", "accepting", "accepted",
+    "offer", "offers", "offering", "offered", "able", "ability", "many", "much", "most", "first", "like",
+    "likely", "unlikely", "possible", "possibly", "expect", "expected", "expects",
+}
+
 
 # Inflections a crux keyword may carry and still be the same word (eighth review follow-up, 2026-10-04): a
 # 5-letter prefix let 'mission' match 'missile', 'commits' match 'commission' and 'approval' match 'approves'.
@@ -1099,7 +1113,7 @@ def crux_keywords(texts: list[str], question: str = "") -> list[str]:
     return list(dict.fromkeys(out))
 
 
-_BOILER_BASES = {_kw_base(w) for w in CRUX_BOILERPLATE}
+_BOILER_BASES = {_kw_base(w) for w in CRUX_BOILERPLATE | CRUX_GENERIC}
 
 
 def keyword_hits(line: str, keywords) -> list[str]:
@@ -1119,6 +1133,21 @@ def subject_keyword_pair(h: dict) -> bool:
     """A line that names the question's pinned subject and at least KEYWORD_PAIR crux keywords ('South Korea says
     Hormuz talks concern contribution options, not troop deployment' on a crux about troop or escort roles)."""
     return bool(h.get("pinned")) and len(h.get("keywords") or []) >= KEYWORD_PAIR
+
+
+def entity_backed(h: dict, terms: dict) -> bool:
+    """A crux entity on the line that says something about the crux (ninth review, 2026-10-04). Where the cruxes
+    have keywords (event and judgment questions) a crux entity alone is a name the story is told around, not the
+    fact the split turns on: 'GPT-6 Astra: The next generation in intelligence for work - OpenAI' names Astra and
+    the pinned OpenAI on a crux about Astra serving capacity reopening Pro sign-ups, and says nothing about
+    capacity or sign-ups. There it counts only with a crux keyword, a crux number or a second crux entity on the
+    same line. Without keywords (threshold and direction questions, or cruxes with no content word) any crux
+    entity counts, as before."""
+    if not h.get("entities"):
+        return False
+    if not terms.get("keywords"):
+        return True
+    return bool(h.get("keywords") or h.get("numbers") or len(h["entities"]) >= 2)
 
 
 def same_number(x: dict, y: dict) -> bool:
@@ -1195,7 +1224,7 @@ def shares_specific(quote: str, terms: dict, kind: str = "") -> bool:
         return True
     if kind in ("event", "judgment") and subject_keyword_pair(h):
         return True
-    if not h["entities"]:
+    if not entity_backed(h, terms):
         return False
     return kind in ("event", "judgment") or bool(evidence.numbers(quote or ""))
 
@@ -1334,7 +1363,9 @@ def crux_search(terms: dict, docs: dict[str, str], exclude_quotes, locator=None,
                 pool["term_lines"].add(ns)
             if score - 2 * pin + 3 * n_subj >= 4 and distinct - pin + n_subj >= 2:
                 pool["pass_with_subject"].add(ns)
-            if score < 4 or distinct < 2 or not (h["entities"] or h["numbers"] or subject_keyword_pair(h)):
+            # Ninth review: where the cruxes have keywords, a crux entity needs a keyword, a number or a second
+            # entity beside it (entity_backed), so the pinned subject plus one crux name is no longer a hit.
+            if score < 4 or distinct < 2 or not (entity_backed(h, terms) or h["numbers"] or subject_keyword_pair(h)):
                 continue
             pool["pass"].add(ns)
             passed.append((doc, n, ns))
