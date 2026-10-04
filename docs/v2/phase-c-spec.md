@@ -1761,8 +1761,10 @@ moves and lessons, so pass-bar item (e) is not biased towards stability (fourth 
 
 ### 15.3 Report
 
-`scripts/replay_report.py <run_id> --old ~/innovlabs/recon-exports/runs/<date>.json` (runs
-anywhere; reads the run folder's `run.json` and the old export) writes
+`scripts/replay_report.py <run_id> [--old-dir <exports>/runs]` (runs anywhere; reads the run
+folder's `run.json` and the old export `<old-dir>/<day>.json`; the default is `<repo>/exports/runs` when it
+exists (the droplet), else `~/innovlabs/recon-exports/runs`; a missing export is printed as NO EXPORT, never
+as 0 calls / 0.00 M input) writes
 `briefs/<run_id>/replay_report.md` and prints one model-log row. Columns, new vs old:
 
 | metric | new run from | old run from |
