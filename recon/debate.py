@@ -1418,7 +1418,21 @@ MARKET_STOP = STOP | {"above", "below", "more", "less", "than", "before", "after
 _ODDS = re.compile(r"\bYES:?\s*\d{1,3}(?:\.\d+)?\s?%|\bNO:\s*\d{1,3}(?:\.\d+)?\s?%"
                    r"|\btop:\s*\"[^\"]{1,120}\"\s*\d{1,3}(?:\.\d+)?\s?%"
                    r"|\"[^\"]{1,120}\"\s+\d{1,3}(?:\.\d+)?\s?%\s*\((?:[+\-\u2212]|0\b|new\b|flat\b)"
-                   r"|\bmarket-implied\b")
+                   r"|\bmarket-implied\b"
+                   # Collector formats the forms above miss (Phase C, 2026-10-04): Kalshi 24H MOVERS and Polymarket
+                   # '"Above 108" 76% (24h +53 pts)' / '(1d -18 pts)', the Kalshi strike list 'Above 3.75% 99.5% ·
+                   # Above 4.00% 14%', Polymarket CLOB depth 'mid 9.5¢' and NEW MARKETS listings
+                   # '— started 2026-10-02 22:17 UTC | 24h vol $21K'.
+                   r"|\d{1,3}(?:\.\d+)?\s?%\s*\((?:24h|1d)\s+(?:[+\-\u2212]?\d+(?:\.\d+)?\s*pts\b|n/a\b)"
+                   r"|\b(?:Above|Below)\s+\$?\d[\d,]*(?:\.\d+)?%?\s+\d{1,3}(?:\.\d+)?\s?%"
+                   r"|\bmid\s+\d{1,3}(?:\.\d+)?\s?\u00a2"
+                   r"|\bstarted\s+\d{4}-\d\d-\d\d\s+\d\d:\d\d\s+UTC\s*\|\s*24h vol\b")
+# Odds quoted in a headline ('Brent Tops $106 And Hike Odds Reach 64%', 'a 30% chance of a cut'): what traders
+# or forecasters believe, not data about the question. Market for evidence (market_line_in, so market_at,
+# ev_class, crux_search and quote_qualifies), but not an odds line for the question gate's market rule
+# (market_lines), where a news headline is not a priced market.
+_HEADLINE_ODDS = re.compile(r"\b(?:odds|chances?)\b(?:\W+\w+){0,5}?\W+\d{1,3}(?:\.\d+)?\s?%"
+                            r"|\d{1,3}(?:\.\d+)?\s?%\s+(?:odds|chances?)\b", re.I)
 _LADDER = re.compile(r"\bmarket-implied\b")
 _ODDS_CONT = re.compile(r"^\s*(?:YES|NO):?\s*\d{1,3}(?:\.\d+)?\s?%")   # an odds line under its question line
 
@@ -1464,13 +1478,22 @@ def odds_below(lines: list[str], i: int) -> bool:
 
 
 def market_question_keys(docs_lines: dict[str, list[str]]) -> set[str]:
-    """The _core() text of every market question line (odds_below) in the run's documents. The package copies
-    such lines into SECTION 0 CROSS-SOURCE SIGNALS without their odds ('- LAPTOP FDV above $500M one day after
-    launch?' then an 'Also in:' line), so a copy is the same item and a market line too."""
+    """The _core() text of every market item in the run's documents: a question line with its odds below
+    (odds_below), and every list item in a PREDICTION MARKETS section (package SECTION 8, the raw Polymarket and
+    Kalshi blocks, the view's section). The package copies such lines into SECTION 0 CROSS-SOURCE SIGNALS
+    (scripts/deduplicate.py: the longest rendering verbatim, or a question without its odds, '- LAPTOP FDV above
+    $500M one day after launch?' then an 'Also in:' line), so a copy is the same item and a market line too,
+    whatever format the collector wrote it in. Phase C (2026-10-04): on the Polymarket + Kalshi replays 6 of 20
+    cross-source items were data, and Locator picks the first data hit, the copy, so the section never applied."""
     out = set()
-    for lines in docs_lines.values():
+    loc = evidence.Locator({d: "\n".join(ls) for d, ls in docs_lines.items()})
+    for doc, lines in docs_lines.items():
+        labels = loc.labels(doc) if doc in loc.lines else []
         for i, line in enumerate(lines):
-            if line.strip().startswith("- ") and odds_below(lines, i):
+            if not line.strip().startswith(("- ", "* ")):
+                continue
+            sec = labels[i][0] if i < len(labels) else ""
+            if odds_below(lines, i) or sec.upper().startswith(MARKET_SECTION):
                 k = evidence._core(line)
                 if len(k) >= 12:
                     out.add(k)
@@ -1493,7 +1516,7 @@ def market_line_in(section: str, lines: list[str], i: int, keys: set[str]) -> bo
     `lines` is a market line when its section or content says so, when the next non-empty line is its odds, or
     when it is a copy of a market question line (`keys`, market_question_keys)."""
     line = lines[i] if 0 <= i < len(lines) else ""
-    if is_market_line(section, line) or odds_below(lines, i):
+    if is_market_line(section, line) or odds_below(lines, i) or _HEADLINE_ODDS.search(line or ""):
         return True
     k = evidence._core(line)
     return len(k) >= 12 and k in keys

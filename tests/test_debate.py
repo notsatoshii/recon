@@ -1650,3 +1650,98 @@ class DroppedPairTests(unittest.TestCase):
         self.assertEqual(len(r["pairs"]), 2)
         self.assertEqual([(u["question_id"], u["reason"]) for u in r["unpaired"]], [("q3", debate.UNPAIRED_LOAD_CAP)])
         self.assertEqual([u["question_id"] for u in debate.dropped_unpaired(r, r, "budget")], ["q3"])
+
+
+COLLECTORS = REPO / "tests" / "fixtures" / "collectors"
+STARSHIP = ('- [Science and Technology] SpaceX Starship 15th launch? (SpaceX Starship (15th launch)): "Before Oct 30, '
+            '2026" 11% (24h -22 pts) | 24h vol 7,141 | https://kalshi.com/markets/kxspacexstarship')
+
+
+def dedup_package() -> tuple[dict, str]:
+    """The pipeline's SECTION 0 on the Polymarket + Kalshi replays: collect_data.sh runs scripts/deduplicate.py on
+    the raw file (the raw Polymarket and Kalshi blocks) and puts its CROSS-SOURCE SIGNALS report before SECTION 8.
+    Returns (docs, the dedup report)."""
+    import deduplicate
+    pm, ks = read(COLLECTORS / "replay_polymarket.md"), read(COLLECTORS / "replay_kalshi.md")
+    raw = "# RAW DATA -- 2026-10-04\n\n---\n\n" + pm + "\n\n---\n\n" + ks + "\n"
+    rep = deduplicate.format_deduplicated(deduplicate.deduplicate(deduplicate.extract_items(raw)))
+    pkg = ("# RECON INTELLIGENCE PACKAGE -- 2026-10-04\n\n---\n\n# SECTION 0: CROSS-SOURCE SIGNALS\n\n" + rep
+           + "\n---\n\n# SECTION 4: NEWS INTELLIGENCE\n\n- [Sat, 03 Oct 2026] SpaceX moves Starship flight 15 to the "
+           "Oct 30 window after a pad repair\n\n---\n\n# SECTION 8: PREDICTION MARKETS\n\n" + pm + "\n\n" + ks + "\n")
+    return {"package": pkg, "raw": raw, "social": ""}, rep
+
+
+class CrossSourceMarketCopyTests(unittest.TestCase):
+    """Phase C (2026-10-04): deduplicate.py copies prediction-market lines into SECTION 0 CROSS-SOURCE SIGNALS, and
+    Locator.strict / locate pick that first data hit, not the SECTION 8 original. A copy is market by its _core text
+    (market_question_keys covers every PREDICTION MARKETS list item) and by content (_ODDS knows the collector formats:
+    '(24h +53 pts)', 'Above 4.00% 14%', 'mid 9.5¢', NEW MARKETS 'started ... | 24h vol')."""
+
+    def setUp(self):
+        self.docs, self.rep = dedup_package()
+        self.loc = evidence.Locator({k: v for k, v in self.docs.items() if k != "social"})
+        self.items = [l for l in self.rep.split("\n") if l.startswith("- ")]
+
+    def test_every_cross_source_copy_is_market(self):
+        self.assertGreaterEqual(len(self.items), 15)
+        self.assertIn(STARSHIP, self.items)
+        checked = 0
+        for item in self.items:
+            st = self.loc.strict(item)
+            if not st["ok"]:                                       # 'by...?' reads as a stitched quote
+                continue
+            checked += 1
+            with self.subTest(item=item[:80]):
+                self.assertEqual(st["section"], "CROSS-SOURCE SIGNALS")   # the copy is the hit that classifies
+                self.assertTrue(debate.market_at(self.loc, st["doc"], st["line"], st["section"]))
+                self.assertEqual(debate.ev_class(self.loc.locate(item), self.loc), "market")
+        self.assertGreaterEqual(checked, 15)
+
+    def test_copy_is_market_by_section_key_alone(self):
+        # Without the content rule the SECTION 8 original still makes the copy market (its _core is a key).
+        keys = debate.market_question_keys(self.loc.lines)
+        st = self.loc.strict(STARSHIP)
+        lines = self.loc.lines[st["doc"]]
+        self.assertIn(evidence._core(STARSHIP), keys)
+        self.assertTrue(debate.market_line_in("CROSS-SOURCE SIGNALS", lines, st["line"] - 1, keys))
+        self.assertFalse(debate.market_line_in("NEWS INTELLIGENCE", ["- SpaceX moves Starship flight 15 to the Oct 30 "
+                                                                    "window after a pad repair"], 0, keys))
+
+    def test_collector_formats_are_odds_lines(self):
+        for line in ('- [Companies] Amazon Credit Card Spend in September (September 2026): "Above 108" 76% (24h +53 pts)',
+                     '- Fed funds rate after Oct 2026 meeting? (On Oct 28, 2026): Above 3.75% 99.5% · Above 4.00% 14%',
+                     '- Will Indiana enact a data center moratorium by December 31, 2027?: mid 9.5¢ | spread 1.0¢',
+                     "- Gemini Argon: Humanity's Last Exam Debut? — started 2026-10-02 22:17 UTC | 24h vol $21K | liq $3K",
+                     STARSHIP):
+            with self.subTest(line=line[:60]):
+                self.assertTrue(debate.odds_line(line))
+        for line in ("- BTC: $84,790 (-0.4% 24h)", "- SOL: $150.20 +3.2% (24h)",
+                     "- [coindesk.com] Bitcoin Climbs Above $84,000, Up 5% On The Week",
+                     "- Ethena USDe supply fell 4.1% to $5.3B over seven days on redemptions"):
+            with self.subTest(line=line):
+                self.assertFalse(debate.odds_line(line))
+
+    def test_starship_copy_never_qualifies_hits_or_confirms(self):
+        terms = debate.drop_frequent_entities(debate.crux_terms(["SpaceX Starship 15th launch before Oct 30, 2026"]),
+                                              self.docs, subject=["Starship"])
+        self.assertTrue(debate.shares_specific(STARSHIP, terms, "event"))   # it is about the crux ...
+        m = debate.gate_move("trader", 30, 45, {"q1": 30}, 70, "narrow", [{"section": "", "quote": STARSHIP}],
+                             [], [], [], terms, self.loc, kind="event")
+        self.assertFalse(m["new_evidence"][0]["qualifies"])                # ... and never qualifies a move
+        self.assertEqual(m["new_evidence"][0]["cls"], "market")
+        res = debate.crux_search(terms, self.docs, [], self.loc)
+        self.assertFalse([h for h in res["hits"] if "kxspacexstarship" in h["text"]])
+        qq = debate.quote_qualifies(STARSHIP, terms, "event", self.loc)
+        self.assertTrue(qq["market"])
+        self.assertFalse(qq["qualifies"])
+
+    def test_headline_odds_are_market_evidence_not_gate_markets(self):
+        pkg = read(FIX / "2026-09-11" / "00_data_package.md")
+        loc = evidence.Locator({"package": pkg})
+        line = "- [Fri, 11 Sep 2026] Brent Tops $106 And Hike Odds Reach 64% As Crypto Sells Off"
+        self.assertEqual(debate.ev_class(loc.locate(line), loc), "market")
+        terms = debate.drop_frequent_entities(debate.crux_terms(["Fed hike odds above 60% before the September meeting"]),
+                                              {"package": pkg})
+        self.assertFalse(debate.quote_qualifies(line, terms, "threshold", loc)["qualifies"])
+        self.assertNotIn(line, debate.market_lines(loc))                  # a headline is not a priced market
+        self.assertFalse(debate.odds_line(line))
