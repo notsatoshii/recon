@@ -20,6 +20,16 @@
   anonymise        §11.2 agent names -> "the other view"
   brief_checks     §11.5 agent names, count mismatches, block count, process words
   legacy_moves / legacy_response   §14.1 adapters for Phase B readers (agentmem, run.json)
+
+Phase D (docs/v2/phase-d-debate-upgrade.md):
+  delphi_targets    who looks again on which split questions (outside the IQR, cross-exam endpoints excluded)
+  opposing_reasons  the two strongest reasons across the median, picked by verified quotes
+  label_move        verified quote / argument / held: a label, never a gate
+  indicator_ok      an INDICATOR's comparator, level and date; indicator_text renders one
+  judge_check       the judge's quote re-checked, resolvable = the judge's word and indicator_ok
+  stage_values      take values -> after Delphi -> finals
+  xexam_score       XEXAM_SCORE of one cross-examined pair; ev_counts scores evidence quality in code
+  plan_phase_d      the Phase D calls that fit the planning budget
 """
 from __future__ import annotations
 
@@ -2334,6 +2344,250 @@ def _no_cross(move_high: dict | None, move_low: dict | None) -> tuple[dict | Non
     if "stopped at the other view" not in (mover.get("flags") or []):
         mover["flags"] = list(mover.get("flags") or []) + ["stopped at the other view"]
     return mh, ml, True
+
+
+# ── Phase D: Delphi round, cross-exam, judge (docs/v2/phase-d-debate-upgrade.md) ────────
+
+COMPARATORS = (">", ">=", "<", "<=", "happens", "does_not_happen")
+IF_TRUE = ("yes_more_likely", "no_more_likely")
+DELPHI_MAX_CALLS = 6          # split day: one call per agent, at most this many
+DELPHI_CONSENSUS_CALLS = 3    # consensus day: the widest question only
+INDICATOR_MAX_DAYS = 60       # an undated (judgment) question's indicator must fall within this many days
+
+
+def _iqr_bounds(vals) -> tuple[float, float, float]:
+    v = sorted(float(x) for x in vals)
+    q1, _, q3 = statistics.quantiles(v, n=4, method="inclusive")
+    return q1, statistics.median(v), q3
+
+
+def split_questions(questions: list[dict], p: dict, gap_min: int) -> list[str]:
+    """Question ids whose take range reaches gap_min through more than one lens (lone_lens: one far lens is no
+    split, §4.2), widest first."""
+    out = []
+    for q in questions:
+        vals = [v[q["id"]] for v in p.values() if q["id"] in v]
+        if len(vals) >= 3 and max(vals) - min(vals) >= gap_min and not lone_lens(vals, gap_min):
+            out.append((-(max(vals) - min(vals)), q["id"]))
+    return [qid for _, qid in sorted(out)]
+
+
+def delphi_targets(questions: list[dict], p: dict, pairs: list[dict], gap_min: int, consensus: bool = False,
+                   max_calls: int | None = None) -> dict:
+    """Who gets a Delphi call and on which questions. On a split question the agents outside its interquartile
+    range (below Q1 or above Q3) look again; the question's cross-exam endpoints never do (they argue it in the
+    cross-exam). One call per agent covers all its questions; at most `max_calls` agents (DELPHI_MAX_CALLS), the
+    ones furthest out first (sum over their questions of weight x distance from the median). A consensus day
+    (`consensus`) takes only the widest question, at most DELPHI_CONSENSUS_CALLS agents.
+    Returns {by_agent: {agent: [qid]}, questions: {qid: {median, q1, q3, targets}}, dropped: [agent]}."""
+    w = {q["id"]: int(round(min(3, max(1, float(q.get("weight", 1) or 1))))) for q in questions}
+    ends = {(x["question_id"], a) for x in pairs or [] for a in (x["high"], x["low"])}
+    if consensus:
+        ranged = []
+        for q in questions:
+            vals = [v[q["id"]] for v in p.values() if q["id"] in v]
+            if len(vals) >= 3:
+                ranged.append((-(max(vals) - min(vals)), -w[q["id"]], q["id"]))
+        qids = [sorted(ranged)[0][2]] if ranged else []
+        cap = DELPHI_CONSENSUS_CALLS if max_calls is None else max_calls
+    else:
+        qids = split_questions(questions, p, gap_min)
+        cap = DELPHI_MAX_CALLS if max_calls is None else max_calls
+    detail, by_agent, dist = {}, {}, Counter()
+    for qid in qids:
+        vals = {a: v[qid] for a, v in p.items() if qid in v}
+        q1, med, q3 = _iqr_bounds(vals.values())
+        tg = sorted(a for a, x in vals.items() if (x < q1 or x > q3) and (qid, a) not in ends)
+        detail[qid] = {"median": float(med), "q1": float(q1), "q3": float(q3), "targets": tg}
+        for a in tg:
+            by_agent.setdefault(a, []).append(qid)
+            dist[a] += w.get(qid, 1) * abs(vals[a] - med)
+    ranked = sorted(by_agent, key=lambda a: (-dist[a], a))
+    keep = set(ranked[:max(0, cap)])
+    return {"by_agent": {a: by_agent[a] for a in sorted(keep)}, "questions": detail,
+            "dropped": [a for a in ranked if a not in keep]}
+
+
+def opposing_reasons(qid: str, p: dict, evq: dict, agent: str, takes: dict | None = None, k: int = 2) -> list[dict]:
+    """The `k` strongest reasons from the other side of the median for `agent` on `qid`: the agents across the
+    median (strictly on the other side) with the most verified or partial quotes (ev_checked), then the furthest
+    from the median, then by name. [{agent, p, reason, evidence: [verified quotes]}]; the caller anonymises."""
+    vals = {a: v[qid] for a, v in p.items() if qid in v}
+    if agent not in vals or len(vals) < 3:
+        return []
+    med = statistics.median(vals.values())
+    mine = vals[agent]
+    if mine == med:
+        return []
+    other = [a for a, x in vals.items() if a != agent and ((x < med) if mine > med else (x > med))]
+
+    def ok(a):
+        return [e for e in evq.get(a, {}).get(qid, []) if _ok(e)]
+    ranked = sorted(other, key=lambda a: (-len(ok(a)), -abs(vals[a] - med), a))[:k]
+    out = []
+    for a in ranked:
+        pos = next((x for x in ((takes or {}).get(a) or {}).get("positions") or [] if x.get("question_id") == qid), {})
+        out.append({"agent": a, "p": int(vals[a]), "reason": pos.get("reason", ""),
+                    "evidence": [{"section": e.get("section", ""), "quote": e.get("quote", "")} for e in ok(a)][:2]})
+    return out
+
+
+def label_move(take: int, new: int, evidence_checked: list[dict] | None) -> str:
+    """'held' when the number did not change; 'verified quote' when a verified data quote stands beside the move;
+    else 'argument'. A label, never a gate: the move stands either way."""
+    if int(new) == int(take):
+        return "held"
+    if any(e.get("status") == "verified" and e.get("cls") == "data" for e in evidence_checked or []):
+        return "verified quote"
+    return "argument"
+
+
+def indicator_ok(ind: dict | None, day: str, resolves_on: str = "", max_days: int = INDICATOR_MAX_DAYS) -> tuple[bool, list[str]]:
+    """(ok, problems) for an INDICATOR: an observable, a comparator from COMPARATORS, a level with a figure for
+    >, >=, <, <=, an if_true, and a by_date that is a real date from `day` on, no later than the question's
+    resolves_on when it has one (else within max_days)."""
+    ind = ind or {}
+    why = []
+    if len((ind.get("observable") or "").strip()) < 4:
+        why.append("no observable")
+    c = ind.get("comparator") or ""
+    if c not in COMPARATORS:
+        why.append(f"comparator {c!r} not one of {', '.join(COMPARATORS)}")
+    elif c in (">", ">=", "<", "<=") and not re.search(r"\d", ind.get("level") or ""):
+        why.append("a numeric comparator without a level")
+    if (ind.get("if_true") or "") not in IF_TRUE:
+        why.append("no if_true")
+    by = (ind.get("by_date") or "").strip()
+    d = _days_between(day, by)
+    if d is None:
+        why.append(f"by_date {by!r} is not a date")
+    elif d < 0:
+        why.append(f"by_date {by} is before {day}")
+    elif _DATE.match(resolves_on or "") and by > resolves_on:
+        why.append(f"by_date {by} is after the question resolves ({resolves_on})")
+    elif not _DATE.match(resolves_on or "") and d > max_days:
+        why.append(f"by_date {by} is more than {max_days} days out")
+    return not why, why
+
+
+def ev_counts(items: list[dict]) -> dict:
+    """claimed / verified / partial / unverified / data counts of EV_CHECKED items, and the code-scored evidence
+    quality (verified + half the partial ones, over the claimed ones; None when nothing was claimed)."""
+    claimed = [e for e in items or [] if e.get("status") != "empty"]
+    v = sum(1 for e in claimed if e.get("status") == "verified")
+    pa = sum(1 for e in claimed if e.get("status") == "partial")
+    return {"claimed": len(claimed), "verified": v, "partial": pa,
+            "unverified": sum(1 for e in claimed if e.get("status") == "unverified"),
+            "data": sum(1 for e in claimed if e.get("status") in ("verified", "partial") and e.get("cls") == "data"),
+            "quality": round((v + 0.5 * pa) / len(claimed), 3) if claimed else None}
+
+
+def judge_check(item: dict, locator, day: str, resolves_on: str = "") -> dict:
+    """The judge's item re-checked in code (as ph_cruxcheck re-checks the referee's quote): a lean (favours_high,
+    favours_low, neither) stands only with a quote found verbatim that is one data line (or a headline and its
+    body), not social and not a prediction-market odds line, else data_today becomes no_data and a flag says why.
+    resolvable stands only when the judge said so and indicator_ok passes."""
+    it = dict(item or {})
+    flags = []
+    quote = (it.get("quote") or "").strip()
+    lean = it.get("data_today")
+    status = "empty"
+    if quote:
+        loc = locator.locate(quote) if locator is not None else {"status": "unverified"}
+        status = loc.get("status", "unverified")
+        st = locator.strict(quote, item=True) if locator is not None else {"ok": False}
+        bad = ("judge quote not found" if status != "verified" else
+               f"judge quote fails the strict check ({st.get('reason')})" if not st.get("ok") else
+               "judge quote is a social line" if st.get("cls") != "data" else
+               "judge quote is a prediction-market odds line"
+               if (market_at(locator, st["doc"], st["line"], st.get("section", "")) or is_market_line(st.get("section", ""), quote))
+               else "")
+        if bad and lean != "no_data":
+            flags.append(bad)
+            it["data_today"] = "no_data"
+    elif lean in ("favours_high", "favours_low"):
+        flags.append("a lean without a quote")
+        it["data_today"] = "no_data"
+    ok, why = indicator_ok(it.get("indicator"), day, resolves_on)
+    it["indicator_ok"], it["indicator_problems"] = ok, why
+    it["judge_resolvable"] = bool(it.get("resolvable"))
+    it["resolvable"] = bool(it.get("resolvable")) and ok
+    it["quote_status"] = status
+    it["flags"] = flags + ([f"indicator: {w}" for w in why] if why else [])
+    return it
+
+
+def stage_values(take_p: dict, delphi_new: dict, xexam_new: dict) -> tuple[dict, dict]:
+    """(after Delphi, finals) as {agent: {qid: p}}: the take values overlaid by the Delphi revisions, then by the
+    cross-exam replies. Delphi never revises a question's cross-exam endpoints (delphi_targets), so the two never
+    write the same (agent, question)."""
+    after = {a: dict(v) for a, v in take_p.items()}
+    for a, qs in (delphi_new or {}).items():
+        after.setdefault(a, {}).update({q: int(x) for q, x in qs.items()})
+    fin = {a: dict(v) for a, v in after.items()}
+    for a, qs in (xexam_new or {}).items():
+        fin.setdefault(a, {}).update({q: int(x) for q, x in qs.items()})
+    return after, fin
+
+
+def xexam_score(pr: dict, opens: dict, replies: dict, judge_item: dict | None, gap_min: int) -> dict:
+    """XEXAM_SCORE of one cross-examined pair. pr: a PAIR; opens[side] / replies[side]: the records written BY that
+    side ('high' / 'low'), or None. An open record has data (XEXAM_OPEN) and evidence (EV_CHECKED); a reply record
+    data (XEXAM_REPLY), evidence and move {take, new, label}. The gap after is signed (high minus low): a negative
+    gap means the sides crossed, which is recorded, not prevented."""
+    hi, lo = pr["high"], pr["low"]
+    rh, rl = replies.get("high"), replies.get("low")
+    n = sum(1 for r in (rh, rl) if r)
+    status = "two-sided" if n == 2 else ("one-sided" if n == 1 else "failed")
+    new_hi = rh["move"]["new"] if rh else pr["p_high"]
+    new_lo = rl["move"]["new"] if rl else pr["p_low"]
+    gap_after = None if status == "failed" else int(new_hi - new_lo)
+
+    def side_ev(side):
+        return ev_counts(list(((opens.get(side) or {}).get("evidence") or [])) +
+                         list(((replies.get(side) or {}).get("evidence") or [])))
+
+    def ind(side):
+        return ((opens.get(side) or {}).get("data") or {}).get("i_am_wrong_if")
+
+    def verdict(side):
+        return (((replies.get(side) or {}).get("data") or {}).get("on_their_indicator") or {})
+
+    moves = [{"agent": a, "take": int(r["move"]["take"]), "new": int(r["move"]["new"]), "label": r["move"]["label"]}
+             for a, r in ((hi, rh), (lo, rl)) if r]
+    return {"question_id": pr["question_id"], "high": hi, "low": lo, "status": status,
+            "gap_before": int(pr["p_high"] - pr["p_low"]), "gap_after": gap_after, "moves": moves,
+            "evidence": {"high": side_ev("high"), "low": side_ev("low")},
+            "indicators": {"high": ind("high"), "low": ind("low"),
+                           "verdicts": {"high": verdict("high").get("verdict", ""), "low": verdict("low").get("verdict", "")},
+                           "counters": {s: (verdict(s).get("counter") if verdict(s).get("verdict") == "counter" else None)
+                                        for s in ("high", "low")}},
+            "judge": judge_item, "held_split": bool(status == "two-sided" and gap_after is not None and gap_after >= gap_min)}
+
+
+def plan_phase_d(used: int, budget: int, synth_calls: int, n_pairs: int, delphi_calls: int, judge: bool,
+                 premortem: bool) -> dict:
+    """The Phase D calls that fit the planning budget after `used` calls, the synthesis kept free. Priority: the
+    first cross-exam pair (4 calls), the judge (1, only with a pair or Delphi indicators to check), the Delphi calls,
+    the second pair, the pre-mortem. {pairs, delphi, judge, premortem, planned, free}."""
+    free = budget - used - synth_calls
+    left = free
+    out = {"pairs": 0, "delphi": 0, "judge": False, "premortem": False}
+    if n_pairs >= 1 and left >= 4:
+        out["pairs"], left = 1, left - 4
+    if judge and left >= 1 and (out["pairs"] or delphi_calls):
+        out["judge"], left = True, left - 1
+    d = max(0, min(delphi_calls, left))
+    out["delphi"], left = d, left - d
+    if not out["judge"] and judge and d and left >= 1:
+        out["judge"], left = True, left - 1
+    if n_pairs >= 2 and left >= 4:
+        out["pairs"], left = 2, left - 4
+    if premortem and left >= 1:
+        out["premortem"], left = True, left - 1
+    out["planned"] = 4 * out["pairs"] + out["delphi"] + int(out["judge"]) + int(out["premortem"])
+    out["free"] = free
+    return out
 
 
 # ── §9.1 per-debate scores ─────────────────────────────────────────────────────────────

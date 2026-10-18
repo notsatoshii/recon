@@ -369,7 +369,8 @@ RESOLUTION_LINE = obj(
 # Phase D artifacts. A move is labelled, never blocked: 'verified quote' (a verified data quote beside it), 'argument'
 # (moved without one), 'held'.
 MOVE_LABELS = ["verified quote", "argument", "held"]
-EV_COUNTS = obj(claimed=i(), verified=i(), partial=i(), unverified=i(), data=i())
+EV_COUNTS = obj(claimed=i(), verified=i(), partial=i(), unverified=i(), data=i(),
+                quality=nullable(num("verified + half the partial, over claimed; scored in code")))
 XEXAM_SCORE = obj(
     question_id=s(), high=enum(AGENTS), low=enum(AGENTS), status=enum(["two-sided", "one-sided", "failed"]),
     gap_before=i(), gap_after=nullable(i()),
