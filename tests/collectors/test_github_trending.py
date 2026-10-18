@@ -86,5 +86,16 @@ class CollectTests(unittest.TestCase):
         self.assertEqual(len(notes), 4)
 
 
+class CollectDataStepTests(unittest.TestCase):
+    def test_ai_tools_heredoc_parses_and_calls_the_trending_block(self):
+        import ast
+        import re
+        sh = (Path(__file__).resolve().parents[2] / "scripts" / "collect_data.sh").read_text(encoding="utf-8")
+        m = re.search(r"^python3 << 'PYAITOOLS'\n(.*?)^PYAITOOLS$", sh, re.S | re.M)
+        self.assertIsNotNone(m)
+        ast.parse(m.group(1))  # a literal newline inside a string here broke the AI/TOOLS step once
+        self.assertIn("gt.block()", m.group(1))
+
+
 if __name__ == "__main__":
     unittest.main()

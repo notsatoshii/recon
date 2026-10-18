@@ -762,13 +762,10 @@ try:
     import collect_github_trending as gt
     out.append(gt.block())
 except Exception as e:
-    out.append(f"## GITHUB TRENDING — AI REPOS
-SOURCE UNAVAILABLE: {type(e).__name__}: {str(e)[:160]}
-")
+    out.append(f"## GITHUB TRENDING — AI REPOS\nSOURCE UNAVAILABLE: {type(e).__name__}: {str(e)[:160]}\n")
 
 week_ago = (datetime.now() - timedelta(days=7)).strftime("%Y-%m-%d")
-out.append("## GITHUB — NEW AI REPOS (created in the last 7 days, by stars)
-")
+out.append("## GITHUB — NEW AI REPOS (created in the last 7 days, by stars)\n")
 gh = get(f"https://api.github.com/search/repositories?q=created:>{week_ago}+stars:>50&sort=stars&order=desc&per_page=40")
 if "_error" not in gh and "items" in gh:
     shown = 0
@@ -787,8 +784,7 @@ if "_error" not in gh and "items" in gh:
     if not shown: out.append("No new AI repos above 50 stars this week.")
     out.append("")
 else:
-    out.append("GitHub search API unavailable.
-")
+    out.append("GitHub search API unavailable.\n")
 
 # ── HACKER NEWS TOP (AI/tech relevant) ────────────────────
 out.append("## HACKER NEWS TOP STORIES\n")
