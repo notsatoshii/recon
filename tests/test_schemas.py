@@ -63,7 +63,24 @@ GOLDEN = {
                  "would_change_my_mind": {"observable": "o", "level": "l", "by_date": ""}},
     "crux_check": {"resolved": "partly", "what_the_data_says": "w", "quote": "", "section": "",
                    "remaining_uncertainty": "u", "settles_on": {"observable": "o", "by_date": ""}, "leans": "neither"},
+    "resolve": {"items": [{"ref": "e1", "outcome": "open", "quote": "", "section": "", "why": "w"}]},
 }
+IND = {"observable": "total DeFi TVL", "source": "DeFiLlama", "comparator": "<", "level": "90B", "by_date": "2026-10-18",
+       "if_true": "yes_more_likely"}
+EMPTY_COUNTER = {"observable": "", "source": "", "comparator": "", "level": "", "by_date": "", "if_true": ""}
+GOLDEN.update({
+    "delphi": {"revisions": [{"question_id": "q1", "verdict": "hold", "new_probability": 60, "moved_by": "none",
+                              "reason": "r", "evidence": [], "would_change_my_mind": IND}]},
+    "xexam_open": {"question_id": "q1", "steelman": "s", "i_am_wrong_if": IND, "rebuttal": "r", "evidence": [],
+                   "probability": 70},
+    "xexam_reply": {"question_id": "q1", "steelman_fair": {"verdict": "yes", "correction": ""},
+                    "on_their_indicator": {"verdict": "accept", "why": "w", "counter": EMPTY_COUNTER},
+                    "verdict": "hold", "new_probability": 40, "reason": "r", "new_evidence": []},
+    "judge": {"items": [{"question_id": "q1", "indicator": IND, "status": "agreed", "resolvable": True, "why_not": "",
+                         "data_today": "no_data", "quote": "", "section": "", "watch_line": "w", "split_line": "s"}]},
+    "premortem": {"question_id": "q1", "consensus_view": "v", "failure_story": "f", "early_signs": [IND],
+                  "evidence": [], "probability": 30},
+})
 
 
 class SchemaTests(unittest.TestCase):
@@ -123,6 +140,13 @@ class DryRunTests(unittest.TestCase):
                     self.assertIn(out["question_id"], ("q1", "q2"))
                 if name == "debate_response":
                     self.assertIsInstance(out["new_probability"], int)
+                for key in ("revisions", "items"):          # Phase D: one entry per question of the prompt
+                    if key in out and name != "resolve":
+                        self.assertEqual(sorted(x["question_id"] for x in out[key]), ["q1", "q2"])
+                for ind in ([out.get("i_am_wrong_if")] + out.get("early_signs", [])
+                            + [x.get("would_change_my_mind") for x in out.get("revisions", [])]):
+                    if ind:
+                        self.assertRegex(ind["by_date"], r"^\d{4}-\d\d-\d\d$")
 
     def test_dry_triage_passes_the_gate(self):
         for day in ("2026-09-11", "2026-10-04"):

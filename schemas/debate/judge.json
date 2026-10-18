@@ -1,0 +1,129 @@
+{
+ "type": "object",
+ "properties": {
+  "items": {
+   "type": "array",
+   "items": {
+    "type": "object",
+    "properties": {
+     "question_id": {
+      "type": "string",
+      "enum": [
+       "q1",
+       "q2",
+       "q3",
+       "q4",
+       "q5"
+      ]
+     },
+     "indicator": {
+      "type": "object",
+      "properties": {
+       "observable": {
+        "type": "string",
+        "description": "the series or event, as specific as a reader could check it"
+       },
+       "source": {
+        "type": "string",
+        "description": "where it is published"
+       },
+       "comparator": {
+        "type": "string",
+        "enum": [
+         ">",
+         ">=",
+         "<",
+         "<=",
+         "happens",
+         "does_not_happen"
+        ]
+       },
+       "level": {
+        "type": "string",
+        "description": "the level as written, e.g. 90B or 5.4%; empty for happens / does_not_happen"
+       },
+       "by_date": {
+        "type": "string",
+        "description": "YYYY-MM-DD"
+       },
+       "if_true": {
+        "type": "string",
+        "enum": [
+         "yes_more_likely",
+         "no_more_likely"
+        ],
+        "description": "what the indicator coming true means for the question"
+       }
+      },
+      "required": [
+       "observable",
+       "source",
+       "comparator",
+       "level",
+       "by_date",
+       "if_true"
+      ],
+      "additionalProperties": false
+     },
+     "status": {
+      "type": "string",
+      "enum": [
+       "agreed",
+       "countered",
+       "rejected"
+      ]
+     },
+     "resolvable": {
+      "type": "boolean",
+      "description": "a reader can check it by its date from a public source"
+     },
+     "why_not": {
+      "type": "string",
+      "description": "empty when resolvable"
+     },
+     "data_today": {
+      "type": "string",
+      "enum": [
+       "favours_high",
+       "favours_low",
+       "neither",
+       "no_data"
+      ]
+     },
+     "quote": {
+      "type": "string",
+      "description": "verbatim from the data above, at most 200 characters; empty when no_data"
+     },
+     "section": {
+      "type": "string"
+     },
+     "watch_line": {
+      "type": "string",
+      "description": "at most 25 words: what to watch, with its date"
+     },
+     "split_line": {
+      "type": "string",
+      "description": "at most 40 words: what the split turns on, in plain words"
+     }
+    },
+    "required": [
+     "question_id",
+     "indicator",
+     "status",
+     "resolvable",
+     "why_not",
+     "data_today",
+     "quote",
+     "section",
+     "watch_line",
+     "split_line"
+    ],
+    "additionalProperties": false
+   }
+  }
+ },
+ "required": [
+  "items"
+ ],
+ "additionalProperties": false
+}

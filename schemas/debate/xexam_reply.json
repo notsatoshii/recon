@@ -1,0 +1,155 @@
+{
+ "type": "object",
+ "properties": {
+  "question_id": {
+   "type": "string",
+   "enum": [
+    "q1",
+    "q2",
+    "q3",
+    "q4",
+    "q5"
+   ]
+  },
+  "steelman_fair": {
+   "type": "object",
+   "properties": {
+    "verdict": {
+     "type": "string",
+     "enum": [
+      "yes",
+      "partly",
+      "no"
+     ]
+    },
+    "correction": {
+     "type": "string",
+     "description": "empty when yes"
+    }
+   },
+   "required": [
+    "verdict",
+    "correction"
+   ],
+   "additionalProperties": false
+  },
+  "on_their_indicator": {
+   "type": "object",
+   "properties": {
+    "verdict": {
+     "type": "string",
+     "enum": [
+      "accept",
+      "reject",
+      "counter"
+     ]
+    },
+    "why": {
+     "type": "string",
+     "description": "at most 30 words"
+    },
+    "counter": {
+     "type": "object",
+     "properties": {
+      "observable": {
+       "type": "string",
+       "description": "empty unless your verdict is counter"
+      },
+      "source": {
+       "type": "string"
+      },
+      "comparator": {
+       "type": "string",
+       "enum": [
+        ">",
+        ">=",
+        "<",
+        "<=",
+        "happens",
+        "does_not_happen",
+        ""
+       ]
+      },
+      "level": {
+       "type": "string"
+      },
+      "by_date": {
+       "type": "string",
+       "description": "YYYY-MM-DD or empty"
+      },
+      "if_true": {
+       "type": "string",
+       "enum": [
+        "yes_more_likely",
+        "no_more_likely",
+        ""
+       ]
+      }
+     },
+     "required": [
+      "observable",
+      "source",
+      "comparator",
+      "level",
+      "by_date",
+      "if_true"
+     ],
+     "additionalProperties": false
+    }
+   },
+   "required": [
+    "verdict",
+    "why",
+    "counter"
+   ],
+   "additionalProperties": false
+  },
+  "verdict": {
+   "type": "string",
+   "enum": [
+    "hold",
+    "narrow",
+    "concede"
+   ]
+  },
+  "new_probability": {
+   "type": "integer",
+   "description": "integer 0-100: your probability now"
+  },
+  "reason": {
+   "type": "string",
+   "description": "at most 60 words; what changed and why, or why nothing did"
+  },
+  "new_evidence": {
+   "type": "array",
+   "items": {
+    "type": "object",
+    "properties": {
+     "section": {
+      "type": "string",
+      "description": "package section name, e.g. ON-CHAIN & MARKET DATA"
+     },
+     "quote": {
+      "type": "string",
+      "description": "text copied verbatim from the package, at most 200 characters"
+     }
+    },
+    "required": [
+     "section",
+     "quote"
+    ],
+    "additionalProperties": false
+   }
+  }
+ },
+ "required": [
+  "question_id",
+  "steelman_fair",
+  "on_their_indicator",
+  "verdict",
+  "new_probability",
+  "reason",
+  "new_evidence"
+ ],
+ "additionalProperties": false
+}

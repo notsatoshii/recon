@@ -10,6 +10,10 @@ Phase C (docs/v2/phase-c-spec.md §12): the call schemas are committed as schema
 tests/test_schemas.py checks that `ALL` produces the same JSON. Phase B's CHALLENGE, RESPONSE and
 DEEP_DIVE stay under LEGACY for readers of old run folders. `ARTIFACTS` holds the programmatic
 artifact schemas (nullable types and free-key objects are allowed there, never in `ALL`).
+
+Phase D (docs/v2/phase-d-debate-upgrade.md): RESOLVE, DELPHI, XEXAM_OPEN, XEXAM_REPLY, JUDGE and PREMORTEM join
+`ALL` (committed as schemas/debate/*.json too); the Phase C call schemas stay for RECON_DEBATE=c. INDICATOR is
+the resolvable, dated indicator they argue over. RESOLUTION_LINE and XEXAM_SCORE are artifacts.
 """
 from __future__ import annotations
 
@@ -211,8 +215,75 @@ RESOLVE = obj(items=arr(obj(          # the resolve phase's one FAST call over t
     why=s("at most 30 words"),
 )))
 
+# A resolvable, dated indicator: the unit the Phase D debate argues over (debate.indicator_ok checks it in code).
+COMPARATORS = [">", ">=", "<", "<=", "happens", "does_not_happen"]
+IF_TRUE = ["yes_more_likely", "no_more_likely"]
+INDICATOR = obj(
+    observable=s("the series or event, as specific as a reader could check it"),
+    source=s("where it is published"),
+    comparator=enum(COMPARATORS),
+    level=s("the level as written, e.g. 90B or 5.4%; empty for happens / does_not_happen"),
+    by_date=s("YYYY-MM-DD"),
+    if_true=enum(IF_TRUE, "what the indicator coming true means for the question"),
+)
+# The reply's counter-indicator. The plan has nullable(INDICATOR); Codex strict mode is only proven here on the
+# empty-string convention ("unknown is an empty string, not null", module docstring), so every field is empty
+# unless the verdict is counter.
+COUNTER = obj(
+    observable=s("empty unless your verdict is counter"), source=s(), comparator=enum(COMPARATORS + [""]),
+    level=s(), by_date=s("YYYY-MM-DD or empty"), if_true=enum(IF_TRUE + [""]),
+)
+DELPHI = obj(revisions=arr(obj(
+    question_id=enum(QIDS),
+    verdict=enum(["hold", "revise"], "hold is the default"),
+    new_probability=i("integer 0-100: your probability now (your take when you hold)"),
+    moved_by=enum(["reason_a", "reason_b", "own_recheck", "none"]),
+    reason=s("at most 40 words"),
+    evidence=arr(EVIDENCE),
+    would_change_my_mind=INDICATOR,
+)))
+XEXAM_OPEN = obj(
+    question_id=enum(QIDS),
+    steelman=s("the other view's best case in at most two sentences, in terms it would accept"),
+    i_am_wrong_if=INDICATOR,
+    rebuttal=s("at most 120 words, plain prose, no headings"),
+    evidence=arr(EVIDENCE),
+    probability=i("integer 0-100: your probability now"),
+)
+XEXAM_REPLY = obj(
+    question_id=enum(QIDS),
+    steelman_fair=obj(verdict=enum(["yes", "partly", "no"]), correction=s("empty when yes")),
+    on_their_indicator=obj(verdict=enum(["accept", "reject", "counter"]), why=s("at most 30 words"), counter=COUNTER),
+    verdict=enum(["hold", "narrow", "concede"]),
+    new_probability=i("integer 0-100: your probability now"),
+    reason=s("at most 60 words; what changed and why, or why nothing did"),
+    new_evidence=arr(EVIDENCE),
+)
+JUDGE = obj(items=arr(obj(
+    question_id=enum(QIDS),
+    indicator=INDICATOR,
+    status=enum(["agreed", "countered", "rejected"]),
+    resolvable=b("a reader can check it by its date from a public source"),
+    why_not=s("empty when resolvable"),
+    data_today=enum(["favours_high", "favours_low", "neither", "no_data"]),
+    quote=s("verbatim from the data above, at most 200 characters; empty when no_data"),
+    section=s(),
+    watch_line=s("at most 25 words: what to watch, with its date"),
+    split_line=s("at most 40 words: what the split turns on, in plain words"),
+)))
+PREMORTEM = obj(
+    question_id=enum(QIDS),
+    consensus_view=s("the view that turned out wrong, one sentence"),
+    failure_story=s("at most 150 words: why it was wrong, built on today's data"),
+    early_signs=arr(INDICATOR),
+    evidence=arr(EVIDENCE),
+    probability=i("integer 0-100: your own probability that the answer is yes"),
+)
+
 ALL = {"triage": TRIAGE, "take": TAKE, "debate_challenge": DEBATE_CHALLENGE,
-       "debate_response": DEBATE_RESPONSE, "red_team": RED_TEAM, "crux_check": CRUX_CHECK, "resolve": RESOLVE}
+       "debate_response": DEBATE_RESPONSE, "red_team": RED_TEAM, "crux_check": CRUX_CHECK, "resolve": RESOLVE,
+       "delphi": DELPHI, "xexam_open": XEXAM_OPEN, "xexam_reply": XEXAM_REPLY, "judge": JUDGE,
+       "premortem": PREMORTEM}
 LEGACY = {"challenge": CHALLENGE, "response": RESPONSE, "deep_dive": DEEP_DIVE}
 
 # ── Phase C artifacts (§12.3): programmatic, validated before save() and in tests ──
@@ -295,6 +366,19 @@ RESOLUTION_LINE = obj(
     source=s(), quote=s(), method=enum(["api", "package", "package_llm", "void_rule", "manual"]),
     resolved_at=s("UTC ISO time"),
 )
+# Phase D artifacts. A move is labelled, never blocked: 'verified quote' (a verified data quote beside it), 'argument'
+# (moved without one), 'held'.
+MOVE_LABELS = ["verified quote", "argument", "held"]
+EV_COUNTS = obj(claimed=i(), verified=i(), partial=i(), unverified=i(), data=i())
+XEXAM_SCORE = obj(
+    question_id=s(), high=enum(AGENTS), low=enum(AGENTS), status=enum(["two-sided", "one-sided", "failed"]),
+    gap_before=i(), gap_after=nullable(i()),
+    moves=arr(obj(agent=enum(AGENTS), take=P, new=P, label=enum(MOVE_LABELS))),
+    evidence=obj(high=EV_COUNTS, low=EV_COUNTS),
+    indicators=free("{high: INDICATOR or null, low: INDICATOR or null, verdicts: {high, low}, counters: {high, low}}"),
+    judge=nullable(free("the judge item for this question, quote re-checked")),
+    held_split=b(),
+)
 # run.json (schema_version 2): the Phase C parts are checked; the Phase B keys around them are free.
 RUN = {"type": "object", "required": ["schema_version", "date", "day", "status", "questions", "pairing", "debates",
                                       "red_team", "crux_check", "split_sheet", "agent_scores", "agents", "edges",
@@ -303,12 +387,13 @@ RUN = {"type": "object", "required": ["schema_version", "date", "day", "status",
                       "questions": arr(free()), "pairing": nullable(free()), "debates": arr(DEBATE_SCORE),
                       "red_team": nullable(free()), "crux_check": nullable(free()), "split_sheet": nullable(SPLIT_SHEET),
                       "agent_scores": free(), "agents": arr(free()), "edges": arr(free()), "deep_dive": {"type": "null"},
+                      "phase_d": nullable(free("Phase D: delphi, xexam, judge, premortem summaries")),
                       "usage": {"type": "object", "required": ["calls", "budget_skips"],
                                 "properties": {"calls": i(), "budget_skips": arr(obj(
                                     phase=s(), item=s(), reason=enum(["budget", "ceiling"]), used=i()))}}}}
 ARTIFACTS = {"pairing": PAIRING, "debate_score": DEBATE_SCORE, "question_stats": QUESTION_STATS,
              "agent_run_score": AGENT_RUN_SCORE, "split_block": SPLIT_BLOCK, "split_sheet": SPLIT_SHEET,
-             "ledger_line": LEDGER_LINE, "resolution_line": RESOLUTION_LINE, "ev_checked": EV_CHECKED, "side_move": SIDE_MOVE, "stats": STATS,
+             "ledger_line": LEDGER_LINE, "resolution_line": RESOLUTION_LINE, "xexam_score": XEXAM_SCORE, "ev_checked": EV_CHECKED, "side_move": SIDE_MOVE, "stats": STATS,
              "run": RUN}
 
 
