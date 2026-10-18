@@ -723,7 +723,15 @@ SECTOR CONTEXT (crypto and macro landscape; background, not today's data):
             return {"skipped": True}
         self.log("PHASE -1: Scoring yesterday's predictions...")
         rc = self.sub([self.py(), str(RECON_HOME / "scripts" / "score_yesterday.py")], 300)
-        return {"rc": rc}
+        # Phase D step 2: Brier scores over the resolved ledger -> <state>/questions/calibration.json (the production
+        # gate) and 00_brier.md. The CALIBRATION section goes into the scorecard only when the debate runs, so a
+        # RECON_DEBATE=0 brief reads the scorecard it read before. A failure here is logged, never fatal.
+        cmd = [self.py(), str(RECON_HOME / "scripts" / "brier_report.py"), "--ledger", str(self.ledger_path),
+               "--md", str(self.dir / "00_brier.md")]
+        if self.debate_on:
+            cmd += ["--scorecard", str(self.dir / "00_scorecard.md")]
+        brc = self.sub(cmd, 120)
+        return {"rc": rc, "brier_rc": brc}
 
     def source_text(self, src: str) -> str:
         """data-sources/<src>/latest.md for the --skip-collect assembly. The Phase E files (and the v1
