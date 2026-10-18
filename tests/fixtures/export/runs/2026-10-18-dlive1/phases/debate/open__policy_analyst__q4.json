@@ -1,0 +1,50 @@
+{
+ "type": "open",
+ "agent": "policy_analyst",
+ "target": "macro_strategist",
+ "question_id": "q4",
+ "data": {
+  "question_id": "q4",
+  "steelman": "White House crypto-adviser turnover can slow interagency direction and reduce the political capacity needed to turn regulatory activity into a published framework. The available regulatory feed confirms activity but identifies no SEC or CFTC operative custody or exchange-framework text.",
+  "i_am_wrong_if": {
+   "observable": "Count of official SEC.gov and CFTC.gov releases, rule texts, notices, dockets, or consultation documents that contain operative crypto custody or exchange-framework text",
+   "source": "SEC.gov and CFTC.gov",
+   "comparator": "<=",
+   "level": "0",
+   "by_date": "2026-11-15",
+   "if_true": "no_more_likely"
+  },
+  "rebuttal": "The resolution threshold is publication of a release, notice, docket, consultation document, or rule text—not final implementation. The reported CFTC effort to clarify whether sports betting falls within derivatives regulation is live classification work, and classification questions commonly generate notices, guidance, or docket material before a complete regime exists. That makes a qualifying CFTC publication more plausible even if White House turnover slows broader legislative coordination. The second-order effect reaches prediction-market venues and exchange operators: a boundary drawn for event contracts supplies the agency’s rationale for which platforms and custody arrangements sit inside its perimeter.",
+  "evidence": [
+   {
+    "section": "NEWS INTELLIGENCE",
+    "quote": "[Mon, 12 Oct 2026] \"스포츠 베팅도 파생상품\"…美 CFTC, 예측시장 규제 명확화 나섰다 - 뉴스1"
+   },
+   {
+    "section": "SOCIAL INTELLIGENCE",
+    "quote": "🚨🗞️NEW: Trump’s Top Crypto Adviser Has Left the White House. Now What? Plus, Fairshake ramps up its Senate spending but holds fire on Clarity Act holdouts as the GOP’s majority narrows ahead of the midterms."
+   }
+  ],
+  "probability": 68
+ },
+ "evidence": [
+  {
+   "section": "NEWS INTELLIGENCE",
+   "quote": "[Mon, 12 Oct 2026] \"스포츠 베팅도 파생상품\"…美 CFTC, 예측시장 규제 명확화 나섰다 - 뉴스1",
+   "status": "partial",
+   "cls": "data",
+   "doc": "package",
+   "line": 821
+  },
+  {
+   "section": "SOCIAL INTELLIGENCE",
+   "quote": "🚨🗞️NEW: Trump’s Top Crypto Adviser Has Left the White House. Now What? Plus, Fairshake ramps up its Senate spending but holds fire on Clarity Act holdouts as the GOP’s majority narrows ahead of the midterms.",
+   "status": "verified",
+   "cls": "social",
+   "doc": "package",
+   "line": 1102
+  }
+ ],
+ "indicator_ok": true,
+ "indicator_problems": []
+}

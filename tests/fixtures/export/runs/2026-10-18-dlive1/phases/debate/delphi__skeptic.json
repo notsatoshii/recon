@@ -1,0 +1,82 @@
+{
+ "type": "delphi",
+ "agent": "skeptic",
+ "questions": [
+  "q4"
+ ],
+ "data": {
+  "revisions": [
+   {
+    "question_id": "q4",
+    "verdict": "hold",
+    "new_probability": 38,
+    "moved_by": "none",
+    "reason": "The other view shows active regulation, not imminent custody or exchange-framework text. Prediction-market classification is adjacent, while “Plan B” is interview framing without a release date, docket, or identified document.",
+    "evidence": [
+     {
+      "section": "SOCIAL INTELLIGENCE",
+      "quote": "What happens to crypto regulation without the CLARITY Act? The CFTC had a Plan B."
+     },
+     {
+      "section": "SOCIAL INTELLIGENCE",
+      "quote": "The CFTC just carved casino sportsbooks out of the definition of a swap."
+     }
+    ],
+    "would_change_my_mind": {
+     "observable": "SEC or CFTC formally schedules or posts crypto custody or exchange-framework text for publication",
+     "source": "SEC.gov, CFTC.gov, or the Federal Register",
+     "comparator": "happens",
+     "level": "",
+     "by_date": "2026-11-01",
+     "if_true": "yes_more_likely"
+    }
+   }
+  ]
+ },
+ "revisions": [
+  {
+   "question_id": "q4",
+   "take": 38,
+   "new": 38,
+   "verdict": "hold",
+   "moved_by": "none",
+   "label": "held",
+   "reason": "The other view shows active regulation, not imminent custody or exchange-framework text. Prediction-market classification is adjacent, while “Plan B” is interview framing without a release date, docket, or identified document.",
+   "evidence": [
+    {
+     "section": "SOCIAL INTELLIGENCE",
+     "quote": "What happens to crypto regulation without the CLARITY Act? The CFTC had a Plan B.",
+     "status": "verified",
+     "cls": "social",
+     "doc": "package",
+     "line": 1065
+    },
+    {
+     "section": "SOCIAL INTELLIGENCE",
+     "quote": "The CFTC just carved casino sportsbooks out of the definition of a swap.",
+     "status": "verified",
+     "cls": "social",
+     "doc": "package",
+     "line": 1066
+    }
+   ],
+   "indicator": {
+    "observable": "SEC or CFTC formally schedules or posts crypto custody or exchange-framework text for publication",
+    "source": "SEC.gov, CFTC.gov, or the Federal Register",
+    "comparator": "happens",
+    "level": "",
+    "by_date": "2026-11-01",
+    "if_true": "yes_more_likely"
+   },
+   "indicator_ok": true,
+   "indicator_problems": [],
+   "flags": []
+  }
+ ],
+ "opposing": {
+  "q4": [
+   "policy_analyst",
+   "narrator"
+  ]
+ }
+}

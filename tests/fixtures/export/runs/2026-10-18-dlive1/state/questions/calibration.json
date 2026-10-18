@@ -1,0 +1,32 @@
+{
+ "generated": "2026-10-18T08:34:36Z",
+ "resolved": 0,
+ "yes": 0,
+ "no": 0,
+ "void": 0,
+ "by_method": {},
+ "group": {
+  "round0_mean_brier": null,
+  "post_mean_brier": null,
+  "round0_median_brier": null,
+  "post_median_brier": null
+ },
+ "per_agent": {},
+ "components": {
+  "delphi": {
+   "changed": 0,
+   "mean_delta": null,
+   "p_worse": null,
+   "on": true,
+   "rule": "off when changed >= 20, mean ΔBrier > 0 and P(ΔBrier > 0) > 0.8"
+  },
+  "xexam": {
+   "changed": 0,
+   "mean_delta": null,
+   "p_worse": null,
+   "on": true,
+   "rule": "off when changed >= 20, mean ΔBrier > 0 and P(ΔBrier > 0) > 0.8"
+  }
+ },
+ "weights": null
+}

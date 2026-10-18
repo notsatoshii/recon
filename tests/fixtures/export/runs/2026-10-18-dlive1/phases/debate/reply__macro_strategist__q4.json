@@ -1,0 +1,64 @@
+{
+ "type": "reply",
+ "agent": "macro_strategist",
+ "opponent": "policy_analyst",
+ "question_id": "q4",
+ "data": {
+  "question_id": "q4",
+  "steelman_fair": {
+   "verdict": "yes",
+   "correction": ""
+  },
+  "on_their_indicator": {
+   "verdict": "accept",
+   "why": "It is official-source, time-bounded, and directly tests whether qualifying operative text was published.",
+   "counter": {
+    "observable": "",
+    "source": "",
+    "comparator": "",
+    "level": "",
+    "by_date": "",
+    "if_true": ""
+   }
+  },
+  "verdict": "hold",
+  "new_probability": 45,
+  "reason": "The CFTC item concerns sports-betting classification, not operative crypto custody or exchange-framework text. It shows regulatory motion but not movement through the relevant transmission channel. Adviser turnover still weighs against publication within the remaining month.",
+  "new_evidence": [
+   {
+    "section": "NEWS INTELLIGENCE",
+    "quote": "[Mon, 12 Oct 2026] \"스포츠 베팅도 파생상품\"…美 CFTC, 예측시장 규제 명확화 나섰다 - 뉴스1"
+   },
+   {
+    "section": "SOCIAL INTELLIGENCE",
+    "quote": "🚨🗞️NEW: Trump’s Top Crypto Adviser Has Left the White House. Now What?"
+   }
+  ]
+ },
+ "evidence": [
+  {
+   "section": "NEWS INTELLIGENCE",
+   "quote": "[Mon, 12 Oct 2026] \"스포츠 베팅도 파생상품\"…美 CFTC, 예측시장 규제 명확화 나섰다 - 뉴스1",
+   "status": "partial",
+   "cls": "data",
+   "doc": "package",
+   "line": 821
+  },
+  {
+   "section": "SOCIAL INTELLIGENCE",
+   "quote": "🚨🗞️NEW: Trump’s Top Crypto Adviser Has Left the White House. Now What?",
+   "status": "verified",
+   "cls": "social",
+   "doc": "package",
+   "line": 1102
+  }
+ ],
+ "move": {
+  "take": 45,
+  "new": 45,
+  "label": "held",
+  "flags": []
+ },
+ "counter_ok": null,
+ "counter_problems": []
+}

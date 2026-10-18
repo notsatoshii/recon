@@ -1,0 +1,70 @@
+{
+ "type": "delphi",
+ "agent": "builder",
+ "questions": [
+  "q5"
+ ],
+ "data": {
+  "revisions": [
+   {
+    "question_id": "q5",
+    "verdict": "revise",
+    "new_probability": 24,
+    "moved_by": "own_recheck",
+    "reason": "The supplied current stock puts USDT $6.58B below the threshold with only 28 days left. No issuance velocity is provided; I cannot treat the gap as likely to close.",
+    "evidence": [
+     {
+      "section": "ON-CHAIN & MARKET DATA",
+      "quote": "- Tether (USDT): $183,420,678,986"
+     }
+    ],
+    "would_change_my_mind": {
+     "observable": "Tether USDT circulating supply",
+     "source": "DeFiLlama",
+     "comparator": ">=",
+     "level": "187B",
+     "by_date": "2026-11-05",
+     "if_true": "yes_more_likely"
+    }
+   }
+  ]
+ },
+ "revisions": [
+  {
+   "question_id": "q5",
+   "take": 36,
+   "new": 24,
+   "verdict": "revise",
+   "moved_by": "own_recheck",
+   "label": "verified quote",
+   "reason": "The supplied current stock puts USDT $6.58B below the threshold with only 28 days left. No issuance velocity is provided; I cannot treat the gap as likely to close.",
+   "evidence": [
+    {
+     "section": "ON-CHAIN & MARKET DATA",
+     "quote": "- Tether (USDT): $183,420,678,986",
+     "status": "verified",
+     "cls": "data",
+     "doc": "package",
+     "line": 456
+    }
+   ],
+   "indicator": {
+    "observable": "Tether USDT circulating supply",
+    "source": "DeFiLlama",
+    "comparator": ">=",
+    "level": "187B",
+    "by_date": "2026-11-05",
+    "if_true": "yes_more_likely"
+   },
+   "indicator_ok": true,
+   "indicator_problems": [],
+   "flags": []
+  }
+ ],
+ "opposing": {
+  "q5": [
+   "trader",
+   "ai_engineer"
+  ]
+ }
+}

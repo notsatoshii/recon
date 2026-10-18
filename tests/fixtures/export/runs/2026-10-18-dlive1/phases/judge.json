@@ -1,0 +1,175 @@
+{
+ "judge": {
+  "ran": true,
+  "asked": [
+   "q2",
+   "q4"
+  ],
+  "items": [
+   {
+    "question_id": "q2",
+    "indicator": {
+     "observable": "Total DEX volume 7-day percentage change",
+     "source": "DeFiLlama",
+     "comparator": ">",
+     "level": "0%",
+     "by_date": "2026-10-25",
+     "if_true": "yes_more_likely"
+    },
+    "status": "agreed",
+    "resolvable": true,
+    "why_not": "",
+    "data_today": "favours_high",
+    "quote": "- 7d volume change: +16.0%",
+    "section": "[CROSS-SOURCE SIGNALS · package lines 45-51]",
+    "watch_line": "Watch DeFiLlama’s total DEX-volume seven-day percentage change on 2026-10-25.",
+    "split_line": "The split turns on whether reported total DEX volume is still growing over seven days on the resolution date.",
+    "indicator_ok": true,
+    "indicator_problems": [],
+    "judge_resolvable": true,
+    "quote_status": "verified",
+    "flags": []
+   },
+   {
+    "question_id": "q4",
+    "indicator": {
+     "observable": "Publication of operative crypto custody or exchange-framework rule text, notice, docket material, or consultation document",
+     "source": "Official SEC.gov or CFTC.gov",
+     "comparator": "happens",
+     "level": "",
+     "by_date": "2026-11-15",
+     "if_true": "yes_more_likely"
+    },
+    "status": "agreed",
+    "resolvable": true,
+    "why_not": "",
+    "data_today": "no_data",
+    "quote": "",
+    "section": "",
+    "watch_line": "Watch SEC.gov and CFTC.gov for operative crypto custody or exchange-framework material by 2026-11-15.",
+    "split_line": "The split turns on whether either agency publishes qualifying operative crypto custody or exchange-framework material by the deadline.",
+    "indicator_ok": true,
+    "indicator_problems": [],
+    "judge_resolvable": true,
+    "quote_status": "empty",
+    "flags": []
+   }
+  ]
+ },
+ "premortem": {
+  "type": "premortem",
+  "agent": "analyst",
+  "question_id": "q1",
+  "median": 31,
+  "data": {
+   "question_id": "q1",
+   "consensus_view": "The consensus wrongly treated a sub-$85 billion DeFiLlama TVL print as only a roughly 31% outcome because the threshold was insufficiently anchored in current data.",
+   "failure_story": "The missing-anchor premise was false: total DeFi TVL was already $88.54B, only $3.54B (4.0%) above the settlement threshold. The model’s relevant comparison is not a speculative macro scenario but the existing trajectory: TVL was down 3.8% in seven days and 4.1% in 30 days. A further decline comparable to either observed rate would put TVL at about $85.18B or $84.91B, respectively. The other view discounted this as a volatile two-week move; that was reasonable only if the decline reversed. Instead, continued risk-off conditions alongside already-falling chain TVL left no buffer for ordinary weekly variation, and TVL printed below $85B before November 1.",
+   "early_signs": [
+    {
+     "observable": "Total DeFi TVL",
+     "source": "DeFiLlama",
+     "comparator": "<",
+     "level": "$85B",
+     "by_date": "2026-10-25",
+     "if_true": "yes_more_likely"
+    },
+    {
+     "observable": "Total DeFi TVL 7d change",
+     "source": "DeFiLlama",
+     "comparator": "<=",
+     "level": "-3.8%",
+     "by_date": "2026-10-25",
+     "if_true": "yes_more_likely"
+    },
+    {
+     "observable": "TVL for Arbitrum and Hyperliquid L1",
+     "source": "DeFiLlama",
+     "comparator": "<=",
+     "level": "$6,899,205,995",
+     "by_date": "2026-10-25",
+     "if_true": "yes_more_likely"
+    }
+   ],
+   "evidence": [
+    {
+     "section": "ON-CHAIN & MARKET DATA",
+     "quote": "- Current: $88,543,501,772"
+    },
+    {
+     "section": "ON-CHAIN & MARKET DATA",
+     "quote": "- 7d change: -3.8%"
+    },
+    {
+     "section": "ON-CHAIN & MARKET DATA",
+     "quote": "- 30d change: -4.1%"
+    }
+   ],
+   "probability": 58
+  },
+  "evidence": [
+   {
+    "section": "ON-CHAIN & MARKET DATA",
+    "quote": "- Current: $88,543,501,772",
+    "status": "verified",
+    "cls": "data",
+    "doc": "package",
+    "line": 324
+   },
+   {
+    "section": "ON-CHAIN & MARKET DATA",
+    "quote": "- 7d change: -3.8%",
+    "status": "verified",
+    "cls": "data",
+    "doc": "package",
+    "line": 325
+   },
+   {
+    "section": "ON-CHAIN & MARKET DATA",
+    "quote": "- 30d change: -4.1%",
+    "status": "verified",
+    "cls": "data",
+    "doc": "package",
+    "line": 326
+   }
+  ],
+  "early_signs": [
+   {
+    "indicator": {
+     "observable": "Total DeFi TVL",
+     "source": "DeFiLlama",
+     "comparator": "<",
+     "level": "$85B",
+     "by_date": "2026-10-25",
+     "if_true": "yes_more_likely"
+    },
+    "ok": true,
+    "problems": []
+   },
+   {
+    "indicator": {
+     "observable": "Total DeFi TVL 7d change",
+     "source": "DeFiLlama",
+     "comparator": "<=",
+     "level": "-3.8%",
+     "by_date": "2026-10-25",
+     "if_true": "yes_more_likely"
+    },
+    "ok": true,
+    "problems": []
+   },
+   {
+    "indicator": {
+     "observable": "TVL for Arbitrum and Hyperliquid L1",
+     "source": "DeFiLlama",
+     "comparator": "<=",
+     "level": "$6,899,205,995",
+     "by_date": "2026-10-25",
+     "if_true": "yes_more_likely"
+    },
+    "ok": true,
+    "problems": []
+   }
+  ]
+ }
+}

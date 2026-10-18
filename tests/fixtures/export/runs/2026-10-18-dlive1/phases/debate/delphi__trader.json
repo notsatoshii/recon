@@ -1,0 +1,138 @@
+{
+ "type": "delphi",
+ "agent": "trader",
+ "questions": [
+  "q5",
+  "q2"
+ ],
+ "data": {
+  "revisions": [
+   {
+    "question_id": "q5",
+    "verdict": "hold",
+    "new_probability": 16,
+    "moved_by": "none",
+    "reason": "Still $6.58B short with 28 days left. Supply stock is not issuance flow; the other view supplies no acceleration evidence.",
+    "evidence": [
+     {
+      "section": "ON-CHAIN & MARKET DATA",
+      "quote": "- Tether (USDT): $183,420,678,986"
+     }
+    ],
+    "would_change_my_mind": {
+     "observable": "Tether USDT circulating supply",
+     "source": "DeFiLlama",
+     "comparator": ">=",
+     "level": "186B",
+     "by_date": "2026-11-01",
+     "if_true": "yes_more_likely"
+    }
+   },
+   {
+    "question_id": "q2",
+    "verdict": "hold",
+    "new_probability": 61,
+    "moved_by": "none",
+    "reason": "The reported aggregate is +16.0%. Venue outliers reduce confidence but do not reverse the current sign; Korean CEX turnover is not the settlement series.",
+    "evidence": [
+     {
+      "section": "CROSS-SOURCE SIGNALS",
+      "quote": "- 7d volume change: +16.0%"
+     },
+     {
+      "section": "ON-CHAIN & MARKET DATA",
+      "quote": "- Metric V1: $251,737,142 (+153.9% 7d)"
+     }
+    ],
+    "would_change_my_mind": {
+     "observable": "Total DEX volume 7-day percentage change",
+     "source": "DeFiLlama",
+     "comparator": "<=",
+     "level": "0%",
+     "by_date": "2026-10-22",
+     "if_true": "no_more_likely"
+    }
+   }
+  ]
+ },
+ "revisions": [
+  {
+   "question_id": "q5",
+   "take": 16,
+   "new": 16,
+   "verdict": "hold",
+   "moved_by": "none",
+   "label": "held",
+   "reason": "Still $6.58B short with 28 days left. Supply stock is not issuance flow; the other view supplies no acceleration evidence.",
+   "evidence": [
+    {
+     "section": "ON-CHAIN & MARKET DATA",
+     "quote": "- Tether (USDT): $183,420,678,986",
+     "status": "verified",
+     "cls": "data",
+     "doc": "package",
+     "line": 456
+    }
+   ],
+   "indicator": {
+    "observable": "Tether USDT circulating supply",
+    "source": "DeFiLlama",
+    "comparator": ">=",
+    "level": "186B",
+    "by_date": "2026-11-01",
+    "if_true": "yes_more_likely"
+   },
+   "indicator_ok": true,
+   "indicator_problems": [],
+   "flags": []
+  },
+  {
+   "question_id": "q2",
+   "take": 61,
+   "new": 61,
+   "verdict": "hold",
+   "moved_by": "none",
+   "label": "held",
+   "reason": "The reported aggregate is +16.0%. Venue outliers reduce confidence but do not reverse the current sign; Korean CEX turnover is not the settlement series.",
+   "evidence": [
+    {
+     "section": "CROSS-SOURCE SIGNALS",
+     "quote": "- 7d volume change: +16.0%",
+     "status": "verified",
+     "cls": "data",
+     "doc": "package",
+     "line": 48
+    },
+    {
+     "section": "ON-CHAIN & MARKET DATA",
+     "quote": "- Metric V1: $251,737,142 (+153.9% 7d)",
+     "status": "verified",
+     "cls": "data",
+     "doc": "package",
+     "line": 388
+    }
+   ],
+   "indicator": {
+    "observable": "Total DEX volume 7-day percentage change",
+    "source": "DeFiLlama",
+    "comparator": "<=",
+    "level": "0%",
+    "by_date": "2026-10-22",
+    "if_true": "no_more_likely"
+   },
+   "indicator_ok": true,
+   "indicator_problems": [],
+   "flags": []
+  }
+ ],
+ "opposing": {
+  "q5": [
+   "analyst",
+   "skeptic"
+  ],
+  "q2": [
+   "skeptic",
+   "policy_analyst"
+  ]
+ }
+}

@@ -1,0 +1,62 @@
+{
+ "type": "open",
+ "agent": "macro_strategist",
+ "target": "policy_analyst",
+ "question_id": "q4",
+ "data": {
+  "question_id": "q4",
+  "steelman": "The CFTC’s active classification of sports betting and event contracts shows that it is already converting contested market boundaries into regulatory positions. That live rulemaking posture raises the odds that formal docket or consultation material will extend to crypto exchanges or custody by November 15.",
+  "i_am_wrong_if": {
+   "observable": "The SEC or CFTC publishes operative rule text, a notice, docket material, or a consultation document establishing a crypto custody or exchange framework",
+   "source": "Official SEC or CFTC website or Federal Register",
+   "comparator": "happens",
+   "level": "",
+   "by_date": "2026-11-15",
+   "if_true": "yes_more_likely"
+  },
+  "rebuttal": "The transmission line is institutional capacity to publication, and the evidence shows friction rather than momentum over the remaining four-week horizon. The regulatory feed reports 55 records without identifying a single operative SEC or CFTC custody or exchange-framework document. CFTC boundary-setting on event contracts is adjacent classification work, not evidence that crypto-market text has cleared drafting and approval. Adviser turnover further weakens White House coordination, while the imminent GENIUS Act rule belongs to the OCC and therefore cannot settle this question. Activity is not the same as qualifying output; by November 15, the publication clock matters more than broad regulatory intent.",
+  "evidence": [
+   {
+    "section": "SOCIAL INTELLIGENCE",
+    "quote": "🚨🗞️NEW: Trump’s Top Crypto Adviser Has Left the White House. Now What?"
+   },
+   {
+    "section": "GEOPOLITICAL CONTEXT",
+    "quote": "{\"fetchedAt\": 1792295840213, \"recordCount\": 55, \"sourceVersion\": \"regulatory-rss-v1\"}"
+   },
+   {
+    "section": "NEWS INTELLIGENCE",
+    "quote": "\"스포츠 베팅도 파생상품\"…美 CFTC, 예측시장 규제 명확화 나섰다 - 뉴스1"
+   }
+  ],
+  "probability": 45
+ },
+ "evidence": [
+  {
+   "section": "SOCIAL INTELLIGENCE",
+   "quote": "🚨🗞️NEW: Trump’s Top Crypto Adviser Has Left the White House. Now What?",
+   "status": "verified",
+   "cls": "social",
+   "doc": "package",
+   "line": 1102
+  },
+  {
+   "section": "GEOPOLITICAL CONTEXT",
+   "quote": "{\"fetchedAt\": 1792295840213, \"recordCount\": 55, \"sourceVersion\": \"regulatory-rss-v1\"}",
+   "status": "verified",
+   "cls": "data",
+   "doc": "package",
+   "line": 260
+  },
+  {
+   "section": "NEWS INTELLIGENCE",
+   "quote": "\"스포츠 베팅도 파생상품\"…美 CFTC, 예측시장 규제 명확화 나섰다 - 뉴스1",
+   "status": "partial",
+   "cls": "data",
+   "doc": "package",
+   "line": 821
+  }
+ ],
+ "indicator_ok": true,
+ "indicator_problems": []
+}

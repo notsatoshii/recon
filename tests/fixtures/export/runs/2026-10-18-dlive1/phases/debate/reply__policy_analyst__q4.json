@@ -1,0 +1,64 @@
+{
+ "type": "reply",
+ "agent": "policy_analyst",
+ "opponent": "macro_strategist",
+ "question_id": "q4",
+ "data": {
+  "question_id": "q4",
+  "steelman_fair": {
+   "verdict": "partly",
+   "correction": "The CFTC’s event-contract classification activity signals live boundary-setting, but the supplied evidence does not establish crypto-specific rulemaking or a formal docket."
+  },
+  "on_their_indicator": {
+   "verdict": "accept",
+   "why": "It is an official, date-bounded, directly resolving test of whether qualifying operative framework material appears.",
+   "counter": {
+    "observable": "",
+    "source": "",
+    "comparator": "",
+    "level": "",
+    "by_date": "",
+    "if_true": ""
+   }
+  },
+  "verdict": "narrow",
+  "new_probability": 54,
+  "reason": "The other view correctly distinguishes adjacent event-contract classification from a qualifying crypto custody or exchange publication. With only roughly four weeks remaining and no cited SEC/CFTC crypto-framework docket, timing risk materially lowers the probability. The CFTC’s October 12 clarification still supports some institutional momentum, so this is not a concession.",
+  "new_evidence": [
+   {
+    "section": "NEWS INTELLIGENCE",
+    "quote": "[Mon, 12 Oct 2026] \"스포츠 베팅도 파생상품\"…美 CFTC, 예측시장 규제 명확화 나섰다 - 뉴스1"
+   },
+   {
+    "section": "SOCIAL INTELLIGENCE",
+    "quote": "🚨🗞️NEW: Trump’s Top Crypto Adviser Has Left the White House. Now What? Plus, Fairshake ramps up its Senate spending but holds fire on Clarity Act holdouts as the GOP’s majority narrows ahead of the midterms."
+   }
+  ]
+ },
+ "evidence": [
+  {
+   "section": "NEWS INTELLIGENCE",
+   "quote": "[Mon, 12 Oct 2026] \"스포츠 베팅도 파생상품\"…美 CFTC, 예측시장 규제 명확화 나섰다 - 뉴스1",
+   "status": "partial",
+   "cls": "data",
+   "doc": "package",
+   "line": 821
+  },
+  {
+   "section": "SOCIAL INTELLIGENCE",
+   "quote": "🚨🗞️NEW: Trump’s Top Crypto Adviser Has Left the White House. Now What? Plus, Fairshake ramps up its Senate spending but holds fire on Clarity Act holdouts as the GOP’s majority narrows ahead of the midterms.",
+   "status": "verified",
+   "cls": "social",
+   "doc": "package",
+   "line": 1102
+  }
+ ],
+ "move": {
+  "take": 68,
+  "new": 54,
+  "label": "verified quote",
+  "flags": []
+ },
+ "counter_ok": null,
+ "counter_problems": []
+}

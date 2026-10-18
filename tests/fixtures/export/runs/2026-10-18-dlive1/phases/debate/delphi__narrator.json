@@ -1,0 +1,70 @@
+{
+ "type": "delphi",
+ "agent": "narrator",
+ "questions": [
+  "q4"
+ ],
+ "data": {
+  "revisions": [
+   {
+    "question_id": "q4",
+    "verdict": "revise",
+    "new_probability": 47,
+    "moved_by": "reason_a",
+    "reason": "Plan B is a live story, but the supplied evidence only shows it being discussed, not an imminent official SEC or CFTC custody/exchange document. The regulatory narrative is forming, not published.",
+    "evidence": [
+     {
+      "section": "SOCIAL INTELLIGENCE · package lines 1062-1068",
+      "quote": "What happens to crypto regulation without the CLARITY Act? The CFTC had a Plan B."
+     }
+    ],
+    "would_change_my_mind": {
+     "observable": "SEC or CFTC publishes a crypto custody or exchange-framework notice, docket, rule text, or consultation document",
+     "source": "Official SEC or CFTC website",
+     "comparator": "happens",
+     "level": "",
+     "by_date": "2026-11-15",
+     "if_true": "yes_more_likely"
+    }
+   }
+  ]
+ },
+ "revisions": [
+  {
+   "question_id": "q4",
+   "take": 56,
+   "new": 47,
+   "verdict": "revise",
+   "moved_by": "reason_a",
+   "label": "argument",
+   "reason": "Plan B is a live story, but the supplied evidence only shows it being discussed, not an imminent official SEC or CFTC custody/exchange document. The regulatory narrative is forming, not published.",
+   "evidence": [
+    {
+     "section": "SOCIAL INTELLIGENCE · package lines 1062-1068",
+     "quote": "What happens to crypto regulation without the CLARITY Act? The CFTC had a Plan B.",
+     "status": "verified",
+     "cls": "social",
+     "doc": "package",
+     "line": 1065
+    }
+   ],
+   "indicator": {
+    "observable": "SEC or CFTC publishes a crypto custody or exchange-framework notice, docket, rule text, or consultation document",
+    "source": "Official SEC or CFTC website",
+    "comparator": "happens",
+    "level": "",
+    "by_date": "2026-11-15",
+    "if_true": "yes_more_likely"
+   },
+   "indicator_ok": true,
+   "indicator_problems": [],
+   "flags": []
+  }
+ ],
+ "opposing": {
+  "q4": [
+   "skeptic",
+   "builder"
+  ]
+ }
+}

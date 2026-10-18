@@ -1,0 +1,75 @@
+{
+ "date": "2026-10-18",
+ "mode": "daily",
+ "status": "ok",
+ "pipeline": "orchestrator",
+ "started": "2026-10-18T05:00:02+09:00",
+ "finished": "2026-10-18T05:11:44+09:00",
+ "wall_seconds": 702,
+ "edges": [],
+ "debates": [],
+ "red_team": null,
+ "debate_summary": {
+  "closure_without_evidence": {
+   "sum": 0,
+   "median": null
+  },
+  "soft_moves": {
+   "count": 0,
+   "requests": 0,
+   "responses": 0
+  },
+  "live_splits": 0,
+  "held_splits": 0,
+  "in_split": 0,
+  "useful_debates": 0,
+  "debate_evidence_rate": null
+ },
+ "delivery": {
+  "telegram": true,
+  "telegram_on": true,
+  "brief_words": 1717,
+  "archived": true
+ },
+ "debate_mode": null,
+ "phase_d": null,
+ "questions": [
+  {
+   "id": "q1",
+   "text": "Will Tether supply exceed $190 billion by October 25, 2026?"
+  },
+  {
+   "id": "q2",
+   "text": "Will total DEX volume seven-day growth remain positive by October 25, 2026?"
+  }
+ ],
+ "agents": [
+  {
+   "name": "ai_engineer",
+   "desk": "shared",
+   "challenges_made": [],
+   "challenges_received": []
+  },
+  {
+   "name": "analyst",
+   "desk": "shared",
+   "challenges_made": [],
+   "challenges_received": []
+  },
+  {
+   "name": "builder",
+   "desk": "shared",
+   "challenges_made": [],
+   "challenges_received": []
+  }
+ ],
+ "sources": [],
+ "usage": {
+  "calls": 12
+ },
+ "synthesis": {
+  "final": "",
+  "claims": []
+ },
+ "phases": []
+}
