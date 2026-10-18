@@ -730,7 +730,7 @@ PYNEWS
 
 log "  News: $(wc -l < "$DATA_DIR/news/latest.md" 2>/dev/null || echo FAILED) lines"
 
-# ─── AI/TOOLS (GitHub Trending + Hacker News) ──────────────
+# ─── AI/TOOLS (GitHub trending + new repos + Hacker News) ──
 
 log "Collecting AI/tools data..."
 mkdir -p "$DATA_DIR/ai_tools"
@@ -750,64 +750,45 @@ def get(url, timeout=15):
     except Exception as e:
         return {"_error": str(e)}
 
-# ── GITHUB TRENDING (AI/ML repos) ──────────────────────────
-# Two searches: (1) new repos gaining traction, (2) established repos with recent activity
+# ── GITHUB TRENDING (AI repos) ─────────────────────────────
+# First in the file: the synthesizer reads only the first 9 KB (AI_RAW). github.com/trending (stars gained
+# today / this week, AI filter, blocklist) comes from scripts/collect_github_trending.py; the search API adds
+# brand-new repos (created in the last 7 days) that are not on the trending pages yet. The old "hot" block
+# (all-time stars of repos pushed this week) listed the same 250k-star repos every day and was dropped.
+import sys
+sys.path.insert(0, os.environ["RECON_HOME"] + "/scripts")
+gt = None
+try:
+    import collect_github_trending as gt
+    out.append(gt.block())
+except Exception as e:
+    out.append(f"## GITHUB TRENDING — AI REPOS
+SOURCE UNAVAILABLE: {type(e).__name__}: {str(e)[:160]}
+")
+
 week_ago = (datetime.now() - timedelta(days=7)).strftime("%Y-%m-%d")
-month_ago = (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d")
-
-out.append("## GITHUB TRENDING — NEW AI REPOS (created last 7 days)\n")
-searches = [
-    f"https://api.github.com/search/repositories?q=created:>{week_ago}+stars:>20&sort=stars&order=desc&per_page=15",
-]
-for search_url in searches:
-    gh = get(search_url)
-    if "_error" not in gh and "items" in gh:
-        ai_keywords = ["ai", "llm", "gpt", "claude", "agent", "model", "transformer", "neural",
-                       "ml", "machine-learning", "deep-learning", "inference", "rag", "embedding",
-                       "fine-tun", "prompt", "chat", "copilot", "diffusion", "vision", "nlp"]
-        for repo in gh.get("items", [])[:30]:
-            name = repo.get("full_name", "?")
-            desc = (repo.get("description") or "").lower()
-            topics = [t.lower() for t in repo.get("topics", [])]
-            # Filter for AI/ML relevance
-            all_text = f"{name.lower()} {desc} {' '.join(topics)}"
-            if any(kw in all_text for kw in ai_keywords):
-                stars = repo.get("stargazers_count", 0)
-                lang = repo.get("language", "?")
-                url = repo.get("html_url", "")
-                desc_clean = (repo.get("description") or "")[:120]
-                out.append(f"- [{name}]({url}) -- {stars} stars [{lang}]")
-                if desc_clean: out.append(f"  {desc_clean}")
-        out.append("")
-
-out.append("## GITHUB TRENDING — HOT AI REPOS (most starred recently)\n")
-# Search for AI repos pushed in last 7 days, sorted by stars (catches established repos gaining momentum)
-gh2 = get(f"https://api.github.com/search/repositories?q=topic:ai+topic:llm+pushed:>{week_ago}+stars:>500&sort=stars&order=desc&per_page=10")
-if "_error" not in gh2 and "items" in gh2:
-    for repo in gh2.get("items", [])[:10]:
-        name = repo.get("full_name", "?")
-        desc = (repo.get("description") or "")[:120]
-        stars = repo.get("stargazers_count", 0)
-        lang = repo.get("language", "?")
-        url = repo.get("html_url", "")
-        updated = repo.get("pushed_at", "")[:10]
-        out.append(f"- [{name}]({url}) -- {stars} stars [{lang}] (updated {updated})")
-        if desc: out.append(f"  {desc}")
+out.append("## GITHUB — NEW AI REPOS (created in the last 7 days, by stars)
+")
+gh = get(f"https://api.github.com/search/repositories?q=created:>{week_ago}+stars:>50&sort=stars&order=desc&per_page=40")
+if "_error" not in gh and "items" in gh:
+    shown = 0
+    trending_names = set()
+    for line in out[-2].splitlines() if gt else []:
+        if line.startswith("- ["):
+            trending_names.add(line[3:].split("]")[0])
+    for repo in gh.get("items", []):
+        r = {"repo": repo.get("full_name", "?"), "desc": repo.get("description") or "", "topics": repo.get("topics") or []}
+        if gt and (not gt.is_ai(r) or gt.blocked(r) or r["repo"] in trending_names):
+            continue
+        out.append(f"- [{r['repo']}]({repo.get('html_url', '')}) -- {repo.get('stargazers_count', 0):,} stars, created {(repo.get('created_at') or '')[:10]} [{repo.get('language') or '?'}]")
+        if r["desc"]: out.append(f"  {r['desc'][:110]}")
+        shown += 1
+        if shown >= 6: break
+    if not shown: out.append("No new AI repos above 50 stars this week.")
     out.append("")
 else:
-    # Broader fallback
-    gh3 = get(f"https://api.github.com/search/repositories?q=llm+agent+pushed:>{week_ago}+stars:>200&sort=stars&order=desc&per_page=10")
-    if "_error" not in gh3 and "items" in gh3:
-        for repo in gh3.get("items", [])[:10]:
-            name = repo.get("full_name", "?")
-            desc = (repo.get("description") or "")[:120]
-            stars = repo.get("stargazers_count", 0)
-            url = repo.get("html_url", "")
-            out.append(f"- [{name}]({url}) -- {stars} stars")
-            if desc: out.append(f"  {desc}")
-        out.append("")
-    else:
-        out.append("GitHub API unavailable.\n")
+    out.append("GitHub search API unavailable.
+")
 
 # ── HACKER NEWS TOP (AI/tech relevant) ────────────────────
 out.append("## HACKER NEWS TOP STORIES\n")

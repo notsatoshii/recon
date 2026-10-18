@@ -34,7 +34,9 @@ NEVER mention agent names (Trader, Skeptic, Builder, AI Engineer, etc.) in the o
 [Up to three blocks from the split sheet, in its order: the question in plain words, the count phrase exactly as given, the base case, the minority view (followed by the block's narrowed note, exactly as given, when it has one), what it turns on, when we will know. A consensus block starts "No real split today. The strongest case against the consensus:". With no block, one line saying the lenses broadly agree, with the figure given.]
 
 ### AI NEWSLETTER
-[New developments: 6-10 bullets (what changed, why it matters for someone building AI workflows). Trending: 4-6 bullets on GitHub repos and Hacker News threads, each with name, one line, link.]
+[New developments: 6-10 bullets (what changed, why it matters for someone building AI workflows).
+Trending repos on GitHub: 5 bullets from the GITHUB TRENDING blocks only (today's list first, then this week's, then a brand-new repo if one stands out), the ones most useful to someone building AI workflows: **owner/repo**, the star figure exactly as given ("+1,397 stars today" or "+5,210 stars this week"; add "on the list N days running" when given), what it does and who should try it in one line, the link. Never a repo from the blocks' blocklisted kinds (adult, cheats), never a repo that is not in the raw data.
+On Hacker News: 1-2 bullets on AI threads from the HACKER NEWS block, each with title, one line, link.]
 
 ### FUNDRAISING
 [5-10 rounds: company, amount, round, lead investor, sector. Crypto/web3 first, then AI, then Korea. One closing sentence on the pattern.]
