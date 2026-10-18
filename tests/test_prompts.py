@@ -36,6 +36,14 @@ VARS = {
                        data_block="d", excerpts="x"),
     "brief_split": dict(split_sheet="S", lens_notes="L", questions_line="q"),
     "resolve": dict(day="2026-10-04", items="[e1] Q? (window: after 2026-10-01 through 2026-10-05)"),
+    "delphi": dict(role="R", debate_format=DEBATE_FORMAT, day="2026-10-04", items="QUESTION [q1]: Q?", excerpts="x"),
+    "xexam_open": dict(role="R", debate_format=DEBATE_FORMAT, qid="q1", question="Q?", resolves_on="2026-10-11",
+                       settles_with="S", my_p=40, my_reason="r", my_evidence="- e", their_p=80, their_reason="r",
+                       their_summary="s", their_evidence="- e", excerpts="x"),
+    "xexam_reply": dict(role="R", debate_format=DEBATE_FORMAT, qid="q1", question="Q?", resolves_on="2026-10-11",
+                        my_p=40, my_reason="r", my_evidence="- e", steelman="s", their_indicator="i", rebuttal="r",
+                        their_evidence="- e", excerpts="x"),
+    "judge": dict(day="2026-10-04", items="QUESTION [q1]: Q?", candidates="- none"),
 }
 
 
@@ -78,6 +86,33 @@ class TemplateTests(unittest.TestCase):
         self.assertIn(f"up to {debate.FREE_MOVE} points on", rule)
         self.assertIn(f"{debate.EVIDENCE_MOVE_PER_ITEM} points more", rule)
         self.assertIn(f"up to {debate.FREE_MOVE + debate.EVIDENCE_MOVE_MAX} points in total", rule)
+
+    def test_phase_d_prompts_state_the_rules(self):
+        """Phase D: moves are labelled, never blocked, and hold is the default; every indicator is dated and has a
+        comparator from schemas.COMPARATORS; the pre-mortem is a pre-mortem; the judge picks no winner."""
+        from recon import schemas
+        for name in ("delphi", "xexam_reply"):
+            body = prompts.template(name).lower()
+            self.assertIn("hold is the default", body, name)
+            self.assertIn("labels", body, name)
+            self.assertNotIn("up to 5 points", body, name)
+        for name in ("delphi", "xexam_open", "xexam_reply", "judge", "red_team"):
+            body = prompts.template(name)
+            for c in schemas.COMPARATORS:
+                self.assertIn(c, body, (name, c))
+            self.assertIn("YYYY-MM-DD", body, name)
+        self.assertIn("PRE-MORTEM", prompts.template("red_team"))
+        self.assertIn("<!-- schema: premortem", (prompts.PROMPT_DIR / "red_team.md").read_text(encoding="utf-8"))
+        self.assertIn("do not pick a winner", prompts.template("judge"))
+
+    def test_xexam_prompts_small(self):
+        role = ROLE.format(persona=(REPO / "personas" / "skeptic.md").read_text(encoding="utf-8"))
+        op = prompts.render("xexam_open", **{**VARS["xexam_open"], "role": role, "excerpts": "e" * 4096,
+                                             "my_reason": "x" * 150, "their_reason": "y" * 150, "their_summary": "z" * 300})
+        rp = prompts.render("xexam_reply", **{**VARS["xexam_reply"], "role": role, "excerpts": "e" * 4096,
+                                              "steelman": "s" * 300, "rebuttal": "r" * 800, "their_indicator": "i" * 300})
+        self.assertLess(len(op.encode("utf-8")), 10 * 1024)
+        self.assertLess(len(rp.encode("utf-8")), 10 * 1024)
 
     def test_debate_format_names_the_other_view(self):
         self.assertIn('Refer to the other analyst only as "the other view"', DEBATE_FORMAT)

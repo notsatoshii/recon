@@ -986,6 +986,33 @@ def challenge_checks(data: dict) -> list[str]:
     return flags
 
 
+def indicator_text(ind: dict | None) -> str:
+    """An INDICATOR in one line: 'total DeFi TVL (DeFiLlama) < 90B by 2026-10-18'; '' when empty."""
+    ind = ind or {}
+    obs = (ind.get("observable") or "").strip()
+    if not obs:
+        return ""
+    src = (ind.get("source") or "").strip()
+    c = ind.get("comparator") or ""
+    what = {"happens": "happens", "does_not_happen": "does not happen"}.get(c) or \
+        " ".join(x for x in (c, (ind.get("level") or "").strip()) if x)
+    by = (ind.get("by_date") or "").strip()
+    return " ".join(x for x in (obs + (f" ({src})" if src else ""), what, f"by {by}" if by else "") if x)
+
+
+def premortem_as_red_team(data: dict) -> dict:
+    """A PREMORTEM reply in the Phase C red-team shape (RECON_DEBATE=c reads it so): case = the failure story, crux
+    and would_change_my_mind from the first early sign. The pre-mortem fields stay."""
+    d = dict(data or {})
+    first = next((x for x in d.get("early_signs") or [] if (x or {}).get("observable")), {}) or {}
+    d.setdefault("case", d.get("failure_story", ""))
+    d.setdefault("crux", {"claim": indicator_text(first), "type": "timing", "observable": first.get("observable", ""),
+                          "by_date": first.get("by_date", "")})
+    d.setdefault("would_change_my_mind", {"observable": first.get("observable", ""), "level": first.get("level", ""),
+                                          "by_date": first.get("by_date", "")})
+    return d
+
+
 def anonymise_record(data: dict) -> dict:
     """A copy of a challenge or red-team reply with every string anonymised (for the responder and
     the split sheet; the raw reply is kept as written)."""

@@ -1231,7 +1231,10 @@ SECTOR CONTEXT (crypto and macro landscape; background, not today's data):
                 count_phrase=debate.count_phrase(vals, "consensus"), majority_reasons=reasons,
                 my_p=vals.get(a, int(round(med))), my_reason=debate.anonymise(mine.get("reason", "")),
                 excerpts=debate.excerpts([mine.get("evidence") or [], maj_ev], self.locator()))
-            data, meta = self.call("challenges", f"redteam__{a}__{qid}", debate.side_tier(a), prompt, schema="red_team", agent=a)
+            # red_team.md is the Phase D pre-mortem now (schema premortem); its reply is read in the red-team shape
+            # here (case = failure story, crux and would_change_my_mind = the first early sign).
+            data, meta = self.call("challenges", f"redteam__{a}__{qid}", debate.side_tier(a), prompt, schema="premortem", agent=a)
+            data = debate.premortem_as_red_team(data)
             data["question_id"] = qid
             prob, nflags = debate.norm_p(data.get("probability"), list(vals.values()))
             data["probability"] = prob if prob is not None else int(round(med))
