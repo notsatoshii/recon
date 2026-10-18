@@ -19,6 +19,8 @@ from recon import evidence, schemas  # noqa: E402
 import resolve_ledger as rl  # noqa: E402
 
 DAY_MS = 86400
+# A home with no briefs/ (resolvers.json comes from the script's own config): REPO may hold real run folders.
+EMPTY_HOME = Path(tempfile.mkdtemp(prefix="recon-resolve-"))
 
 
 def ts(day: str) -> int:
@@ -101,7 +103,7 @@ class NumericTests(unittest.TestCase):
         tvl = [{"date": ts(d), "tvl": v} for d, v in (("2026-10-10", 91.5e9), ("2026-10-11", 91.0e9),
                                                        ("2026-10-14", 89.9e9), ("2026-10-15", 90.4e9))]
         f = FakeFetcher({"historicalChainTvl": tvl})
-        res, notes = rl.resolve_numeric(lines, "2026-10-15", f, REPO)
+        res, notes = rl.resolve_numeric(lines, "2026-10-15", f, EMPTY_HOME)
         self.assertEqual(len(res), 1, notes)
         r = res[0]
         self.assertEqual((r["outcome"], r["method"], r["value"]), ("yes", "api", 89.9e9))
@@ -156,7 +158,7 @@ class NumericTests(unittest.TestCase):
         lines = [qline("2026-10-05-q4", "2026-10-05", "Will tokenized-equity market capitalization exceed $4.5 billion "
                        "by October 26, 2026?", metric="Tokenized stock market capitalization, Token Terminal",
                        comparator=">", threshold="$4.5 billion", resolves_on="2026-10-12")]
-        res, notes = rl.resolve_numeric(lines, "2026-10-13", rl.Fetcher(net=False), REPO)
+        res, notes = rl.resolve_numeric(lines, "2026-10-13", rl.Fetcher(net=False), EMPTY_HOME)
         self.assertEqual(res, [])
         self.assertIn("no resolver", notes[0]["note"])
         self.assertEqual(rl.void_lines(lines, "2026-10-19"), [])                # 7 days after: not yet
