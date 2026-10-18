@@ -202,8 +202,17 @@ DEEP_DIVE = obj(
     evidence=arr(EVIDENCE),
 )
 
+# ── Phase D (docs/v2/phase-d-debate-upgrade.md) ──
+RESOLVE = obj(items=arr(obj(          # the resolve phase's one FAST call over the day's package (step 1)
+    ref=s("the question's id as given, e.g. e1"),
+    outcome=enum(["yes", "no", "open"], "open whenever the package does not settle it"),
+    quote=s("one package line that reports it, copied verbatim, at most 200 characters; empty when open"),
+    section=s(),
+    why=s("at most 30 words"),
+)))
+
 ALL = {"triage": TRIAGE, "take": TAKE, "debate_challenge": DEBATE_CHALLENGE,
-       "debate_response": DEBATE_RESPONSE, "red_team": RED_TEAM, "crux_check": CRUX_CHECK}
+       "debate_response": DEBATE_RESPONSE, "red_team": RED_TEAM, "crux_check": CRUX_CHECK, "resolve": RESOLVE}
 LEGACY = {"challenge": CHALLENGE, "response": RESPONSE, "deep_dive": DEEP_DIVE}
 
 # ── Phase C artifacts (§12.3): programmatic, validated before save() and in tests ──
@@ -273,10 +282,18 @@ SPLIT_BLOCK = obj(
 SPLIT_SHEET = obj(day=DATE, run_id=s(), day_type=enum(["debate", "split_unpaired", "consensus", "no_questions"]),
                   blocks=arr(SPLIT_BLOCK), no_split_line=s(), bytes=i())
 LEDGER_LINE = obj(
-    type=enum(["question"]), ledger_id=s("<run_id>-<qid>; <day>-<qid> for the daily run"), run_id=s(), day=DATE,
+    type=enum(["question", "indicator", "resolution"]), ledger_id=s("<run_id>-<qid>; <day>-<qid> for the daily run"), run_id=s(), day=DATE,
     question=QUESTION,                                   # as gated, weight clamped
     finals=free("{agent: gated probability}"), take_values=free("{agent: take probability}"),
     final_stats=STATS, debated=b(), split_type=enum(["direction", "degree", "consensus", "none"]),
+)
+# A ledger question's outcome (phase-c-spec §2.6; scripts/resolve_ledger.py). method: api (a data API), package (the
+# same package line on later days), package_llm (the resolve phase's model call, kept only with a verified quote),
+# void_rule (still open 7 days after resolves_on), manual.
+RESOLUTION_LINE = obj(
+    type=enum(["resolution"]), ledger_id=s(), outcome=enum(["yes", "no", "void"]), value=nullable(num()),
+    source=s(), quote=s(), method=enum(["api", "package", "package_llm", "void_rule", "manual"]),
+    resolved_at=s("UTC ISO time"),
 )
 # run.json (schema_version 2): the Phase C parts are checked; the Phase B keys around them are free.
 RUN = {"type": "object", "required": ["schema_version", "date", "day", "status", "questions", "pairing", "debates",
@@ -291,7 +308,7 @@ RUN = {"type": "object", "required": ["schema_version", "date", "day", "status",
                                     phase=s(), item=s(), reason=enum(["budget", "ceiling"]), used=i()))}}}}
 ARTIFACTS = {"pairing": PAIRING, "debate_score": DEBATE_SCORE, "question_stats": QUESTION_STATS,
              "agent_run_score": AGENT_RUN_SCORE, "split_block": SPLIT_BLOCK, "split_sheet": SPLIT_SHEET,
-             "ledger_line": LEDGER_LINE, "ev_checked": EV_CHECKED, "side_move": SIDE_MOVE, "stats": STATS,
+             "ledger_line": LEDGER_LINE, "resolution_line": RESOLUTION_LINE, "ev_checked": EV_CHECKED, "side_move": SIDE_MOVE, "stats": STATS,
              "run": RUN}
 
 

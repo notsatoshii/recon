@@ -1,0 +1,25 @@
+{
+ "_doc": "Ledger resolvers (scripts/resolve_ledger.py, docs/v2/phase-d-debate-upgrade.md step 1). The first entry whose 'all' patterns all match (and no 'none' pattern does) the question's metric + settles_with + text decides its sources, tried in order. Sources: coingecko (id), defillama_tvl (total DeFi TVL), defillama_stablecoin (id: 1 USDT, 2 USDC), defillama_dex_change7d (daily DEX volume vs 7 days before, %), fear_greed, github_stars (current count only), package (the same package line in briefs/<day>/00_data_package.md, the figure the package reported). Patterns are case-insensitive regexes.",
+ "resolvers": [
+  {"name": "dex_volume_change_7d", "all": ["\\bDEX\\b", "(7|seven)[- ]?d(ay)?\\b|\\b7d\\b", "change|growth"],
+   "sources": [{"type": "package"}, {"type": "defillama_dex_change7d"}]},
+  {"name": "total_defi_tvl", "all": ["\\bTVL\\b", "total|DeFi"],
+   "none": ["\\b(Solana|Ethereum|Base|Arbitrum|BNB|Tron|Aave|Lido|Uniswap|Hyperliquid|Polymarket)\\b"],
+   "sources": [{"type": "defillama_tvl"}, {"type": "package"}]},
+  {"name": "usdt_supply", "all": ["\\b(Tether|USDT)\\b", "supply|circulat|market cap|issu"],
+   "sources": [{"type": "defillama_stablecoin", "id": 1}, {"type": "package"}]},
+  {"name": "usdc_supply", "all": ["\\b(USDC|USD Coin)\\b", "supply|circulat|market cap|issu"],
+   "sources": [{"type": "defillama_stablecoin", "id": 2}, {"type": "package"}]},
+  {"name": "btc_price", "all": ["\\b(BTC|Bitcoin)\\b", "price|trade|close|above|below|\\$"],
+   "none": ["dominance|ETF|flow|hash|fee|supply|TVL|open interest|funding|treasur|reserve"],
+   "sources": [{"type": "coingecko", "id": "bitcoin"}]},
+  {"name": "eth_price", "all": ["\\b(ETH|Ether|Ethereum)\\b", "price|trade|close|above|below|\\$"],
+   "none": ["ETF|flow|gas|fee|supply|TVL|staking|open interest|funding|treasur|reserve"],
+   "sources": [{"type": "coingecko", "id": "ethereum"}]},
+  {"name": "sol_price", "all": ["\\b(SOL|Solana)\\b", "price|trade|close|above|below|\\$"],
+   "none": ["ETF|flow|fee|supply|TVL|DEX|open interest|funding"],
+   "sources": [{"type": "coingecko", "id": "solana"}]},
+  {"name": "fear_greed", "all": ["Fear\\s*(&|and)\\s*Greed"], "sources": [{"type": "fear_greed"}]},
+  {"name": "github_stars", "all": ["GitHub", "\\bstars?\\b"], "sources": [{"type": "github_stars"}]}
+ ]
+}

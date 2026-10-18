@@ -239,6 +239,33 @@ class DryRunEndToEnd(unittest.TestCase):
             self.assertNotEqual(cc.get("reason"), "dropped by the call budget (§1.1)",
                                 "skipped by budget although it fit") if pr["budget"]["crux_check_planned"] else None
 
+    def test_resolve_phase_voids_and_asks_about_events(self):
+        """Phase D step 1: the resolve phase writes resolution lines (a void one here: no network on a dry run) and
+        makes its one FAST call for the open event question; the run goes on to a brief."""
+        st = self.tmp / "state_rz"
+        (st / "questions").mkdir(parents=True, exist_ok=True)
+        old = {"type": "question", "ledger_id": "2026-09-20-q1", "run_id": "2026-09-20", "day": "2026-09-20",
+               "question": {"id": "q1", "text": "Will tokenized stocks top $5 billion by 2026-09-25?", "kind": "threshold",
+                            "metric": "Tokenized stock market cap, Token Terminal", "comparator": ">", "threshold": "$5B",
+                            "resolves_on": "2026-09-25", "baseline_quote": "", "settles_with": "Token Terminal"}}
+        ev = {"type": "question", "ledger_id": "2026-10-02-q2", "run_id": "2026-10-02", "day": "2026-10-02",
+              "question": {"id": "q2", "text": "Will the SEC publish its custody notice by 2026-10-09?", "kind": "event",
+                           "resolves_on": "2026-10-09", "settles_with": "the Federal Register"}}
+        (st / "questions" / "ledger.jsonl").write_text(json.dumps(old) + "\n" + json.dumps(ev) + "\n", encoding="utf-8")
+        self.run_orch("rz1", "--state-dir", str(st))
+        rs = self.load("rz1", "resolve")
+        self.assertTrue(rs["ok"], rs)
+        self.assertTrue(rs["event"]["called"])
+        led = [json.loads(l) for l in (st / "questions" / "ledger.jsonl").read_text(encoding="utf-8").splitlines()]
+        res = [l for l in led if l["type"] == "resolution"]
+        self.assertEqual([(r["ledger_id"], r["outcome"]) for r in res], [("2026-09-20-q1", "void")])
+        calls = [json.loads(l) for l in (self.rd("rz1") / "phases" / "calls.jsonl").read_text(encoding="utf-8").splitlines()]
+        self.assertEqual([c["key"] for c in calls if c["phase"] == "resolve"], ["resolver"])
+        self.assertTrue((self.rd("rz1") / "07_daily_brief.md").exists())
+        self.run_orch("rz1", "--state-dir", str(st), "--from-phase", "resolve")      # idempotent
+        led2 = (st / "questions" / "ledger.jsonl").read_text(encoding="utf-8").splitlines()
+        self.assertEqual(sum(1 for l in led2 if json.loads(l)["type"] == "resolution"), 1)
+
     def test_stop_after_takes(self):
         out = self.run_orch("s1", env={"RECON_STOP_AFTER": "takes"})
         self.assertIn("RECON_STOP_AFTER=takes", out)

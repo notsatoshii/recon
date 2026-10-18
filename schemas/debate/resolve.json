@@ -1,0 +1,49 @@
+{
+ "type": "object",
+ "properties": {
+  "items": {
+   "type": "array",
+   "items": {
+    "type": "object",
+    "properties": {
+     "ref": {
+      "type": "string",
+      "description": "the question's id as given, e.g. e1"
+     },
+     "outcome": {
+      "type": "string",
+      "enum": [
+       "yes",
+       "no",
+       "open"
+      ],
+      "description": "open whenever the package does not settle it"
+     },
+     "quote": {
+      "type": "string",
+      "description": "one package line that reports it, copied verbatim, at most 200 characters; empty when open"
+     },
+     "section": {
+      "type": "string"
+     },
+     "why": {
+      "type": "string",
+      "description": "at most 30 words"
+     }
+    },
+    "required": [
+     "ref",
+     "outcome",
+     "quote",
+     "section",
+     "why"
+    ],
+    "additionalProperties": false
+   }
+  }
+ },
+ "required": [
+  "items"
+ ],
+ "additionalProperties": false
+}

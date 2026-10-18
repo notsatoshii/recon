@@ -35,6 +35,7 @@ VARS = {
                        higher_label="the view that started at 70%", lower_label="the view that started at 40%",
                        data_block="d", excerpts="x"),
     "brief_split": dict(split_sheet="S", lens_notes="L", questions_line="q"),
+    "resolve": dict(day="2026-10-04", items="[e1] Q? (window: after 2026-10-01 through 2026-10-05)"),
 }
 
 

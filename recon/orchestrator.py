@@ -3,6 +3,10 @@
 
 Phase B built the typed phases around the bash pipeline's stages; Phase C (docs/v2/phase-c-spec.md)
 replaces the middle, from the fixed TENSIONS challenges to the vote:
+  - resolve (Phase D step 1, docs/v2/phase-d-debate-upgrade.md): open ledger questions get resolution lines
+    (scripts/resolve_ledger.py: APIs and package lines for threshold/direction questions, 1 FAST call over the
+    day's package for event questions, void 7 days after resolves_on). It runs whatever RECON_DEBATE says and
+    never fails a run.
   - triage writes the questions of the day from config/prompts/debate/questions.md; a programmatic gate
     (recon/debate.py gate_questions) drops bad ones; the question ledger carries them across runs.
   - takes answer every question from the lens: positions first, a 150-word take last. Each agent reads
@@ -63,7 +67,7 @@ from recon import agentmem, debate, evidence, llm, prompts, schemas  # noqa: E40
 
 RECON_HOME = llm.RECON_HOME
 AGENTS = schemas.AGENTS
-PHASES = ["score", "collect", "context", "package", "triage", "takes", "pairing", "challenges",
+PHASES = ["score", "collect", "context", "package", "resolve", "triage", "takes", "pairing", "challenges",
           "responses", "cruxcheck", "positions", "split", "memory", "synthesis", "checks",
           "deliver", "record"]
 ITEM_DIRS = {"takes", "challenges", "responses"}
@@ -837,6 +841,59 @@ SECTOR CONTEXT (crypto and macro landscape; background, not today's data):
         except json.JSONDecodeError:
             pass
         return {"rc": p.returncode, "view_bytes": view.stat().st_size, "report": rep}
+
+    # ── resolve (Phase D step 1) ───────────────────────────
+    def ph_resolve(self):
+        """Resolution lines for open ledger questions. Any failure is logged and the run goes on."""
+        self.log("PHASE 0.7: Resolving open ledger questions (APIs, package lines, 1 FAST call for events)...")
+        try:
+            return self._resolve()
+        except Exception as e:  # noqa: BLE001 - the resolver must never fail a run
+            self.log(f"  WARNING: resolve phase failed ({type(e).__name__}: {str(e)[:200]}); continuing")
+            return {"ok": False, "error": f"{type(e).__name__}: {str(e)[:300]}"}
+
+    def _resolve(self) -> dict:
+        sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
+        import resolve_ledger as rl  # noqa: E402 - stdlib + recon only
+        lines = self.read_ledger()
+        if not any(l.get("type") == "question" for l in lines):
+            self.log("  No ledger questions yet")
+            return {"ok": True, "resolved": 0, "event_call": False}
+        # No network on dry runs and replays (a replay's cold ledger is empty anyway); RECON_RESOLVE_NET=0 also stops it.
+        net = not (self.dry or self.replay) and os.environ.get("RECON_RESOLVE_NET", "1").strip() != "0"
+        fetcher = rl.Fetcher(net=net)
+        res, notes = rl.resolve_numeric(lines, self.day, fetcher, RECON_HOME)
+        done = {r["ledger_id"] for r in res}
+        res += rl.void_lines(lines, self.day, done)
+        done = {r["ledger_id"] for r in res}
+        groups = rl.event_groups(lines, self.day, done)
+        event = {"groups": len(groups), "called": False}
+        if groups and os.environ.get("RECON_RESOLVE_EVENTS", "1").strip() != "0":
+            prompt = self.shared() + "\n" + prompts.render("resolve", day=self.day, items=rl.event_items(groups))
+            try:
+                data, meta = self.call("resolve", "resolver", "fast", prompt, schema="resolve", agent="resolver")
+                ev, ev_notes = rl.check_events(data, groups, self.locator())
+                res += [r for r in ev if r["ledger_id"] not in done]
+                notes += ev_notes
+                event.update({"called": True, "resolved": len(ev), "reply": data})
+            except BudgetSkip:
+                event["skipped"] = "ceiling"
+            except (llm.LLMError, PhaseFailed) as e:
+                self.log(f"  event resolver call failed ({str(e)[:150]}); event questions stay open")
+                event["failed"] = str(e)[:200]
+        for r in res:
+            self.check_artifact("resolution_line", r, f"resolution {r['ledger_id']}")
+        n = self.append_jsonl(self.ledger_path, res, lambda l: (l.get("type"), l.get("ledger_id")))
+        by = {}
+        for r in res:
+            by[f"{r['method']}:{r['outcome']}"] = by.get(f"{r['method']}:{r['outcome']}", 0) + 1
+        self.log(f"  {len(res)} resolution(s) ({', '.join(f'{k} {v}' for k, v in sorted(by.items())) or 'none'}); "
+                 f"{n} appended to {self.ledger_path}; {len(groups)} event group(s)"
+                 + (f"; fetch errors: {len(fetcher.errors)}" if fetcher.errors else ""))
+        for r in res:
+            self.log(f"    {r['ledger_id']}: {r['outcome']} ({r['method']}; {r['source'][:90]})")
+        return {"ok": True, "resolved": len(res), "appended": n, "by": by, "notes": notes[:40],
+                "fetch_errors": fetcher.errors[:20], "net": net, "event": event, "lines": res}
 
     # ── triage (§2) ────────────────────────────────────────
     def due_items(self) -> str:
@@ -2207,6 +2264,7 @@ RAW DATA (for cross-referencing numbers; every package section, each trimmed):
         pkg = self.phase("package", self.ph_package)
         if self.stop_here("package"):
             return 0
+        self.phase("resolve", self.ph_resolve)
         tri = self.phase("triage", self.ph_triage)["data"]
         if self.stop_here("triage"):
             return 0
