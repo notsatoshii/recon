@@ -135,6 +135,23 @@ class NumericTests(unittest.TestCase):
             self.assertEqual(got["2026-10-09-q1"], ("no", "package", -17.5))       # never > 0 by 10-12
             # the CROSS-SOURCE copy (+1.0%) is never read: the DEX VOLUMES line is
 
+    def test_first_source_with_window_data_decides(self):
+        """The package's reported TVL stays above $90B; DeFiLlama's chain chart dips under it. The question asks about
+        the reported figure, so the package decides (not settled yet) and the API never overrules it."""
+        with tempfile.TemporaryDirectory() as tmp:
+            home = Path(tmp)
+            for d, tvl in (("2026-10-13", "$91,580,501,792"), ("2026-10-14", "$91,220,252,144")):
+                (home / "briefs" / d).mkdir(parents=True)
+                (home / "briefs" / d / "00_data_package.md").write_text(pkg(tvl, "-1.0%"), encoding="utf-8")
+            lines = [qline("2026-10-13-q1", "2026-10-13", "Will reported total DeFi TVL fall below $90 billion by "
+                           "October 18, 2026?", metric="Reported total DeFi TVL, DeFiLlama", comparator="<",
+                           threshold="$90 billion", baseline="- Current: $91,580,501,792")]
+            f = FakeFetcher({"historicalChainTvl": [{"date": ts("2026-10-14"), "tvl": 89.4e9}]})
+            res, notes = rl.resolve_numeric(lines, "2026-10-14", f, home)
+            self.assertEqual(res, [])
+            self.assertIn("not settled yet (package)", notes[0]["note"])
+            self.assertEqual(f.urls, [])                       # the API was never asked
+
     def test_open_without_data_then_void(self):
         lines = [qline("2026-10-05-q4", "2026-10-05", "Will tokenized-equity market capitalization exceed $4.5 billion "
                        "by October 26, 2026?", metric="Tokenized stock market capitalization, Token Terminal",

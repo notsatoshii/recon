@@ -254,7 +254,7 @@ def src_defillama_dex_change7d(f: Fetcher, spec, start, today, line, home_dir):
     chart = (d or {}).get("totalDataChart") if isinstance(d, dict) else None
     if not chart:
         return None
-    vol = {_utc_day(float(ts)): float(v) for ts, v in chart}
+    vol = {_utc_day(float(ts)): float(v) for ts, v in chart[:-1]}   # the last point is the current, partial day
     out = {}
     for day, v in vol.items():
         prev = vol.get(plus_days(day, -7))
@@ -361,10 +361,13 @@ CURRENT_ONLY = {"github_stars"}
 
 
 def load_resolvers(home_dir: Path) -> list[dict]:
-    try:
-        return json.loads((home_dir / "config" / "resolvers.json").read_text(encoding="utf-8")).get("resolvers", [])
-    except (OSError, json.JSONDecodeError):
-        return []
+    """config/resolvers.json under home_dir, else the one next to this script (a --home that is only a data folder)."""
+    for p in (home_dir / "config" / "resolvers.json", REPO / "config" / "resolvers.json"):
+        try:
+            return json.loads(p.read_text(encoding="utf-8")).get("resolvers", [])
+        except (OSError, json.JSONDecodeError):
+            continue
+    return []
 
 
 def match_resolver(q: dict, resolvers: list[dict]) -> dict | None:
@@ -393,32 +396,36 @@ def resolve_numeric(lines: list[dict], today: str, fetcher: Fetcher, home_dir: P
         comp = comparator_of(q)
         start, end = l.get("day") or "", q.get("resolves_on") or ""
         rule = window_rule(q.get("text") or "")
-        done = False
+        note = f"{r['name']}: no source has data for the window yet"
         for spec in r.get("sources", []):
             fn = SOURCES.get(spec.get("type"))
             if not fn:
                 continue
-            series = fn(fetcher, spec, start, today, l, home_dir)
-            if not series:
+            series = fn(fetcher, spec, start, today, l, home_dir) or {}
+            cur = spec.get("type") in CURRENT_ONLY
+            # The first source with a value inside the window decides (a later source never overrules it: the
+            # package's reported TVL and DeFiLlama's chain chart differ by ~2B on the same day).
+            if not (series.get(today) is not None if cur else any(d in series for d in days_between(start, min(end, today)))):
                 continue
             level = parse_level(q.get("threshold") or "")
             if level is None:                      # a direction question without a level: against the start value
                 level = series.get(start)
-                if level is None:
-                    level = parse_level(q.get("baseline_quote") or "") if spec.get("type") == "package" else None
+                if level is None and spec.get("type") == "package":
+                    level = parse_level((q.get("baseline_quote") or "").split(":", 1)[-1])
             if level is None or not comp:
-                notes.append({"ledger_id": l["ledger_id"], "note": f"{r['name']}: no level or comparator"})
+                note = f"{r['name']}: no level or comparator"
                 break
-            outcome, value, day = decide(rule, comp, level, series, start, end, today,
-                                         current_only=spec.get("type") in CURRENT_ONLY)
+            outcome, value, day = decide(rule, comp, level, series, start, end, today, current_only=cur)
             if outcome:
                 method = "package" if spec.get("type") == "package" else "api"
                 out.append(resolution(l, outcome, method, value,
                                       source=f"{r['name']} via {spec['type']} on {day} ({rule} {comp} {level:g})"))
-                done = True
-                break
-        if not done:
-            notes.append({"ledger_id": l["ledger_id"], "note": f"{r['name']}: not settled yet"})
+                note = ""
+            else:
+                note = f"{r['name']}: not settled yet ({spec['type']})"
+            break
+        if note:
+            notes.append({"ledger_id": l["ledger_id"], "note": note})
     return out, notes
 
 
