@@ -313,6 +313,13 @@ class DryRunEndToEnd(unittest.TestCase):
         heads, brief = self.brief_heads("d1")
         self.assertEqual(heads, schemas.BRIEF_SECTIONS)
         self.assertEqual(self.load("d1", "checks")["agent_names"], [])
+        sys.path.insert(0, str(REPO / "scripts"))
+        import phase_d_report
+        r = phase_d_report.row(self.tmp, "d1")
+        self.assertEqual((r["mode"], r["day_type"], r["calls"], r["pairs"], r["agent_names"], r["split_missing"]),
+                         ("d", "debate", run["usage"]["calls"], len(pr["pairs"]), 0, 0))
+        self.assertIsInstance(r["top_splits_resolvable"], bool)
+        self.assertIn("| d1 | debate |", phase_d_report.render([r]))
 
     def test_phase_d_consensus_day(self):
         self.run_orch("d2", env={"RECON_DRY_SPREAD": "narrow"})
