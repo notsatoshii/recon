@@ -16,11 +16,12 @@
 # snapshot is put back (orchestrator.py --restore-state), so bash never writes a second memory and state
 # entry for the day. Tagged runs (--run-id) never fall back to bash: run_recon.sh writes briefs/<today>.
 # RECON_PIPELINE=bash in the env file goes back to bash only.
-# The Phase C debate (pairs, challenges, responses, crux check) is OFF here: the spread probe failed twice
-# (phase-c-spec §0.1, model log) and no replay or c3/c4 run has passed (§15.5, §17.5). Triage, takes and the
-# split sheet from the takes still run. The §18 cutover is RECON_DEBATE=1 below (or in the env file).
-# A tagged run (--run-id, e.g. the §17.5 c3/c4 runs) leaves RECON_DEBATE unset so the orchestrator's tagged
-# default (debate on) applies, and its brief is looked for in briefs/<run-id>/.
+# The debate: RECON_DEBATE=1 in the env file runs Phase D (docs/v2/phase-d-debate-upgrade.md: Delphi round,
+# cross-exam on resolvable indicators, judge, pre-mortem), on since 2026-10-18 after 4 replays and 1 tagged live run
+# passed. Its production gate is the calibration gate (brier_report.py -> config/questions/calibration.json), not the
+# Phase C spread probe. Unset or 0 here means off (default below); c runs the old Phase C debate.
+# A tagged run (--run-id) leaves RECON_DEBATE unset so the orchestrator's tagged default (debate on) applies, and its
+# brief is looked for in briefs/<run-id>/.
 # Arguments go to the pipeline. --no-telegram (validation runs) also silences the alert.
 #
 set -uo pipefail
@@ -54,7 +55,7 @@ for a in "$@"; do
     prev="$a"
 done
 
-# Debate gate (see above): the env file may set RECON_DEBATE=1 once the gate and the validation runs pass.
+# Debate switch (see above): the env file sets RECON_DEBATE=1 (Phase D, on since 2026-10-18).
 # A tagged run leaves it unset: an explicit 0 would override the orchestrator's tagged default (debate on).
 if [ -n "$RUN_ID" ]; then
     unset RECON_DEBATE

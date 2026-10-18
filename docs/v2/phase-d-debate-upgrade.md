@@ -92,3 +92,15 @@ structure that runs in production. Design by a planning pass over the code and s
 Herding toward the median (round-0 records, symmetric cross-exam, measurement); slow evidence (20 changed
 questions may take 2-3 weeks); free-text metrics some resolvers cannot read; Codex concurrency pushing wall
 time past 20 min; a biased judge (it never decides moves or a winner).
+
+## Validation result (2026-10-18)
+
+- Replays (`/tmp/recon-phase-d`, packages 10-15..10-18): all pass. 20-23 calls, 5.1-8.0 min, 1 cross-exam pair a day,
+  every top split ends with an indicator the judge marks resolvable, evidence verified 98.8-100%, 0 agent names,
+  0 split blocks missing; 10 of 12 moves on a verified quote.
+- Tagged live run `2026-10-18-dlive1` (fresh collection): 28 calls, 13.8 min, 2 pairs, judge 2/2 resolvable,
+  evidence 96.5%, 5 moves (1 on argument alone), 11/11 sections, claims 51 of 52 found.
+- `RECON_DEBATE=1` set in /home/recon/.recon.env (backup `.recon.env.bak-20261018-debate`). The first cron run with
+  the debate and the real-ledger resolver is 2026-10-19 05:00 KST. Tagged runs keep their own empty ledger, so that run is
+  the first live test of resolution lines against config/questions/ledger.jsonl.
+- phase-c-spec §0.1/§18 (spread gate) is superseded by the calibration gate above.

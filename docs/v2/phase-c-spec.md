@@ -1,5 +1,8 @@
 # RECON v2 — Phase C build spec: the debate redesign
 
+> **2026-10-18:** the debate gate in §0.1 and the cutover in §18 are superseded by Phase D (docs/v2/phase-d-debate-upgrade.md): the crux-gated debate is replaced, and production runs `RECON_DEBATE=1` under the calibration gate.
+
+
 Date: 2026-10-04. Status: build spec, written against Phase B as committed on `v2` (`f8991d5`,
 `774afc5`). Source plan: `06-improvement-plan.md` §2.2 (F6–F16), §3 (redesign), §4, §7 row C,
 §8 decisions. Measurements used: `model-log.md` (slim Codex prefix ~2.2 K tokens, resume only
