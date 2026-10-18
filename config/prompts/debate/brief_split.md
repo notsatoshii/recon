@@ -16,7 +16,7 @@ WHERE THE VIEWS SPLIT — rules for this section:
   {{questions_line}}
 - Never name an agent or describe the process (no debate, challenge, concession, agents, votes).
   Disagreement appears only in this section and only with the count phrases given.
-- WHAT TO WATCH takes the dated "settles on" items from this sheet first.
+- WHAT TO WATCH takes the dated "settles on" items and the "Watch" lines from this sheet first.
 
 SPLIT SHEET:
 {{split_sheet}}

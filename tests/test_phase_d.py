@@ -173,6 +173,74 @@ class BudgetTests(unittest.TestCase):
         self.assertFalse(b["judge"] and not b["delphi"])
 
 
+class SplitSheetDTests(unittest.TestCase):
+    """Step 7: counts from the take values, crux / settles on / Watch from the judge, the pre-mortem's early signs."""
+    VALS = dict(zip(AG, [10, 15, 20, 25, 30, 35, 80, 85, 90]))
+
+    def setup(self, vals):
+        q = {"id": "q1", "text": "Will total DeFi TVL fall below $80B by 2026-10-11?", "kind": "threshold", "weight": 3,
+             "resolves_on": "2026-10-11", "settles_with": "DeFiLlama total TVL", "ledger_id": "2026-10-04-q1",
+             "carried_from": ""}
+        ev = [{"section": "ON-CHAIN", "quote": "- Current: $86,610,000,000"}]
+        takes = {a: {"positions": [{"question_id": "q1", "probability": v, "reason": f"reason at {v}", "evidence": ev}]}
+                 for a, v in vals.items()}
+        return [q], {a: {"q1": v} for a, v in vals.items()}, takes
+
+    def test_debated_block_counts_takes_and_takes_the_judge_lines(self):
+        qs, take_p, takes = self.setup(self.VALS)
+        score = {"question_id": "q1", "high": "ai_engineer", "low": "trader", "status": "two-sided", "gap_before": 80,
+                 "gap_after": 45, "held_split": True, "evidence": {}, "indicators": {}, "judge": None,
+                 "moves": [{"agent": "ai_engineer", "take": 90, "new": 55, "label": "argument"},
+                           {"agent": "trader", "take": 10, "new": 10, "label": "held"}]}
+        opens = [{"agent": "trader", "question_id": "q1", "data": {"rebuttal": "TVL holds above the line on lending growth.",
+                                                                     "steelman": "s", "evidence": [], "i_am_wrong_if": IND},
+                  "checks": {"flags": []}},
+                 {"agent": "ai_engineer", "question_id": "q1", "data": {"rebuttal": "Outflows break it.", "steelman": "s2",
+                                                                         "evidence": [], "i_am_wrong_if": IND},
+                  "checks": {"flags": []}}]
+        item = debate.judge_check({"question_id": "q1", "indicator": IND, "status": "agreed", "resolvable": True, "why_not": "",
+                                   "data_today": "favours_low", "quote": "- Current: $86,610,000,000", "section": "ON-CHAIN",
+                                   "watch_line": "Watch total DeFi TVL against $80B by October 10.",
+                                   "split_line": "Whether lending growth offsets outflows enough to keep TVL above $80B."},
+                                  loc(), "2026-10-04", "2026-10-11")
+        sheet = debate.split_sheet_d("2026-10-04", "r", "debate", qs, take_p, [score], opens, [item], None, takes, loc(), 20)
+        schemas.validate(json.loads(json.dumps(sheet)), schemas.ARTIFACTS["split_sheet"])
+        bl = sheet["blocks"][0]
+        self.assertTrue(bl["debated"])
+        self.assertEqual((bl["counts"]["range"], bl["counts"]["majority"], bl["counts"]["minority"]), ([10, 90], 6, 3))
+        self.assertEqual(bl["crux"], "Whether lending growth offsets outflows enough to keep TVL above $80B.")
+        self.assertEqual(bl["settles_on"], {"observable": "total DeFi TVL (DeFiLlama) < 80B", "by_date": "2026-10-10"})
+        self.assertEqual(bl["watch"], ["Watch total DeFi TVL against $80B by October 10."])
+        self.assertIn("base case", bl["crux_check"]["what_the_data_says"])   # the low view sits with the 6 below 50
+        text = debate.render_split_sheet(sheet)
+        self.assertIn("Watch: Watch total DeFi TVL", text)
+        self.assertIn("Count phrase (copy exactly): 6 of 9 lenses put it at 10–35%; 3 put it at 80–90%", text)
+        # an unresolvable judge item changes nothing: the question's own settles_with and date stay
+        bad = dict(item, resolvable=False)
+        bl2 = debate.split_sheet_d("2026-10-04", "r", "debate", qs, take_p, [score], opens, [bad], None, takes, loc(),
+                                   20)["blocks"][0]
+        self.assertEqual((bl2["settles_on"], bl2["watch"], bl2["crux"]),
+                         ({"observable": "DeFiLlama total TVL", "by_date": "2026-10-11"}, [], ""))
+
+    def test_consensus_block_is_the_premortem(self):
+        qs, take_p, takes = self.setup({a: 60 + k for k, a in enumerate(AG)})
+        pm = {"type": "premortem", "agent": "skeptic", "question_id": "q1", "median": 64,
+              "data": {"consensus_view": "TVL holds", "failure_story": "A large unwind drained lending pools.",
+                       "early_signs": [], "evidence": [], "probability": 30},
+              "anon": {"consensus_view": "TVL holds", "failure_story": "A large unwind drained lending pools.",
+                       "early_signs": [], "evidence": [], "probability": 30},
+              "early_signs": [{"indicator": IND, "ok": True, "problems": []},
+                              {"indicator": dict(IND, by_date="2026-12-01"), "ok": False, "problems": ["late"]}]}
+        sheet = debate.split_sheet_d("2026-10-04", "r", "consensus", qs, take_p, [], [], [], pm, takes, loc(), 20)
+        bl = sheet["blocks"][0]
+        self.assertEqual(bl["type"], "consensus")
+        self.assertEqual(bl["minority_case"]["source"], "red_team")
+        self.assertIn("unwind", bl["minority_case"]["text"])
+        self.assertEqual(bl["crux"], "total DeFi TVL (DeFiLlama) < 80B by 2026-10-10")
+        self.assertEqual(bl["watch"], ["total DeFi TVL (DeFiLlama) < 80B by 2026-10-10"])     # the late sign is left out
+        schemas.validate(json.loads(json.dumps(sheet)), schemas.ARTIFACTS["split_sheet"])
+
+
 class ModeTests(unittest.TestCase):
     def test_debate_modes_and_budget(self):
         import argparse

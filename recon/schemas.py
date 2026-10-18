@@ -349,6 +349,7 @@ SPLIT_BLOCK = obj(
     crux=s(), crux_check=nullable(obj(resolved=s(), what_the_data_says=s(), quote=s())),
     settles_on=obj(observable=s(), by_date=DATE),
     carried=s(),
+    watch=arr(s("Phase D: a dated line for WHAT TO WATCH (the judge's watch line, pre-mortem early signs)")),
 )
 SPLIT_SHEET = obj(day=DATE, run_id=s(), day_type=enum(["debate", "split_unpaired", "consensus", "no_questions"]),
                   blocks=arr(SPLIT_BLOCK), no_split_line=s(), bytes=i())

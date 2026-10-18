@@ -3115,7 +3115,7 @@ def split_sheet(day: str, run_id: str, day_type: str, questions: list[dict], tak
             "minority_case": {"text": clean_text(min_text, 900), "quote": min_quote, "source": min_src,
                               "level": min_level},
             "crux": clean_text(crux, 300) if d else "", "crux_check": cc, "settles_on": settles,
-            "carried": carried(q),
+            "carried": carried(q), "watch": [],
         })
         # held and live splits first, then the other debated blocks, then the undebated ones; direction before
         # degree within each (seventh review). §11.1 'debated first': ranking direction above debated before the
@@ -3150,7 +3150,7 @@ def split_sheet(day: str, run_id: str, day_type: str, questions: list[dict], tak
                                   "quote": _first_quote(rt.get("evidence"), locator, data_only=False), "source": "red_team",
                                   "level": ""},
                 "crux": clean_text((rt.get("crux") or {}).get("claim", ""), 300), "crux_check": cc, "settles_on": settles,
-                "carried": carried(q),
+                "carried": carried(q), "watch": [],
             })
     no_split = ""
     if not blocks:
@@ -3166,6 +3166,89 @@ def split_sheet(day: str, run_id: str, day_type: str, questions: list[dict], tak
              "bytes": 0}
     sheet = fit_sheet(sheet)
     return sheet
+
+
+def _lean_case(bl: dict, lean: str, score: dict | None = None) -> str:
+    """Which case of a block today's data favours ('base case' / 'minority view'), from the judge's favours_high /
+    favours_low ('high' = the view that started higher); '' when the block does not say which side is higher."""
+    med = (bl.get("counts") or {}).get("median", 50)
+    if bl.get("type") == "direction":
+        if med == 50:
+            return ""
+        high_is_base = med > 50
+    else:
+        lv = re.findall(r"\d+", (bl.get("minority_case") or {}).get("level") or "")
+        if lv:
+            high_is_base = int(lv[0]) < med
+        elif score and len(score.get("moves") or []) == 2:
+            t = {m["agent"]: m["take"] for m in score["moves"]}
+            ph, pl = t.get(score["high"]), t.get(score["low"])
+            if ph is None or pl is None or abs(ph - med) == abs(pl - med):
+                return ""
+            high_is_base = abs(ph - med) < abs(pl - med)
+        else:
+            return ""
+    base = high_is_base if lean == "favours_high" else not high_is_base
+    return "base case" if base else "minority view"
+
+
+def split_sheet_d(day: str, run_id: str, day_type: str, questions: list[dict], take_p: dict, scores: list[dict],
+                  opens: list[dict], judge_items: list[dict] | None, premortem: dict | None, takes: dict, locator,
+                  gap_min: int, ledger: list[dict] | None = None, unpaired: list[str] | None = None,
+                  lone_outliers: list[str] | None = None) -> dict:
+    """§11 on a Phase D day (phase-d-debate-upgrade.md step 7). Counts come from the take values everywhere
+    (split_sheet's finals = take_p), so the round-0 split stays on the sheet whatever the Delphi round and the
+    cross-exam moved. A cross-examined question is a debated block: its minority text the minority side's
+    rebuttal, else the other side's steelman (split_sheet's rule). The judge's item, when resolvable, gives the
+    block's crux (its split line), settles_on (the indicator and its date) and a Watch line; when today's data
+    leans with a verified quote, a data-check line names the case it favours. A consensus block is the pre-mortem:
+    its failure story as the case against, its checkable early signs as the crux and the Watch lines.
+    scores: XEXAM_SCOREs; opens: the opening records; judge_items: judge_check'ed items; premortem: its record."""
+    debates = [{"question_id": s["question_id"], "high": s["high"], "low": s["low"], "gap_before": s["gap_before"],
+                "gap_after": s["gap_after"], "in_split": True, "held_split": s["held_split"],
+                "live_split": bool(s["gap_after"] is not None and s["gap_after"] >= gap_min), "crux_agreed": False,
+                "narrowed_on_data": False} for s in scores or []]
+    chs = {}
+    for r in opens or []:
+        d = r.get("data") or {}
+        chs[(r["agent"], r["question_id"])] = {
+            "data": {"rebuttal": d.get("rebuttal", ""), "steelman": d.get("steelman", ""), "evidence": d.get("evidence") or [],
+                     "crux": {"claim": ""}, "would_change_my_mind": {"by_date": (d.get("i_am_wrong_if") or {}).get("by_date", "")}},
+            "checks": r.get("checks") or {}}
+    red_in = None
+    if premortem:
+        pd = premortem.get("anon") or premortem.get("data") or {}
+        red_in = {"question_id": premortem["question_id"],
+                  "data": {**premortem_as_red_team(pd), "evidence": (premortem.get("data") or {}).get("evidence", [])}}
+    sheet = split_sheet(day, run_id, day_type, questions, take_p, take_p, debates, chs, {}, takes, locator, gap_min,
+                        red_team=red_in, crux_check=None, ledger=ledger, unpaired=unpaired, lone_outliers=lone_outliers)
+    jby = {it.get("question_id"): it for it in judge_items or []}
+    sby = {s["question_id"]: s for s in scores or []}
+    for bl in sheet["blocks"]:
+        qid = bl["question_id"]
+        if bl["type"] == "consensus":
+            if premortem and premortem.get("question_id") == qid:
+                texts = [clean_text(indicator_text(anonymise_record(s.get("indicator") or {})), 220)
+                         for s in premortem.get("early_signs") or [] if s.get("ok")]
+                texts = [t for t in texts if t]
+                bl["crux"] = texts[0] if texts else ""
+                bl["watch"] = texts[:3]
+            continue
+        it = jby.get(qid)
+        if not (it and it.get("resolvable")):
+            continue
+        ind = anonymise_record(it.get("indicator") or {})
+        bl["crux"] = clean_text(it.get("split_line") or indicator_text(ind), 300)
+        bl["settles_on"] = {"observable": clean_text(indicator_text({**ind, "by_date": ""}), 240),
+                            "by_date": ind.get("by_date", "") if _DATE.match(ind.get("by_date", "") or "") else ""}
+        w = clean_text(it.get("watch_line") or "", 220)
+        bl["watch"] = [w] if w else []
+        if it.get("data_today") in ("favours_high", "favours_low") and it.get("quote_status") == "verified" and it.get("quote"):
+            case = _lean_case(bl, it["data_today"], sby.get(qid))
+            if case:
+                bl["crux_check"] = {"resolved": "leans", "what_the_data_says": f"today's data leans towards the {case}",
+                                    "quote": (it.get("quote") or "")[:200]}
+    return fit_sheet(sheet)
 
 
 NARROWED_NOTE = "New data narrowed this split today without settling it."
@@ -3218,6 +3301,8 @@ def render_split_sheet(sheet: dict) -> str:
             out.append(f"Narrowed note (copy exactly): {block_note(bl)}")
         if bl.get("carried"):
             out.append(f"Carried: {bl['carried']}")
+        for w in bl.get("watch") or []:
+            out.append(f"Watch: {w}")
         out.append("")
     return "\n".join(out).rstrip() + "\n"
 

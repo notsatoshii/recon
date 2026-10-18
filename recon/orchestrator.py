@@ -2331,33 +2331,17 @@ SECTOR CONTEXT (crypto and macro landscape; background, not today's data):
                 "ledger_appended": n, "day_type": day_type}
 
     def split_sheet_d(self, triage: dict, takes: dict, pairing: dict, pos: dict, ledger: list[dict]) -> dict:
-        """WHERE THE VIEWS SPLIT on a Phase D day: debate.split_sheet over the cross-exam scores (as debated blocks),
-        the openings (rebuttal / steelman) and the pre-mortem (as the red team)."""
+        """WHERE THE VIEWS SPLIT on a Phase D day (debate.split_sheet_d): counts from the take values, the cross-exam
+        scores as debated blocks, crux / settles on / Watch lines from the judge, the pre-mortem as the case against."""
         items = self.load_items("debate")
         jdg = self.load("judge") if self.art("judge").exists() else {}
-        gap_min = int(pairing.get("gap_min") or debate.GAP_MIN_DEFAULT)
-        debates = [{"question_id": s["question_id"], "high": s["high"], "low": s["low"], "gap_before": s["gap_before"],
-                    "gap_after": s["gap_after"], "in_split": True, "held_split": s["held_split"],
-                    "live_split": bool(s["gap_after"] is not None and s["gap_after"] >= gap_min), "crux_agreed": False,
-                    "narrowed_on_data": False} for s in pos.get("xexam") or []]
-        chs = {}
-        for r in items.values():
-            if r.get("type") == "open":
-                ind = r["data"].get("i_am_wrong_if") or {}
-                chs[(r["agent"], r["question_id"])] = {
-                    "data": {"rebuttal": r["data"].get("rebuttal", ""), "steelman": r["data"].get("steelman", ""),
-                             "evidence": r["data"].get("evidence") or [], "crux": {"claim": ""},
-                             "would_change_my_mind": {"by_date": ind.get("by_date", "")}},
-                    "checks": r.get("checks") or {}}
-        pm = (jdg or {}).get("premortem")
-        red_in = ({"question_id": pm["question_id"],
-                   "data": {**debate.premortem_as_red_team(pm["anon"]), "evidence": pm["data"].get("evidence", [])}}
-                  if pm else None)
-        return debate.split_sheet(self.day, self.run_id, pairing.get("day_type", "no_questions"),
-                                  triage.get("questions") or [], pos["take_p"], pos["final"], debates, chs, {}, takes,
-                                  self.locator(), gap_min, red_team=red_in, crux_check=None, ledger=ledger,
-                                  unpaired=[u["question_id"] for u in pairing.get("unpaired") or []],
-                                  lone_outliers=[x["question_id"] for x in pairing.get("lone_outliers") or []])
+        return debate.split_sheet_d(
+            self.day, self.run_id, pairing.get("day_type", "no_questions"), triage.get("questions") or [], pos["take_p"],
+            pos.get("xexam") or [], [r for r in items.values() if r.get("type") == "open"],
+            ((jdg or {}).get("judge") or {}).get("items") or [], (jdg or {}).get("premortem"), takes, self.locator(),
+            int(pairing.get("gap_min") or debate.GAP_MIN_DEFAULT), ledger=ledger,
+            unpaired=[u["question_id"] for u in pairing.get("unpaired") or []],
+            lone_outliers=[x["question_id"] for x in pairing.get("lone_outliers") or []])
 
     def indicator_lines(self, qs: list[dict]) -> list[dict]:
         """Ledger lines of type indicator: the judge's checkable indicator per cross-examined question and the
@@ -2614,7 +2598,7 @@ Start with the line '# RECON DAILY BRIEF'. Use EXACTLY this format — 11 sectio
 - KOREA (4-8 bullets from the Korea raw data: Korean AI adoption and products, regulation, 가상자산 market and policy, prediction markets. Write in English; keep Korean company and product names in Korean in parentheses the first time.)
 - AI EDUCATION (3-6 bullets on what is relevant to teaching practical AI workflows to office workers, students, and founders: learner-facing tools, corporate training moves, policy, competitor programs. End with one line starting 'Curriculum idea:'.)
 - RISKS (Top 2-3. Plain language. How likely, how bad.)
-- WHAT TO WATCH (3-5 concrete things with specific dates. Take the dated "settles on" items from the split sheet first.)
+- WHAT TO WATCH (3-5 concrete things with specific dates. Take the dated "settles on" items and the "Watch" lines from the split sheet first.)
 - SCORECARD (Score the predictions in the SCORECARD raw section below: RIGHT, WRONG, or PENDING, using today's data. A PENDING line gives the expiry written in parentheses at the end of its prediction line, copied exactly, or 'no dated horizon' where the line says so; never work out an expiry yourself. No hedging. Only predictions listed there.)
 
 Each fact appears once: do not repeat the same number or development in several sections.
