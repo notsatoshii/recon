@@ -1920,8 +1920,37 @@ SECTOR CONTEXT (crypto and macro landscape; background, not today's data):
         return blocks, asked, sides
 
     def judge_candidates(self, triage: dict, takes: dict, items: dict, asked: dict) -> str:
-        """Lines for the judge beyond both sides' excerpts: none by default; step 8 adds crux-search retrieval."""
-        return "- none"
+        """Lines for the judge beyond both sides' excerpts. RECON_CRUX_SEARCH=1 (default 0): the Phase C crux search
+        over the run folder, run on the indicators' words (debate.crux_search), as retrieval only: its hits are
+        shown to the judge and saved in cruxsearch.json, and never gate a move or count as evidence. Off: none."""
+        if os.environ.get("RECON_CRUX_SEARCH", "0").strip() != "1":
+            return "- none"
+        qm = self.qmap(triage)
+        out, entries = [], []
+        for qid in sorted(asked):
+            q = qm.get(qid) or {}
+            texts, quotes = [], []
+            for r in items.values():
+                if r.get("question_id") != qid and r.get("type") != "delphi":
+                    continue
+                d = r.get("data") or {}
+                inds = [d.get("i_am_wrong_if"), (d.get("on_their_indicator") or {}).get("counter")]
+                inds += [v.get("indicator") for v in r.get("revisions", []) if v.get("question_id") == qid]
+                texts += [" ".join(str((x or {}).get(k, "")) for k in ("observable", "level")) for x in inds if x]
+                if r.get("type") in ("open", "reply"):
+                    quotes += rec_quotes(r) + take_quotes(takes.get(r["agent"]) or {})
+            terms = self.search_terms([t for t in texts if t.strip()], q.get("text", ""), q.get("kind", ""))
+            res = debate.crux_search(terms, self.corpus_docs(), quotes, self.locator(),
+                                     exclude_positions=debate.quote_positions(quotes, self.locator()),
+                                     kind=q.get("kind", ""))
+            entries.append({"question_id": qid, "crux_terms": terms, "use": "judge retrieval (RECON_CRUX_SEARCH=1)",
+                            **{k: v for k, v in res.items() if k != "shared"}})
+            if res["hits"]:
+                out.append(f"[{qid}]\n{res['block']}")
+        self.save("cruxsearch", {"pairs": [], "redteam": None, "judge": entries})
+        self.log(f"  Crux search (RECON_CRUX_SEARCH=1, judge retrieval only): "
+                 + ", ".join(f"[{e['question_id']}] {len(e['hits'])} hits" for e in entries))
+        return "\n\n".join(out) or "- none"
 
     def ph_judge(self, triage: dict, takes: dict, pairing: dict, items: dict):
         """The judge (1 neutral call: one checkable indicator per cross-examined question, its quote re-checked in code)

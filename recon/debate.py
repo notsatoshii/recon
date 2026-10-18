@@ -30,6 +30,13 @@ Phase D (docs/v2/phase-d-debate-upgrade.md):
   stage_values      take values -> after Delphi -> finals
   xexam_score       XEXAM_SCORE of one cross-examined pair; ev_counts scores evidence quality in code
   plan_phase_d      the Phase D calls that fit the planning budget
+  split_sheet_d     the split sheet on a Phase D day (counts from the takes; judge and pre-mortem lines)
+
+Retired behind RECON_CRUX_SEARCH=0 (phase-d-debate-upgrade.md 'Reuse and retire'): gate_move, cap_pair,
+pair_allowance, qualifying_lines, quote_qualifies, crux_search, crux_terms, crux_keywords, resolution_words,
+entity_backed, drop_frequent_entities and score_debate's closed-on-data logic run only in the Phase C debate
+(RECON_DEBATE=c). With RECON_CRUX_SEARCH=1 a Phase D run also calls crux_search (and the term functions it needs)
+to show the judge candidate lines, never as a gate. Delete them with their tests after two green weeks.
 """
 from __future__ import annotations
 

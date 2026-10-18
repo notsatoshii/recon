@@ -35,6 +35,24 @@ sys.exit(o.main(sys.argv[2:]))
 """
 
 
+# Phase D step 8: the retired Phase C gate and crux-search functions raise if anything calls them.
+GUARD_RETIRED = r"""
+import sys
+sys.path.insert(0, sys.argv[1])
+from recon import debate, orchestrator as o
+def retired(name):
+    def f(*a, **k):
+        raise RuntimeError(f"retired function called: {name}")
+    return f
+names = ["gate_move", "cap_pair", "pair_allowance", "qualifying_lines", "quote_qualifies", "score_debate"]
+if sys.argv[2] == "all":
+    names += ["crux_search", "crux_terms", "crux_keywords", "resolution_words", "entity_backed", "drop_frequent_entities"]
+for n in names:
+    setattr(debate, n, retired(n))
+sys.exit(o.main(sys.argv[3:]))
+"""
+
+
 def tree_hash(root: Path) -> str:
     h = hashlib.sha1()
     if root.exists():
@@ -341,6 +359,29 @@ class DryRunEndToEnd(unittest.TestCase):
         self.assertEqual(pr["pairs"], [])
         self.assertIn(pr["day_type"], ("split_unpaired", "consensus"))
         self.assertFalse([c for c in self.calls("d5") if c["key"].startswith(("open__", "reply__"))])
+
+    def test_phase_d_never_calls_the_retired_gate(self):
+        """Step 8: with RECON_CRUX_SEARCH unset no retired function runs on a Phase D day; with RECON_CRUX_SEARCH=1
+        the crux search only feeds the judge (cruxsearch.json 'judge'), the gate functions still never run, and the
+        call count does not change."""
+        base = {**os.environ, "RECON_HOME": str(self.tmp), "PYTHONIOENCODING": "utf-8"}
+        for k in ("RECON_DEBATE", "RECON_CRUX_SEARCH", "RECON_DRY_SPREAD", "RECON_CALL_BUDGET", "RECON_CALL_CEILING",
+                  "RECON_STOP_AFTER", "RECON_DELPHI", "RECON_XEXAM"):
+            base.pop(k, None)
+        for rid, mode, env in (("g1", "all", {}), ("g2", "gate", {"RECON_CRUX_SEARCH": "1"})):
+            p = subprocess.run([sys.executable, "-c", GUARD_RETIRED, str(self.tmp), mode, "--package-from",
+                                str(self.tmp / "fixtures" / "2026-10-04"), "--dry-run", "--as-of", "2026-10-04",
+                                "--run-id", rid], capture_output=True, text=True, encoding="utf-8",
+                               env={**base, **env}, timeout=300)
+            self.assertEqual(p.returncode, 0, p.stdout[-3000:] + p.stderr[-2000:])
+            self.assertNotIn("retired function called", p.stdout)
+            self.assertEqual(self.load(rid, "pairing")["day_type"], "debate")
+        self.assertFalse((self.rd("g1") / "phases" / "cruxsearch.json").exists())
+        cs = self.load("g2", "cruxsearch")
+        self.assertEqual(sorted(e["question_id"] for e in cs["judge"]),
+                         sorted(self.load("g2", "judge")["judge"]["asked"]))
+        self.assertEqual(cs["pairs"], [])
+        self.assertEqual(len(self.calls("g1")), len(self.calls("g2")))
 
     def test_resolve_phase_voids_and_asks_about_events(self):
         """Phase D step 1: the resolve phase writes resolution lines (a void one here: no network on a dry run) and
