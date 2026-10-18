@@ -8,7 +8,7 @@
  "started": "2026-10-18T17:34:35+09:00",
  "finished": "2026-10-18T17:48:23+09:00",
  "wall_seconds": 828,
- "state_dir": "/home/recon/recon-v2/briefs/2026-10-18-dlive1/state",
+ "state_dir": "/nonexistent/recon-export-fixture/state",
  "questions": [
   {
    "id": "q1",
