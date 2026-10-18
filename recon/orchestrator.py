@@ -20,8 +20,18 @@ replaces the middle, from the fixed TENSIONS challenges to the vote:
   - cruxcheck: 0-1 neutral referee call on the widest debate. positions, split, memory: no LLM.
   - synthesis reads the split sheet and the lens notes (not the full record) and writes WHERE THE VIEWS
     SPLIT with code-rendered count phrases; checks add agent names, count matches and process words.
-  - RECON_CALL_BUDGET (24, planning) and RECON_CALL_CEILING (32, hard) bound the calls; every skip is in
-    run.json usage.budget_skips.
+  - RECON_CALL_BUDGET (24, planning; 30 with Phase D) and RECON_CALL_CEILING (32, hard) bound the calls; every
+    skip is in run.json usage.budget_skips.
+
+Phase D (docs/v2/phase-d-debate-upgrade.md) replaces challenges / responses / cruxcheck when the debate is on:
+  - pairing plans the day: the top 1-2 splits for the cross-exam (pair(); 1 on a quiet day), the Delphi targets
+    (debate.delphi_targets), the judge and the pre-mortem, fitted to the budget (debate.plan_phase_d); the
+    calibration gate (<state>/questions/calibration.json from brier_report.py, or RECON_DELPHI=0 / RECON_XEXAM=0)
+    can switch the Delphi round or the cross-exam off.
+  - debate: [cross-exam openings (2 a pair) || Delphi (1 per target agent, <= 6)], then the replies (2 a pair).
+    Moves are labelled (verified quote / argument / held), never gated.
+  - judge: [1 neutral call turning the indicators into checkable form, its quote re-checked || 1 pre-mortem].
+  - positions: take -> after Delphi -> finals; the split sheet counts the take values, so the round-0 split stays.
 
 Usage
   python3 recon/orchestrator.py [--skip-collect] [--no-telegram] [--run-id ID] [--as-of DATE]
@@ -36,10 +46,11 @@ Usage
                historical context, and nothing read from data-sources/.
   --state-dir  where memory, state, ledger and agent scores live (default config/ for the daily run).
   RECON_STOP_AFTER=<phase>  return after that phase (spread probe: takes; stability rerun: pairing).
-  RECON_DEBATE=0|1  the debate (pairs, red team, challenges, responses, crux check). Default: off for the daily
-               run (untagged, not dry, not replay) until the §0.1 spread gate and the §15.5/§17.5 runs pass
-               (§18 cutover; cron_run.sh sets it), on for replays, dry runs and tagged validation runs. Off,
-               a split prints as undebated blocks from the takes (split_unpaired).
+  RECON_DEBATE=0|1|c  the debate. 1: Phase D. c: the Phase C debate (pairs, red team, challenges, responses,
+               crux check), kept for comparison until it is deleted. Default: off for the daily run (untagged, not
+               dry, not replay) until the Phase D validation runs pass (cron_run.sh sets 0), Phase D for replays, dry
+               runs and tagged validation runs. Off, a split prints as undebated blocks from the takes
+               (split_unpaired); the resolve phase runs either way.
   RECON_TAKE_REASKS=<n>  take re-asks per run (default 2); a take is re-asked only when it has no positions.
   --restore-state  put memory and state back from <run>/phases/state_before_memory.json and exit (cron fallback).
 Exit code 0 when a brief was written (or the run stopped where RECON_STOP_AFTER said), 1 otherwise.
@@ -68,9 +79,9 @@ from recon import agentmem, debate, evidence, llm, prompts, schemas  # noqa: E40
 RECON_HOME = llm.RECON_HOME
 AGENTS = schemas.AGENTS
 PHASES = ["score", "collect", "context", "package", "resolve", "triage", "takes", "pairing", "challenges",
-          "responses", "cruxcheck", "positions", "split", "memory", "synthesis", "checks",
+          "responses", "cruxcheck", "debate", "judge", "positions", "split", "memory", "synthesis", "checks",
           "deliver", "record"]
-ITEM_DIRS = {"takes", "challenges", "responses"}
+ITEM_DIRS = {"takes", "challenges", "responses", "debate", "judge"}
 PHASE_ALIASES = {"deepdive": "cruxcheck"}   # --from-phase deepdive still works, with a log line
 BRIEF_SECTIONS = schemas.BRIEF_SECTIONS
 PARALLEL = int(os.environ.get("RECON_PARALLEL", "5"))
@@ -274,7 +285,6 @@ class Run:
         self._shared: str | None = None
         self._locator: evidence.Locator | None = None
         self._lens: dict | None = None
-        self.budget = int(os.environ.get("RECON_CALL_BUDGET", "24"))
         self.ceiling = int(os.environ.get("RECON_CALL_CEILING", "32"))
         self.ncalls = 0
         self.take_reasks = 0
@@ -282,15 +292,24 @@ class Run:
         self.stop_after = os.environ.get("RECON_STOP_AFTER", "").strip()
         self.active = self.roster()
         sw = os.environ.get("RECON_DEBATE", "").strip().lower()
-        if sw in ("1", "on", "true", "yes"):
+        if sw in ("1", "on", "true", "yes", "d"):
             self.debate_on = True
         elif sw in ("0", "off", "false", "no"):
             self.debate_on = False
+        elif sw == "c":
+            self.debate_on = True
         else:
-            # The daily run debates only after the §18 cutover: the spread probe has failed twice (§0.1, model log)
+            # The daily run debates only after the cutover (phase-d-debate-upgrade.md 'Validation, then on'; cron_run.sh
+            # sets RECON_DEBATE=0 until the env file says 1)
             self.debate_on = bool(self.dry or self.replay or self.tagged)
-        self.debate_off_reason = ("debate off until the spread gate and the validation runs pass "
-                                  "(phase-c-spec §0.1, §18; RECON_DEBATE)")
+        # Phase D (docs/v2/phase-d-debate-upgrade.md) is the debate; RECON_DEBATE=c runs the Phase C debate (crux
+        # search, evidence gate, crux check) for comparison until its code is deleted.
+        self.debate_mode = "off" if not self.debate_on else ("c" if sw == "c" else "d")
+        self.phase_d = self.debate_mode == "d"
+        self.debate_off_reason = ("debate off until the Phase D validation runs pass "
+                                  "(phase-d-debate-upgrade.md; RECON_DEBATE)")
+        # Planning budget (§1.1): Phase D plans 29 calls on a split day (phase-d-debate-upgrade.md 'Budget and order')
+        self.budget = int(os.environ.get("RECON_CALL_BUDGET") or (30 if self.phase_d else 24))
 
     # ── logging and artifacts ──────────────────────────────
     def log(self, msg: str) -> None:
@@ -1121,6 +1140,8 @@ SECTOR CONTEXT (crypto and macro landscape; background, not today's data):
         return {frozenset((x["high"], x["low"])) for x in pr.get("pairs", []) if x.get("high") and x.get("low")}
 
     def ph_pairing(self, triage: dict, takes: dict):
+        if self.phase_d:
+            return self.ph_pairing_d(triage, takes)
         self.log("PHASE 3.5: Pairing by widest probability gap (no LLM)...")
         qs = triage.get("questions") or []
         p = {a: debate.take_values(t) for a, t in takes.items()}
@@ -1560,6 +1581,587 @@ SECTOR CONTEXT (crypto and macro landscape; background, not today's data):
                 "agent": c.get("agent"), "gap_before": c["gap_before"], "gap_after": c["gap_after"], "data": data,
                 "quote_status": loc.get("status"), "flags": flags, "calls": [meta]}
 
+    # ── Phase D: plan, Delphi + cross-exam, judge + pre-mortem (docs/v2/phase-d-debate-upgrade.md) ──
+    def calibration(self) -> dict:
+        """{delphi, xexam}: each on unless the calibration gate (brier_report.py -> <state>/questions/calibration.json)
+        or RECON_DELPHI=0 / RECON_XEXAM=0 turned it off."""
+        try:
+            comps = json.loads(read(self.ledger_path.parent / "calibration.json") or "{}").get("components") or {}
+        except (json.JSONDecodeError, AttributeError):
+            comps = {}
+        return {k: bool((comps.get(k) or {}).get("on", True)) and os.environ.get(env, "1").strip() != "0"
+                for k, env in (("delphi", "RECON_DELPHI"), ("xexam", "RECON_XEXAM"))}
+
+    def premortem_pick(self, qs: list[dict], p: dict, evq: dict, active: list[str], res: dict, gap_min: int):
+        """Consensus day: pair()'s red-team pick (the furthest eligible agent on the top question). Split day: the
+        highest-weight question that is neither a split nor cross-examined, and its furthest eligible agent."""
+        if res["day_type"] == "consensus" and res.get("red_team"):
+            return dict(res["red_team"])
+        skip = set()
+        if res["day_type"] != "consensus":
+            skip = (set(debate.split_questions(qs, p, gap_min)) | {x["question_id"] for x in res.get("pairs") or []}
+                    | {u["question_id"] for u in res.get("unpaired") or []})
+        for q in sorted((q for q in qs if q["id"] not in skip), key=lambda q: (-int(q.get("weight", 1) or 1), q["id"])):
+            rt = debate.pick_red_team(q, p, evq, active)
+            if rt:
+                return rt
+        return None
+
+    def ph_pairing_d(self, triage: dict, takes: dict):
+        """Phase D plan (no LLM): the top 1-2 splits for the cross-exam (pair(); 1 on a quiet day), the Delphi targets,
+        whether the judge and the pre-mortem run, all fitted to the planning budget (debate.plan_phase_d)."""
+        self.log("PHASE 3.5: Phase D plan: cross-exam pairs, Delphi targets, judge, pre-mortem (no LLM)...")
+        qs = triage.get("questions") or []
+        p = {a: debate.take_values(t) for a, t in takes.items()}
+        evq = self.take_evidence(takes)
+        active = sorted(takes)
+        depth = triage.get("depth", "normal")
+        want = 1 if depth == "quiet" else 2
+        gap_min = int(os.environ.get("RECON_PAIR_GAP", debate.GAP_MIN_DEFAULT))
+        gate = self.calibration()
+        used = self.ncalls
+        at_ceiling = used >= self.ceiling
+        why = "ceiling" if at_ceiling else "budget"
+        x_off = None if gate["xexam"] else "cross-exam off (calibration gate or RECON_XEXAM=0)"
+        yp = self.yesterday_pairs()
+        full = debate.pair(qs, p, evq, active, depth, want, gap_min, yp, off_reason=x_off)
+        consensus = full["day_type"] in ("consensus", "no_questions")
+        none = {"by_agent": {}, "questions": {}, "dropped": []}
+        dt0 = debate.delphi_targets(qs, p, full["pairs"], gap_min, consensus=consensus) if gate["delphi"] and qs else none
+        pm = self.premortem_pick(qs, p, evq, active, full, gap_min) if qs else None
+        plan = debate.plan_phase_d(used, self.budget, SYNTH_CALLS, len(full["pairs"]), len(dt0["by_agent"]),
+                                   judge=not consensus, premortem=pm is not None)
+        if at_ceiling:
+            plan.update({"pairs": 0, "delphi": 0, "judge": False, "premortem": False, "planned": 0})
+        res = full
+        if plan["pairs"] < len(full["pairs"]):
+            res = debate.pair(qs, p, evq, active, depth, plan["pairs"], gap_min, yp, off_reason=x_off)
+            kept = {(x["question_id"], x["high"], x["low"]) for x in res["pairs"]}
+            for x in full["pairs"]:
+                if (x["question_id"], x["high"], x["low"]) not in kept:
+                    self.skip("pairing", f"pair {x['question_id']} {x['high']}-{x['low']}", why)
+            if res["day_type"] == "debate":
+                res["unpaired"] = debate.dropped_unpaired(res, full, why, p)
+        dt = (debate.delphi_targets(qs, p, res["pairs"], gap_min, consensus=consensus, max_calls=plan["delphi"])
+              if gate["delphi"] and qs and plan["delphi"] else none)
+        for a in dt0["by_agent"]:
+            if a not in dt["by_agent"]:
+                self.skip("pairing", f"delphi {a}", why)
+        judge = bool(plan["judge"] and (res["pairs"] or (dt["by_agent"] and not consensus)))
+        if pm and not plan["premortem"]:
+            self.skip("pairing", f"premortem {pm['agent']} {pm['question_id']}", why)
+        pm = pm if plan["premortem"] else None
+        res["red_team"] = pm if res["day_type"] == "consensus" else None
+        res["positions_evidence"] = evq
+        res["budget"] = {"used": used, "budget": self.budget, "ceiling": self.ceiling, "target_before_budget": want,
+                         "crux_check_planned": False}
+        res["debate"] = {"enabled": True, "reason": ""}
+        res["phase_d"] = {"plan": plan, "gate": gate, "delphi": dt, "judge": judge, "premortem": pm, "want_pairs": want}
+        self.check_artifact("pairing", res, "pairing.json")
+        self.log(f"  Day type: {res['day_type']}; gap_min {gap_min}; {len(res['pairs'])} cross-exam pair(s) of {want}; "
+                 f"Delphi {len(dt['by_agent'])} call(s) on {len(dt['questions'])} question(s); judge {judge}; "
+                 f"pre-mortem {pm['agent'] + ' on ' + pm['question_id'] if pm else 'none'}; calls used {used}, "
+                 f"planned {plan['planned']} + synthesis {SYNTH_CALLS} (budget {self.budget}, ceiling {self.ceiling}); "
+                 f"gate delphi {gate['delphi']}, xexam {gate['xexam']}")
+        for x in res["pairs"]:
+            self.log(f"    [{x['question_id']}] {x['high']} {x['p_high']}% vs {x['low']} {x['p_low']}% (gap {x['gap']})")
+        for a, q in dt["by_agent"].items():
+            self.log(f"    delphi {a}: {', '.join(q)}")
+        for u in res["unpaired"]:
+            self.log(f"    unpaired [{u['question_id']}] range {u['range']}: {u['reason']}")
+        return res
+
+    def ph_debate(self, triage: dict, takes: dict, pairing: dict):
+        """Stage A in parallel: the cross-exam openings (2 per pair) and the Delphi calls (1 per target agent). Stage B:
+        each side replies to the other's opening. Records in phases/debate/; moves are labelled, never gated."""
+        self.log(f"PHASE 4: Delphi round and cross-exam openings, then the replies (parallel {PARALLEL})...")
+        d = self.pdir / "debate"
+        d.mkdir(parents=True, exist_ok=True)
+        qm = self.qmap(triage)
+        p = {a: debate.take_values(t) for a, t in takes.items()}
+        evq = pairing.get("positions_evidence") or self.take_evidence(takes)
+        pd = pairing.get("phase_d") or {}
+        loc = self.locator()
+
+        def cached(name):
+            f = d / f"{name}.json"
+            return json.loads(f.read_text(encoding="utf-8")) if f.exists() else None
+
+        def save(name, rec):
+            (d / f"{name}.json").write_text(json.dumps(rec, ensure_ascii=False, indent=1), encoding="utf-8")
+            return rec
+
+        def opening(c, t, qid):
+            name = f"open__{c}__{qid}"
+            rec = cached(name)
+            if rec:
+                return rec
+            q = qm[qid]
+            mine, theirs = position(takes[c], qid), position(takes[t], qid)
+            my_ev, their_ev = mine.get("evidence") or [], theirs.get("evidence") or []
+            prompt = prompts.render(
+                "xexam_open", role=self.role(c), debate_format=DEBATE_FORMAT, qid=qid,
+                question=debate.anonymise(q["text"]), resolves_on=q.get("resolves_on") or "not dated",
+                settles_with=debate.anonymise(q.get("settles_with") or "not stated"),
+                my_p=p[c][qid], my_reason=debate.anonymise(mine.get("reason", "")), my_evidence=ev_lines(my_ev),
+                their_p=p[t][qid], their_reason=debate.anonymise(theirs.get("reason", "")),
+                their_summary=debate.anonymise(takes[t].get("summary", "")), their_evidence=ev_lines(their_ev),
+                excerpts=debate.excerpts([my_ev, their_ev], loc))
+            data, meta = self.call("debate", name, debate.side_tier(c), prompt, schema="xexam_open", agent=c)
+            data["question_id"] = qid
+            prob, nflags = debate.norm_p(data.get("probability"), p[c])
+            data["probability"] = prob if prob is not None else p[c][qid]
+            ok, why = debate.indicator_ok(data.get("i_am_wrong_if"), self.day, q.get("resolves_on", ""))
+            return save(name, {"type": "open", "agent": c, "target": t, "question_id": qid, "data": data,
+                               "anon": debate.anonymise_record(data), "evidence": self.ev_checked(data.get("evidence")),
+                               "indicator_ok": ok, "indicator_problems": why,
+                               "checks": {"flags": debate.challenge_checks(data) + nflags}, "calls": [meta]})
+
+        def reply(a, other, qid, op):
+            name = f"reply__{a}__{qid}"
+            rec = cached(name)
+            if rec:
+                return rec
+            q = qm[qid]
+            an = op["anon"]
+            ind = an.get("i_am_wrong_if") or {}
+            their_ind = debate.indicator_text(ind) or "none given"
+            if ind.get("if_true"):
+                their_ind += f" (if true: {ind['if_true'].replace('_', ' ')})"
+            mine = position(takes[a], qid)
+            my_ev = mine.get("evidence") or []
+            their_ev = (position(takes[other], qid).get("evidence") or []) + (op["data"].get("evidence") or [])
+            prompt = prompts.render(
+                "xexam_reply", role=self.role(a), debate_format=DEBATE_FORMAT, qid=qid,
+                question=debate.anonymise(q["text"]), resolves_on=q.get("resolves_on") or "not dated",
+                my_p=p[a][qid], my_reason=debate.anonymise(mine.get("reason", "")), my_evidence=ev_lines(my_ev),
+                steelman=an.get("steelman", ""), their_indicator=their_ind, rebuttal=an.get("rebuttal", ""),
+                their_evidence=ev_lines(an.get("evidence")), excerpts=debate.excerpts([my_ev, their_ev], loc))
+            data, meta = self.call("debate", name, debate.side_tier(a), prompt, schema="xexam_reply", agent=a)
+            data["question_id"] = qid
+            take = p[a][qid]
+            new, flags = debate.norm_p(data.get("new_probability"), p[a])
+            if new is None:
+                new, flags = take, flags + ["no probability"]
+            if data.get("verdict") == "hold" and new != take:
+                flags.append("hold but moved")
+                new = take
+            ev = self.ev_checked(data.get("new_evidence"))
+            toward = p[other][qid] - take
+            # The other view's verified quotes back a move towards it: being persuaded by them is the normal way a
+            # debate moves anyone (the Phase C gate forbade exactly that).
+            backing = ev + ((op.get("evidence") or []) if toward and (new - take) * toward > 0 else [])
+            oti = data.get("on_their_indicator") or {}
+            cok = debate.indicator_ok(oti.get("counter"), self.day, q.get("resolves_on", "")) \
+                if oti.get("verdict") == "counter" else (None, [])
+            return save(name, {"type": "reply", "agent": a, "opponent": other, "question_id": qid, "data": data,
+                               "anon": debate.anonymise_record(data), "evidence": ev,
+                               "move": {"take": int(take), "new": int(new), "label": debate.label_move(take, new, backing),
+                                        "flags": flags},
+                               "counter_ok": cok[0], "counter_problems": cok[1], "calls": [meta]})
+
+        def delphi(a, qids):
+            name = f"delphi__{a}"
+            rec = cached(name)
+            if rec:
+                return rec
+            blocks, sides, opp_by = [], [], {}
+            for qid in qids:
+                q = qm[qid]
+                vals = sorted(v[qid] for v in p.values() if qid in v)
+                mine = position(takes[a], qid)
+                opp = debate.opposing_reasons(qid, p, evq, a, takes)
+                opp_by[qid] = opp
+                lines = [f"QUESTION [{qid}]: {debate.anonymise(q['text'])} (resolves {q.get('resolves_on') or 'not dated'}; "
+                         f"settles with: {debate.anonymise(q.get('settles_with') or 'not stated')})",
+                         "THE LENSES' NUMBERS, LOW TO HIGH (yours included, no names): "
+                         + ", ".join(f"{int(v)}%" for v in vals),
+                         f"YOUR TAKE: {p[a][qid]}% — {debate.anonymise(mine.get('reason', ''))}"]
+                for tag, o in zip(("reason_a", "reason_b"), opp):
+                    lines.append(f"{tag} ({o['p']}%): {debate.anonymise(o['reason'])}")
+                    lines += [f"   - [{e.get('section', '')}] \"{(e.get('quote') or '')[:220]}\"" for e in o["evidence"]]
+                if not opp:
+                    lines.append("(no reason from the other side of the median today)")
+                blocks.append("\n".join(lines))
+                sides.append((mine.get("evidence") or []) + [e for o in opp for e in o["evidence"]])
+            prompt = prompts.render("delphi", role=self.role(a), debate_format=DEBATE_FORMAT, day=self.day,
+                                    items="\n\n".join(blocks), excerpts=debate.excerpts(sides, loc))
+            data, meta = self.call("debate", name, debate.side_tier(a), prompt, schema="delphi", agent=a)
+            got = {}
+            for r in data.get("revisions") or []:
+                if r.get("question_id") in qids:
+                    got.setdefault(r["question_id"], r)
+            revs = []
+            for qid in qids:
+                take = p[a][qid]
+                r = got.get(qid)
+                if not r:
+                    revs.append({"question_id": qid, "take": take, "new": take, "verdict": "missing", "moved_by": "none",
+                                 "label": "held", "reason": "", "evidence": [], "indicator": None, "indicator_ok": False,
+                                 "indicator_problems": ["no revision for this question"], "flags": ["missing"]})
+                    continue
+                new, flags = debate.norm_p(r.get("new_probability"), p[a])
+                if new is None:
+                    new, flags = take, flags + ["no probability"]
+                if r.get("verdict") != "revise" and new != take:
+                    flags.append("hold but moved")
+                    new = take
+                ev = self.ev_checked(r.get("evidence"))
+                backing = list(ev)
+                k = {"reason_a": 0, "reason_b": 1}.get(r.get("moved_by"))
+                if k is not None and k < len(opp_by[qid]):
+                    backing += self.ev_checked(opp_by[qid][k]["evidence"])
+                ok, why = debate.indicator_ok(r.get("would_change_my_mind"), self.day, qm[qid].get("resolves_on", ""))
+                revs.append({"question_id": qid, "take": int(take), "new": int(new), "verdict": r.get("verdict"),
+                             "moved_by": r.get("moved_by"), "label": debate.label_move(take, new, backing),
+                             "reason": r.get("reason", ""), "evidence": ev, "indicator": r.get("would_change_my_mind"),
+                             "indicator_ok": ok, "indicator_problems": why, "flags": flags})
+            return save(name, {"type": "delphi", "agent": a, "questions": list(qids), "data": data, "revisions": revs,
+                               "opposing": {qid: [o["agent"] for o in opp_by[qid]] for qid in qids}, "calls": [meta]})
+
+        pairs = pairing.get("pairs") or []
+        jobs = []
+        for x in pairs:
+            hi, lo, qid = x["high"], x["low"], x["question_id"]
+            jobs.append((f"open__{hi}__{qid}", (lambda c=hi, t=lo, q=qid: opening(c, t, q))))
+            jobs.append((f"open__{lo}__{qid}", (lambda c=lo, t=hi, q=qid: opening(c, t, q))))
+        for a, qids in ((pd.get("delphi") or {}).get("by_agent") or {}).items():
+            if a in takes:
+                jobs.append((f"delphi__{a}", (lambda a=a, qs=qids: delphi(a, [q for q in qs if q in qm]))))
+        res = self.parallel(jobs)
+        jobs_b = []
+        for x in pairs:
+            hi, lo, qid = x["high"], x["low"], x["question_id"]
+            op_hi, op_lo = res.get(f"open__{hi}__{qid}"), res.get(f"open__{lo}__{qid}")
+            if isinstance(op_lo, dict):
+                jobs_b.append((f"reply__{hi}__{qid}", (lambda a=hi, o=lo, q=qid, op=op_lo: reply(a, o, q, op))))
+            if isinstance(op_hi, dict):
+                jobs_b.append((f"reply__{lo}__{qid}", (lambda a=lo, o=hi, q=qid, op=op_hi: reply(a, o, q, op))))
+        res.update(self.parallel(jobs_b))
+        ok, failed = [], []
+        for k, r in res.items():
+            if isinstance(r, BudgetSkip):
+                self.log(f"  {k}: skipped (call ceiling)")
+                failed.append(k)
+            elif isinstance(r, Exception):
+                self.log(f"  {k}: FAILED ({str(r)[:200]})")
+                failed.append(k)
+            else:
+                ok.append(k)
+                if r["type"] == "delphi":
+                    moved = [f"{v['question_id']} {v['take']}->{v['new']} ({v['label']})" for v in r["revisions"]
+                             if v["new"] != v["take"]]
+                    self.log(f"  {k}: {len(r['revisions'])} question(s), " + (", ".join(moved) or "held on all"))
+                elif r["type"] == "reply":
+                    mv = r["move"]
+                    self.log(f"  {k}: {r['data'].get('verdict')} {mv['take']}% -> {mv['new']}% ({mv['label']}); their "
+                             f"indicator: {(r['data'].get('on_their_indicator') or {}).get('verdict', '')}"
+                             + (f"; flags: {', '.join(mv['flags'])}" if mv["flags"] else ""))
+                else:
+                    self.log(f"  {k}: indicator {'ok' if r['indicator_ok'] else 'not checkable: ' + '; '.join(r['indicator_problems'])}"
+                             + (f"; flags: {', '.join(r['checks']['flags'])}" if r["checks"]["flags"] else ""))
+        self.log(f"  Debate complete ({len(ok)}/{len(res)} calls' records)")
+        return {"ok": sorted(ok), "failed": sorted(failed), "planned": [k for k, _ in jobs] + [k for k, _ in jobs_b]}
+
+    def judge_blocks(self, triage: dict, takes: dict, pairing: dict, items: dict) -> tuple[list[str], dict, list]:
+        """The judge's input: one block per cross-examined question (both indicators, the verdicts and counters, where
+        each view started and ended); on a day without a pair, the top split questions' Delphi indicators. Returns
+        (blocks, {qid: resolves_on}, excerpt sides)."""
+        qm = self.qmap(triage)
+        p = {a: debate.take_values(t) for a, t in takes.items()}
+        blocks, asked, sides = [], {}, []
+
+        def ind_line(ind):
+            t = debate.indicator_text(debate.anonymise_record(ind or {}))
+            return (t + (f" (if true: {ind['if_true'].replace('_', ' ')})" if (ind or {}).get("if_true") else "")) if t else "none given"
+        for x in pairing.get("pairs") or []:
+            hi, lo, qid = x["high"], x["low"], x["question_id"]
+            q = qm.get(qid)
+            oh, ol = items.get(f"open__{hi}__{qid}"), items.get(f"open__{lo}__{qid}")
+            if not q or not (oh or ol):
+                continue
+            rh, rl = items.get(f"reply__{hi}__{qid}"), items.get(f"reply__{lo}__{qid}")
+            lines = [f"QUESTION [{qid}]: {debate.anonymise(q['text'])} (resolves {q.get('resolves_on') or 'not dated'}; "
+                     f"settles with: {debate.anonymise(q.get('settles_with') or 'not stated')})"]
+            for label, op, rp_other, own_rp, a in (("HIGHER", oh, rl, rh, hi), ("LOWER", ol, rh, rl, lo)):
+                now = f", {own_rp['move']['new']}% after the cross-exam" if own_rp else ""
+                lines.append(f"THE {label} VIEW started at {p[a][qid]}%{now}: "
+                             f"{debate.clean_text(position(takes[a], qid).get('reason', ''), 300)}")
+                if op:
+                    lines.append(f"  It is wrong if: {ind_line(op['data'].get('i_am_wrong_if'))}")
+                other = "lower" if label == "HIGHER" else "higher"
+                if rp_other:
+                    oti = rp_other["data"].get("on_their_indicator") or {}
+                    c = ind_line(oti.get("counter")) if oti.get("verdict") == "counter" else ""
+                    lines.append(f"  The {other} view on that indicator: {oti.get('verdict', '')} — "
+                                 f"{debate.clean_text(oti.get('why', ''), 240)}" + (f"; its counter: {c}" if c else ""))
+                sides.append((position(takes[a], qid).get("evidence") or []) + ((op or {}).get("data", {}).get("evidence") or []))
+            blocks.append("\n".join(lines))
+            asked[qid] = q.get("resolves_on", "")
+        if not blocks:
+            dq = ((pairing.get("phase_d") or {}).get("delphi") or {}).get("questions") or {}
+            for qid in list(dq)[:2]:
+                q = qm.get(qid)
+                inds = [(r["agent"], v) for r in items.values() if r.get("type") == "delphi"
+                        for v in r.get("revisions", []) if v["question_id"] == qid and v.get("indicator")]
+                if not q or not inds:
+                    continue
+                med = dq[qid].get("median", 50)
+                lines = [f"QUESTION [{qid}]: {debate.anonymise(q['text'])} (resolves {q.get('resolves_on') or 'not dated'}; "
+                         f"settles with: {debate.anonymise(q.get('settles_with') or 'not stated')}). Not cross-examined: "
+                         "the indicators below come from lenses that looked again; none was answered by the other side."]
+                for a, v in inds[:4]:
+                    side = "higher" if v["take"] > med else "lower"
+                    lines.append(f"- a {side} view (started at {v['take']}%, now {v['new']}%) would change its mind if: "
+                                 f"{ind_line(v['indicator'])}")
+                    sides.append(position(takes[a], qid).get("evidence") or [])
+                blocks.append("\n".join(lines))
+                asked[qid] = q.get("resolves_on", "")
+        return blocks, asked, sides
+
+    def judge_candidates(self, triage: dict, takes: dict, items: dict, asked: dict) -> str:
+        """Lines for the judge beyond both sides' excerpts: none by default; step 8 adds crux-search retrieval."""
+        return "- none"
+
+    def ph_judge(self, triage: dict, takes: dict, pairing: dict, items: dict):
+        """The judge (1 neutral call: one checkable indicator per cross-examined question, its quote re-checked in code)
+        and the pre-mortem (1 call), in parallel. Neither decides a move or a winner."""
+        self.log("PHASE 5: Judge (indicators into checkable form) and pre-mortem, in parallel...")
+        d = self.pdir / "judge"
+        d.mkdir(parents=True, exist_ok=True)
+        pd = pairing.get("phase_d") or {}
+        qm = self.qmap(triage)
+        p = {a: debate.take_values(t) for a, t in takes.items()}
+        jobs = []
+        blocks, asked, sides = self.judge_blocks(triage, takes, pairing, items)
+
+        def judge():
+            f = d / "judge.json"
+            if f.exists():
+                return json.loads(f.read_text(encoding="utf-8"))
+            prompt = prompts.render("judge", day=self.day, items="\n\n".join(blocks),
+                                    candidates=self.judge_candidates(triage, takes, items, asked)) + \
+                "\n\nEXCERPTS BOTH VIEWS CITED (the data the judge reads):\n" + debate.excerpts(sides, self.locator())
+            data, meta = self.call("judge", "judge", "analyst", prompt, schema="judge", agent="judge")
+            checked = {}
+            for it in data.get("items") or []:
+                qid = it.get("question_id")
+                if qid in asked and qid not in checked:
+                    c = debate.judge_check(it, self.locator(), self.day, asked[qid])
+                    c["watch_line"] = debate.clean_text(c.get("watch_line", ""), 260)
+                    c["split_line"] = debate.clean_text(c.get("split_line", ""), 400)
+                    checked[qid] = c
+            rec = {"ran": True, "asked": sorted(asked), "items": [checked[q] for q in sorted(checked)], "data": data,
+                   "calls": [meta]}
+            f.write_text(json.dumps(rec, ensure_ascii=False, indent=1), encoding="utf-8")
+            return rec
+
+        def premortem(pm):
+            a, qid = pm["agent"], pm["question_id"]
+            f = d / f"premortem__{a}__{qid}.json"
+            if f.exists():
+                return json.loads(f.read_text(encoding="utf-8"))
+            q = qm[qid]
+            vals = {x: p[x][qid] for x in takes if qid in p[x]}
+            med = statistics.median(vals.values())
+            side = (lambda v: v >= 50) if med >= 50 else (lambda v: v < 50)
+            maj = sorted([x for x in vals if side(vals[x]) and x != a], key=lambda x: (abs(vals[x] - med), x))[:4]
+            reasons = "\n".join(f"- {vals[x]}%: {debate.anonymise(position(takes[x], qid).get('reason', ''))}"
+                                for x in maj) or "- none"
+            maj_ev = [e for x in maj for e in (position(takes[x], qid).get("evidence") or [])][:4]
+            mine = position(takes[a], qid)
+            prompt = prompts.render(
+                "red_team", role=self.role(a), debate_format=DEBATE_FORMAT, qid=qid,
+                question=debate.anonymise(q["text"]), resolves_on=q.get("resolves_on") or "not dated",
+                settles_with=debate.anonymise(q.get("settles_with") or "not stated"), median=int(round(med)),
+                count_phrase=debate.count_phrase(vals, "consensus"), majority_reasons=reasons,
+                my_p=vals.get(a, int(round(med))), my_reason=debate.anonymise(mine.get("reason", "")),
+                excerpts=debate.excerpts([mine.get("evidence") or [], maj_ev], self.locator()))
+            data, meta = self.call("judge", f"premortem__{a}__{qid}", debate.side_tier(a), prompt, schema="premortem",
+                                   agent=a)
+            data["question_id"] = qid
+            prob, nflags = debate.norm_p(data.get("probability"), list(vals.values()))
+            data["probability"] = prob if prob is not None else int(round(med))
+            signs = [{"indicator": s, **dict(zip(("ok", "problems"), debate.indicator_ok(s, self.day, q.get("resolves_on", ""))))}
+                     for s in (data.get("early_signs") or [])[:3]]
+            rec = {"type": "premortem", "agent": a, "question_id": qid, "median": med, "data": data,
+                   "anon": debate.anonymise_record(data), "evidence": self.ev_checked(data.get("evidence")),
+                   "early_signs": signs, "checks": {"flags": debate.challenge_checks(debate.premortem_as_red_team(data)) + nflags},
+                   "calls": [meta]}
+            f.write_text(json.dumps(rec, ensure_ascii=False, indent=1), encoding="utf-8")
+            return rec
+
+        if pd.get("judge") and blocks:
+            jobs.append(("judge", judge))
+        if pd.get("premortem") and pd["premortem"].get("question_id") in qm and pd["premortem"].get("agent") in takes:
+            jobs.append(("premortem", (lambda pm=pd["premortem"]: premortem(pm))))
+        res = self.parallel(jobs)
+        out = {"judge": {"ran": False, "reason": "not planned" if not pd.get("judge") else "nothing to judge"},
+               "premortem": None}
+        for k, r in res.items():
+            if isinstance(r, Exception):
+                self.log(f"  {k}: {'skipped (call ceiling)' if isinstance(r, BudgetSkip) else 'FAILED (' + str(r)[:200] + ')'}")
+                if k == "judge":
+                    out["judge"] = {"ran": False, "reason": f"{type(r).__name__}: {str(r)[:200]}"}
+                continue
+            out[k] = r
+        jd = out["judge"]
+        if jd.get("ran"):
+            for it in jd["items"]:
+                self.log(f"  judge [{it['question_id']}]: {it.get('status')}, resolvable {it['resolvable']}"
+                         f"{'' if it['resolvable'] == it['judge_resolvable'] else ' (judge said yes; ' + '; '.join(it['indicator_problems']) + ')'}"
+                         f", data today {it.get('data_today')}" + (f"; flags: {', '.join(it['flags'])}" if it["flags"] else ""))
+        if out["premortem"]:
+            pr = out["premortem"]
+            self.log(f"  pre-mortem {pr['agent']} on [{pr['question_id']}]: {pr['data'].get('probability')}%, "
+                     f"{sum(1 for s in pr['early_signs'] if s['ok'])}/{len(pr['early_signs'])} early signs checkable")
+        return out
+
+    def pseudo_responses(self, items: dict) -> dict:
+        """Phase D moves in the response shape the memory and run.json adapters read (legacy_response, legacy_moves):
+        Delphi revisions and cross-exam replies, {agent, question_id, data {verdict, reason}, move {take, gated}}."""
+        out = {}
+        for r in items.values():
+            if r.get("type") == "delphi":
+                for v in r.get("revisions", []):
+                    verdict = "hold" if v["new"] == v["take"] else "narrow"
+                    out[f"delphi__{r['agent']}__{v['question_id']}"] = {
+                        "agent": r["agent"], "question_id": v["question_id"], "data": {"verdict": verdict, "reason": v.get("reason", "")},
+                        "move": {"take": v["take"], "gated": v["new"]}, "phase": "delphi", "label": v["label"]}
+            elif r.get("type") == "reply":
+                out[f"reply__{r['agent']}__{r['question_id']}"] = {
+                    "agent": r["agent"], "question_id": r["question_id"],
+                    "data": {"verdict": r["data"].get("verdict", "hold"), "reason": r["data"].get("reason", "")},
+                    "move": {"take": r["move"]["take"], "gated": r["move"]["new"]}, "phase": "xexam", "label": r["move"]["label"]}
+        return out
+
+    def ph_positions_d(self, triage: dict, takes: dict, pairing: dict, items: dict, jdg: dict):
+        """Final positions: take values, then the Delphi revisions, then the cross-exam replies (debate.stage_values);
+        XEXAM_SCORE per pair; evidence, agent scores, labelled moves."""
+        self.log("PHASE 6: Final positions (take -> Delphi -> cross-exam), scores, evidence (no LLM)...")
+        qs = triage.get("questions") or []
+        take_p = {a: debate.take_values(t) for a, t in takes.items()}
+        drecs = [r for r in items.values() if r.get("type") == "delphi"]
+        reps = [r for r in items.values() if r.get("type") == "reply"]
+        opens = [r for r in items.values() if r.get("type") == "open"]
+        delphi_new, xexam_new = {}, {}
+        for r in drecs:
+            for v in r["revisions"]:
+                if v["new"] != v["take"]:
+                    delphi_new.setdefault(r["agent"], {})[v["question_id"]] = v["new"]
+        for r in reps:
+            if r["move"]["new"] != r["move"]["take"]:
+                xexam_new.setdefault(r["agent"], {})[r["question_id"]] = r["move"]["new"]
+        after, finals = debate.stage_values(take_p, delphi_new, xexam_new)
+        gap_min = int(pairing.get("gap_min") or debate.GAP_MIN_DEFAULT)
+        jitems = {it["question_id"]: it for it in ((jdg or {}).get("judge") or {}).get("items") or []}
+        scores = []
+        for x in pairing.get("pairs") or []:
+            hi, lo, qid = x["high"], x["low"], x["question_id"]
+            sc = debate.xexam_score(x, {"high": items.get(f"open__{hi}__{qid}"), "low": items.get(f"open__{lo}__{qid}")},
+                                    {"high": items.get(f"reply__{hi}__{qid}"), "low": items.get(f"reply__{lo}__{qid}")},
+                                    jitems.get(qid), gap_min)
+            self.check_artifact("xexam_score", sc, f"xexam {qid}")
+            scores.append(sc)
+            self.log(f"  [{qid}] {hi} vs {lo}: {sc['status']}, gap {sc['gap_before']} -> {sc['gap_after']}, held split "
+                     f"{sc['held_split']}; moves " + (", ".join(f"{m['agent']} {m['take']}->{m['new']} ({m['label']})"
+                                                         for m in sc["moves"]) or "none")
+                     + (f"; judge resolvable {sc['judge']['resolvable']}" if sc.get("judge") else "; no judge item"))
+        xq = {s["question_id"] for s in scores}
+        qstats = []
+        for q in qs:
+            qid = q["id"]
+            fin = {a: v[qid] for a, v in finals.items() if qid in v}
+            qstats.append({"id": qid, "ledger_id": q.get("ledger_id", ""), "text": q["text"], "weight": int(q.get("weight", 1)),
+                           "debated": qid in xq,
+                           "take_stats": debate.question_stats([v[qid] for v in take_p.values() if qid in v]),
+                           "after_delphi_stats": debate.question_stats([v[qid] for v in after.values() if qid in v]),
+                           "final_stats": debate.question_stats(list(fin.values())), "finals": fin,
+                           "delphi_changed": sorted(a for a, v in delphi_new.items() if qid in v),
+                           "kind": q.get("kind", ""), "resolves_on": q.get("resolves_on", ""),
+                           "settles_with": q.get("settles_with", ""), "lenses": q.get("lenses", [])})
+        items_ev: dict[str, list[dict]] = {a: [] for a in takes}
+
+        def add(agent, where, evs):
+            for e in evs:
+                if e["status"] != "empty":
+                    items_ev.setdefault(agent, []).append({"where": where, **e})
+        for a, t in takes.items():
+            for pp in t.get("positions") or []:
+                add(a, f"take:{pp.get('question_id')}", self.ev_checked(pp.get("evidence")))
+            add(a, "take:claims", self.ev_checked([{"section": c.get("section"), "quote": c.get("quote")}
+                                                   for c in t.get("claims") or []]))
+        for r in opens:
+            add(r["agent"], f"open:{r['question_id']}", r.get("evidence") or [])
+        for r in reps:
+            add(r["agent"], f"reply:{r['question_id']}", r.get("evidence") or [])
+        for r in drecs:
+            for v in r["revisions"]:
+                add(r["agent"], f"delphi:{v['question_id']}", v.get("evidence") or [])
+        pm = (jdg or {}).get("premortem")
+        if pm:
+            add(pm["agent"], f"premortem:{pm['question_id']}", pm.get("evidence") or [])
+
+        def summary(lst):
+            c = {"verified": 0, "partial": 0, "unverified": 0}
+            for i in lst:
+                if i["status"] in c:
+                    c[i["status"]] += 1
+            tot = sum(c.values())
+            return {**c, "total": tot, "rate": round((c["verified"] + c["partial"]) / tot, 3) if tot else None,
+                    "data": sum(1 for i in lst if i["status"] in ("verified", "partial") and i["cls"] == "data")}
+        per_agent = {a: summary(v) for a, v in items_ev.items()}
+        overall = summary([i for v in items_ev.values() for i in v])
+        debate_items = [i for v in items_ev.values() for i in v if not i["where"].startswith("take")]
+        texts = {a: "\n".join([t.get("take", ""), t.get("summary", "")] + take_quotes(t)) for a, t in takes.items()}
+        overlap = evidence.citation_overlap(texts)
+        qo = debate.question_overlap(takes)
+        ls = debate.lens_quote_share(takes, {a: {"text": self.own_data(a)} for a in takes})
+        overlap = {**overlap, "per_question": qo["per_question"], "mean_per_question": qo["mean"],
+                   "lens_quote_share": ls["per_agent"], "lens_quote_share_mean": ls["mean"]}
+        nums = {a: {f"{x['scaled']:.4g}" for x in evidence.numbers(tx) if x["value"] >= 100 or x["pct"]
+                    or x["scaled"] != x["value"]} for a, tx in texts.items()}
+        flags = [{"agent": r["agent"], "flag": f, "where": "challenge"} for r in opens for f in r["checks"]["flags"]]
+        flags += [{"agent": r["agent"], "flag": f, "where": "response"} for r in reps for f in r["move"]["flags"]]
+        ascores = {}
+        for a in sorted(takes):
+            sc = debate.agent_run_score(a, self.run_id, self.day, take_p, scores, items_ev.get(a, []), nums, flags,
+                                        takes[a].get("novel", ""))
+            self.check_artifact("agent_run_score", sc, f"agent score {a}")
+            ascores[a] = sc
+        appended = 0
+        for a, sc in ascores.items():
+            appended += self.replace_jsonl(self.scores_dir / f"{a}.jsonl", [sc], lambda l: l.get("run_id") == self.run_id)
+        pseudo = list(self.pseudo_responses(items).values())
+        moves = {a: debate.legacy_moves(a, pseudo) for a in takes}
+        moved = [r for r in pseudo if r["move"]["gated"] != r["move"]["take"]]
+        labels = {k: sum(1 for r in moved if r["label"] == k) for k in ("verified quote", "argument")}
+        jd = (jdg or {}).get("judge") or {}
+        jit = jd.get("items") or []
+        summ = {"delphi": {"calls": len(drecs), "questions": sorted({v["question_id"] for r in drecs for v in r["revisions"]}),
+                           "revised": sum(1 for r in moved if r["phase"] == "delphi"),
+                           "indicators_ok": sum(1 for r in drecs for v in r["revisions"] if v.get("indicator_ok"))},
+                "xexam": {"pairs": len(scores), "two_sided": sum(1 for s in scores if s["status"] == "two-sided"),
+                          "held_splits": sum(1 for s in scores if s["held_split"]),
+                          "moved": sum(1 for r in moved if r["phase"] == "xexam")},
+                "moves": len(moved), "labels": labels,
+                "argument_only_share": round(labels["argument"] / len(moved), 3) if moved else None,
+                "judge": {"ran": bool(jd.get("ran")), "items": len(jit), "resolvable": sum(1 for it in jit if it["resolvable"]),
+                          "top_splits_resolvable": bool(scores) and all((s.get("judge") or {}).get("resolvable") for s in scores)},
+                "premortem": bool(pm), "debate_evidence_rate": summary(debate_items)["rate"],
+                "held_splits": sum(1 for s in scores if s["held_split"])}
+        self.log(f"  Evidence quotes: {overall['verified']} verified, {overall['partial']} partial, "
+                 f"{overall['unverified']} unverified of {overall['total']} ({overall['data']} data); debate evidence rate "
+                 f"{summ['debate_evidence_rate']}")
+        self.log(f"  Moves: {len(moved)} ({labels['verified quote']} on a verified quote, {labels['argument']} on argument "
+                 f"alone); Delphi revised {summ['delphi']['revised']}; cross-exam held splits {summ['xexam']['held_splits']}"
+                 f"/{len(scores)}; judge resolvable {summ['judge']['resolvable']}/{summ['judge']['items']}; agent score "
+                 f"lines {appended}")
+        return {"take_p": take_p, "after_delphi": after, "final": finals, "questions": qstats, "debates": [],
+                "xexam": scores, "agent_scores": ascores,
+                "evidence": {"overall": overall, "per_agent": per_agent, "items": items_ev}, "moves": moves,
+                "citation_overlap": overlap, "summary": summ, "stages": {"delphi": delphi_new, "xexam": xexam_new}}
+
     # ── positions (§9, §10) ────────────────────────────────
     def ph_positions(self, triage: dict, takes: dict, pairing: dict, chs: dict, resps: dict, cc: dict):
         self.log("PHASE 6: Final positions, scores, evidence (no LLM)...")
@@ -1683,12 +2285,15 @@ SECTOR CONTEXT (crypto and macro landscape; background, not today's data):
                 if cc.get("ran") else None)
         ledger = self.read_ledger()
         day_type = pairing.get("day_type", "no_questions")
-        sheet = debate.split_sheet(self.day, self.run_id, day_type, qs, pos["take_p"], pos["final"], pos["debates"],
-                                   challenges_by, responses_by, takes, self.locator(),
-                                   int(pairing.get("gap_min") or debate.GAP_MIN_DEFAULT), red_team=red_in,
-                                   crux_check=crux, ledger=ledger,
-                                   unpaired=[u["question_id"] for u in pairing.get("unpaired") or []],
-                                   lone_outliers=[x["question_id"] for x in pairing.get("lone_outliers") or []])
+        if self.phase_d:
+            sheet = self.split_sheet_d(triage, takes, pairing, pos, ledger)
+        else:
+            sheet = debate.split_sheet(self.day, self.run_id, day_type, qs, pos["take_p"], pos["final"], pos["debates"],
+                                       challenges_by, responses_by, takes, self.locator(),
+                                       int(pairing.get("gap_min") or debate.GAP_MIN_DEFAULT), red_team=red_in,
+                                       crux_check=crux, ledger=ledger,
+                                       unpaired=[u["question_id"] for u in pairing.get("unpaired") or []],
+                                       lone_outliers=[x["question_id"] for x in pairing.get("lone_outliers") or []])
         self.check_artifact("split_sheet", sheet, "split sheet")
         rendered = debate.render_split_sheet(sheet)
         notes = debate.lens_notes(takes, [a for a in self.active if a in takes], self.locator())
@@ -1707,17 +2312,73 @@ SECTOR CONTEXT (crypto and macro landscape; background, not today's data):
                                  for k in schemas.QUESTION["properties"]},
                     "finals": st.get("finals", {}), "take_values": {a: v[q["id"]] for a, v in pos["take_p"].items() if q["id"] in v},
                     "final_stats": st.get("final_stats") or debate.question_stats([]),
-                    "debated": bool(st.get("debated")), "split_type": types.get(q["id"], "none")}
+                    "debated": bool(st.get("debated")), "split_type": types.get(q["id"], "none"),
+                    # Phase D: who the Delphi round and the cross-exam moved, for the per-component Brier gate
+                    "stages": ({k: {a: v[q["id"]] for a, v in (pos.get("stages") or {}).get(k, {}).items() if q["id"] in v}
+                                for k in ("delphi", "xexam")} if self.phase_d else {})}
             self.check_artifact("ledger_line", line, f"ledger line {line['ledger_id']}")
             lines.append(line)
+        for il in (self.indicator_lines(qs) if self.phase_d else []):
+            self.check_artifact("indicator_line", il, f"indicator line {il['ledger_id']}")
+            lines.append(il)
         # newest attempt wins: a run resumed --from-phase triage/takes/pairing writes new q1..q5 under the same
         # ledger ids, so this run's earlier question lines go first (resolutions stay)
         n = self.replace_jsonl(self.ledger_path, lines,
-                               lambda l: l.get("type") == "question" and l.get("run_id") == self.run_id)
+                               lambda l: l.get("type") in ("question", "indicator") and l.get("run_id") == self.run_id)
         self.log(f"  Split sheet: {len(sheet['blocks'])} block(s) ({day_type}), {sheet['bytes']} B; lens notes "
                  f"{len(notes.encode('utf-8'))} B; ledger +{n} line(s) in {self.ledger_path}")
         return {"blocks": len(sheet["blocks"]), "bytes": sheet["bytes"], "lens_notes_bytes": len(notes.encode("utf-8")),
                 "ledger_appended": n, "day_type": day_type}
+
+    def split_sheet_d(self, triage: dict, takes: dict, pairing: dict, pos: dict, ledger: list[dict]) -> dict:
+        """WHERE THE VIEWS SPLIT on a Phase D day: debate.split_sheet over the cross-exam scores (as debated blocks),
+        the openings (rebuttal / steelman) and the pre-mortem (as the red team)."""
+        items = self.load_items("debate")
+        jdg = self.load("judge") if self.art("judge").exists() else {}
+        gap_min = int(pairing.get("gap_min") or debate.GAP_MIN_DEFAULT)
+        debates = [{"question_id": s["question_id"], "high": s["high"], "low": s["low"], "gap_before": s["gap_before"],
+                    "gap_after": s["gap_after"], "in_split": True, "held_split": s["held_split"],
+                    "live_split": bool(s["gap_after"] is not None and s["gap_after"] >= gap_min), "crux_agreed": False,
+                    "narrowed_on_data": False} for s in pos.get("xexam") or []]
+        chs = {}
+        for r in items.values():
+            if r.get("type") == "open":
+                ind = r["data"].get("i_am_wrong_if") or {}
+                chs[(r["agent"], r["question_id"])] = {
+                    "data": {"rebuttal": r["data"].get("rebuttal", ""), "steelman": r["data"].get("steelman", ""),
+                             "evidence": r["data"].get("evidence") or [], "crux": {"claim": ""},
+                             "would_change_my_mind": {"by_date": ind.get("by_date", "")}},
+                    "checks": r.get("checks") or {}}
+        pm = (jdg or {}).get("premortem")
+        red_in = ({"question_id": pm["question_id"],
+                   "data": {**debate.premortem_as_red_team(pm["anon"]), "evidence": pm["data"].get("evidence", [])}}
+                  if pm else None)
+        return debate.split_sheet(self.day, self.run_id, pairing.get("day_type", "no_questions"),
+                                  triage.get("questions") or [], pos["take_p"], pos["final"], debates, chs, {}, takes,
+                                  self.locator(), gap_min, red_team=red_in, crux_check=None, ledger=ledger,
+                                  unpaired=[u["question_id"] for u in pairing.get("unpaired") or []],
+                                  lone_outliers=[x["question_id"] for x in pairing.get("lone_outliers") or []])
+
+    def indicator_lines(self, qs: list[dict]) -> list[dict]:
+        """Ledger lines of type indicator: the judge's checkable indicator per cross-examined question and the
+        pre-mortem's early signs, each with the question's ledger id (a later resolver can score them)."""
+        jdg = self.load("judge") if self.art("judge").exists() else {}
+        lid = {q["id"]: q.get("ledger_id") or f"{self.run_id}-{q['id']}" for q in qs}
+        out = []
+        for it in ((jdg.get("judge") or {}).get("items") or []):
+            if it.get("question_id") in lid:
+                out.append({"type": "indicator", "ledger_id": f"{lid[it['question_id']]}-j", "question_ledger_id": lid[it["question_id"]],
+                            "run_id": self.run_id, "day": self.day, "source": "judge", "indicator": it.get("indicator"),
+                            "status": it.get("status", ""), "resolvable": bool(it.get("resolvable")),
+                            "data_today": it.get("data_today", "")})
+        pm = jdg.get("premortem")
+        if pm and pm.get("question_id") in lid:
+            for k, sgn in enumerate(pm.get("early_signs") or [], 1):
+                out.append({"type": "indicator", "ledger_id": f"{lid[pm['question_id']]}-p{k}",
+                            "question_ledger_id": lid[pm["question_id"]], "run_id": self.run_id, "day": self.day,
+                            "source": "premortem", "indicator": sgn.get("indicator"), "status": "early_sign",
+                            "resolvable": bool(sgn.get("ok")), "data_today": ""})
+        return out
 
     # ── memory (§14.1 adapters) ────────────────────────────
     def ph_memory(self, triage: dict, takes: dict, resps: dict, pos: dict):
@@ -1737,6 +2398,53 @@ SECTOR CONTEXT (crypto and macro landscape; background, not today's data):
         return out
 
     # ── the full record (archive, RUBRIC; not sent to the synthesizer) ──
+    def record_d(self, pos: dict) -> list[str]:
+        """The Phase D part of the full record (archive, RUBRIC, brief_claims' 'derived in the debate' source)."""
+        items = self.load_items("debate")
+        jdg = self.load("judge") if self.art("judge").exists() else {}
+        r = ["## DELPHI ROUND"]
+        for rec in sorted((x for x in items.values() if x.get("type") == "delphi"), key=lambda x: x["agent"]):
+            for v in rec["revisions"]:
+                r.append(f"- {rec['agent'].upper()} [{v['question_id']}] {v['take']}% -> {v['new']}% ({v['label']}; "
+                         f"{v.get('verdict')}, moved by {v.get('moved_by')}): {v.get('reason', '')}; would change its mind if: "
+                         f"{debate.indicator_text(v.get('indicator')) or 'none'}")
+        r += ["", "## CROSS-EXAMINATION"]
+        for sc in pos.get("xexam") or []:
+            qid, hi, lo = sc["question_id"], sc["high"], sc["low"]
+            r.append(f"### [{qid}] {hi.upper()} (high) vs {lo.upper()} (low): gap {sc['gap_before']} -> {sc['gap_after']}, "
+                     f"{sc['status']}, held split {sc['held_split']}")
+            for a in (hi, lo):
+                op = items.get(f"open__{a}__{qid}")
+                if op:
+                    d = op["data"]
+                    r += [f"--- {a.upper()} opens ---", f"Steelman: {d.get('steelman', '')}",
+                          f"I am wrong if: {debate.indicator_text(d.get('i_am_wrong_if'))}", f"Rebuttal: {d.get('rebuttal', '')}"]
+            for a in (hi, lo):
+                rp = items.get(f"reply__{a}__{qid}")
+                if rp:
+                    oti = rp["data"].get("on_their_indicator") or {}
+                    r.append(f"Reply {a.upper()} ({rp['data'].get('verdict')}): {rp['move']['take']}% -> {rp['move']['new']}% "
+                             f"[{rp['move']['label']}]; their indicator: {oti.get('verdict', '')} ({oti.get('why', '')}); "
+                             f"{rp['data'].get('reason', '')}")
+            r.append("")
+        jd = (jdg or {}).get("judge") or {}
+        if jd.get("ran"):
+            r.append("## JUDGE")
+            for it in jd.get("items") or []:
+                r.append(f"- [{it['question_id']}] {debate.indicator_text(it.get('indicator'))} ({it.get('status')}; "
+                         f"resolvable {it.get('resolvable')}; data today {it.get('data_today')}"
+                         + (f": \"{it.get('quote')}\"" if it.get("quote") else "") + f"). Split: {it.get('split_line', '')} "
+                         f"Watch: {it.get('watch_line', '')}")
+            r.append("")
+        pm = (jdg or {}).get("premortem")
+        if pm:
+            d = pm["data"]
+            r += ["## PRE-MORTEM", f"{pm['agent'].upper()} on [{pm['question_id']}] ({d.get('probability')}%): "
+                  f"{d.get('consensus_view', '')}", d.get("failure_story", "")]
+            r += [f"- early sign: {debate.indicator_text(s.get('indicator'))}" for s in pm.get("early_signs") or []]
+            r.append("")
+        return r
+
     def build_record(self, triage, takes, pairing, chs, resps, cc, pos) -> str:
         env = f"ENVIRONMENT: {triage.get('environment', 'QUIET')} WEIGHT: {', '.join(triage.get('weight_agents', []))}"
         r = [f"# DEBATE RECORD -- {self.day} ({self.run_id})", "", "## ENVIRONMENT CLASSIFICATION", env,
@@ -1794,6 +2502,8 @@ SECTOR CONTEXT (crypto and macro landscape; background, not today's data):
                   f"{dc.get('what_the_data_says', '')} (\"{dc.get('quote', '')}\")"
                   + ("" if shown else f" — NOT IN THE SPLIT SHEET: quote {cc.get('quote_status')}, "
                                       f"qualifies {dc.get('quote_qualifies')}"), ""]
+        if self.phase_d:
+            r += self.record_d(pos)
         r += ["## SPLIT SHEET", read(self.dir / "07_split_sheet.md")]
         sc = self.scorecard()
         if sc:
@@ -2146,6 +2856,16 @@ RAW DATA (for cross-referencing numbers; every package section, each trimmed):
                 if near:
                     got.setdefault(near, []).append({"from": a, **item})
                     edges.append({"from": a, "to": near, "type": "redteam", "question_id": qid})
+        pd_items = self.load_items("debate") if self.phase_d else {}
+        pd_judge = (self.load("judge") if self.art("judge").exists() else {}) if self.phase_d else {}
+        for rec in pd_items.values():
+            if rec.get("type") == "open":
+                c, t, d = rec["agent"], rec["target"], rec["data"]
+                edges.append({"from": c, "to": t, "type": "xexam", "question_id": rec["question_id"]})
+                item = {"type": "xexam", "text": d.get("rebuttal", ""), "crux": debate.indicator_text(d.get("i_am_wrong_if")),
+                        "question_id": rec["question_id"]}
+                made.setdefault(c, []).append({"to": t, **item})
+                got.setdefault(t, []).append({"from": c, **item})
         resp_list = list(resps.values())
         agents = []
         for a in sorted(takes):
@@ -2193,6 +2913,10 @@ RAW DATA (for cross-referencing numbers; every package section, each trimmed):
         final = read(self.dir / "07_daily_brief.md")
         status = run_status(final, checks, deliver)
         red = next((r for r in chs.values() if r.get("type") == "redteam"), None)
+        if self.phase_d and (pd_judge or {}).get("premortem"):
+            pm = pd_judge["premortem"]
+            red = {"agent": pm["agent"], "question_id": pm["question_id"],
+                   "data": debate.premortem_as_red_team(pm["data"]), "checks": pm.get("checks") or {"flags": []}}
         sheet = self.load("split_sheet") if self.art("split_sheet").exists() else None
         tri_art = self.load("triage") if self.art("triage").exists() else {}
         run = {
@@ -2216,6 +2940,16 @@ RAW DATA (for cross-referencing numbers; every package section, each trimmed):
             "crux_check": ({k: v for k, v in cc.items() if k != "calls"} if cc else None),
             "split_sheet": sheet, "agent_scores": pos.get("agent_scores", {}), "debate_summary": pos.get("summary"),
             "deep_dive": None,
+            "debate_mode": self.debate_mode,
+            "phase_d": ({"plan": (pairing.get("phase_d") or {}).get("plan"), "gate": (pairing.get("phase_d") or {}).get("gate"),
+                         "xexam": pos.get("xexam", []),
+                         "delphi": [{"agent": r["agent"], "revisions": [{k: v for k, v in x.items() if k != "evidence"}
+                                                                        for x in r["revisions"]]}
+                                    for r in pd_items.values() if r.get("type") == "delphi"],
+                         "judge": {k: v for k, v in ((pd_judge or {}).get("judge") or {}).items() if k not in ("calls", "data")},
+                         "premortem": ({k: v for k, v in pd_judge["premortem"].items() if k not in ("calls", "anon")}
+                                       if (pd_judge or {}).get("premortem") else None),
+                         "summary": pos.get("summary")} if self.phase_d else None),
             "evidence": {**pos["evidence"]["overall"], "citation_overlap": pos.get("citation_overlap")},
             "synthesis": {"draft": read(self.dir / "07_brief_draft.md"), "claims": checks.get("claims", []), "final": final,
                           "calls": synth_calls, "used": syn.get("used"),
@@ -2267,7 +3001,7 @@ RAW DATA (for cross-referencing numbers; every package section, each trimmed):
         self.log("==============================================")
         self.log(f"RECON ORCHESTRATOR -- {self.run_id} (day {self.day}, provider {llm.provider_name()}, "
                  f"slim codex {llm.slim()}, parallel {PARALLEL}, budget {self.budget}/{self.ceiling}, "
-                 f"state {self.state_root})")
+                 f"debate {self.debate_mode}, state {self.state_root})")
         self.log("==============================================")
         self.phase("score", self.ph_score)
         self.phase("collect", self.ph_collect)
@@ -2286,16 +3020,26 @@ RAW DATA (for cross-referencing numbers; every package section, each trimmed):
         pairing = self.phase("pairing", lambda: self.ph_pairing(tri, takes))
         if self.stop_here("pairing"):
             return 0
-        self.phase("challenges", lambda: self.ph_challenges(tri, takes, pairing))
-        chs = self.load_items("challenges")
-        if self.stop_here("challenges"):
-            return 0
-        self.phase("responses", lambda: self.ph_responses(tri, takes, pairing, chs))
-        resps = self.load_items("responses")
-        if self.stop_here("responses"):
-            return 0
-        cc = self.phase("cruxcheck", lambda: self.ph_cruxcheck(tri, takes, pairing, chs, resps))
-        pos = self.phase("positions", lambda: self.ph_positions(tri, takes, pairing, chs, resps, cc))
+        if self.phase_d:
+            # Phase D: [cross-exam openings || Delphi], replies, then [judge || pre-mortem] (phase-d-debate-upgrade.md)
+            self.phase("debate", lambda: self.ph_debate(tri, takes, pairing))
+            items = self.load_items("debate")
+            if self.stop_here("debate"):
+                return 0
+            jdg = self.phase("judge", lambda: self.ph_judge(tri, takes, pairing, items))
+            pos = self.phase("positions", lambda: self.ph_positions_d(tri, takes, pairing, items, jdg))
+            chs, resps, cc = {}, self.pseudo_responses(items), {}
+        else:
+            self.phase("challenges", lambda: self.ph_challenges(tri, takes, pairing))
+            chs = self.load_items("challenges")
+            if self.stop_here("challenges"):
+                return 0
+            self.phase("responses", lambda: self.ph_responses(tri, takes, pairing, chs))
+            resps = self.load_items("responses")
+            if self.stop_here("responses"):
+                return 0
+            cc = self.phase("cruxcheck", lambda: self.ph_cruxcheck(tri, takes, pairing, chs, resps))
+            pos = self.phase("positions", lambda: self.ph_positions(tri, takes, pairing, chs, resps, cc))
         split = self.phase("split", lambda: self.ph_split(tri, takes, pairing, chs, resps, cc, pos))
         if self.stop_here("split"):
             return 0

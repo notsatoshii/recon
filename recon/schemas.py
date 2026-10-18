@@ -357,6 +357,12 @@ LEDGER_LINE = obj(
     question=QUESTION,                                   # as gated, weight clamped
     finals=free("{agent: gated probability}"), take_values=free("{agent: take probability}"),
     final_stats=STATS, debated=b(), split_type=enum(["direction", "degree", "consensus", "none"]),
+    stages=free("Phase D: {delphi: {agent: p}, xexam: {agent: p}} for the agents each stage moved; {} otherwise"),
+)
+INDICATOR_LINE = obj(   # a dated indicator from the judge or a pre-mortem early sign, tied to its question
+    type=enum(["indicator"]), ledger_id=s("<question ledger id>-j (judge) or -p<k> (pre-mortem early sign k)"),
+    question_ledger_id=s(), run_id=s(), day=DATE, source=enum(["judge", "premortem"]), indicator=nullable(free()),
+    status=s(), resolvable=b(), data_today=s(),
 )
 # A ledger question's outcome (phase-c-spec §2.6; scripts/resolve_ledger.py). method: api (a data API), package (the
 # same package line on later days), package_llm (the resolve phase's model call, kept only with a verified quote),
@@ -394,7 +400,8 @@ RUN = {"type": "object", "required": ["schema_version", "date", "day", "status",
                                     phase=s(), item=s(), reason=enum(["budget", "ceiling"]), used=i()))}}}}
 ARTIFACTS = {"pairing": PAIRING, "debate_score": DEBATE_SCORE, "question_stats": QUESTION_STATS,
              "agent_run_score": AGENT_RUN_SCORE, "split_block": SPLIT_BLOCK, "split_sheet": SPLIT_SHEET,
-             "ledger_line": LEDGER_LINE, "resolution_line": RESOLUTION_LINE, "xexam_score": XEXAM_SCORE, "ev_checked": EV_CHECKED, "side_move": SIDE_MOVE, "stats": STATS,
+             "ledger_line": LEDGER_LINE, "resolution_line": RESOLUTION_LINE, "xexam_score": XEXAM_SCORE,
+             "indicator_line": INDICATOR_LINE, "ev_checked": EV_CHECKED, "side_move": SIDE_MOVE, "stats": STATS,
              "run": RUN}
 
 

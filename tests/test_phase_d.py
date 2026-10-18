@@ -173,5 +173,33 @@ class BudgetTests(unittest.TestCase):
         self.assertFalse(b["judge"] and not b["delphi"])
 
 
+class ModeTests(unittest.TestCase):
+    def test_debate_modes_and_budget(self):
+        import argparse
+        import os
+        from recon.orchestrator import Run
+        keep = {k: os.environ.pop(k, None) for k in ("RECON_DEBATE", "RECON_CALL_BUDGET")}
+
+        def run(run_id=None, as_of=None):
+            return Run(argparse.Namespace(as_of=as_of, dry_run=False, replay=None, run_id=run_id, state_dir=None,
+                                          from_phase=None, resume=False))
+        try:
+            daily = run()
+            self.assertEqual((daily.debate_mode, daily.budget), ("off", 24))      # cron: RECON_DEBATE unset/0
+            tagged = run("2026-10-04-c3", "2026-10-04")
+            self.assertEqual((tagged.debate_mode, tagged.phase_d, tagged.budget), ("d", True, 30))
+            os.environ["RECON_DEBATE"] = "c"
+            self.assertEqual((run("2026-10-04-c3", "2026-10-04").debate_mode, run().debate_mode), ("c", "c"))
+            os.environ["RECON_DEBATE"] = "1"
+            self.assertEqual(run().debate_mode, "d")
+            os.environ["RECON_DEBATE"] = "0"
+            self.assertEqual(run("2026-10-04-c3", "2026-10-04").debate_mode, "off")
+        finally:
+            for k, v in keep.items():
+                os.environ.pop(k, None)
+                if v is not None:
+                    os.environ[k] = v
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -45,6 +45,9 @@ def tree_hash(root: Path) -> str:
     return h.hexdigest()
 
 
+C = {"RECON_DEBATE": "c"}       # the Phase C debate, for the legacy tests
+
+
 class DryRunEndToEnd(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -63,7 +66,7 @@ class DryRunEndToEnd(unittest.TestCase):
     def run_orch(self, run_id, *extra, env=None, day="2026-10-04", guard=False):
         e = {**os.environ, "RECON_HOME": str(self.tmp), "PYTHONIOENCODING": "utf-8", **(env or {})}
         for k in ("RECON_DRY_SPREAD", "RECON_CALL_BUDGET", "RECON_CALL_CEILING", "RECON_STOP_AFTER", "RECON_PAIR_GAP",
-                  "RECON_DEBATE"):
+                  "RECON_DEBATE", "RECON_DELPHI", "RECON_XEXAM", "RECON_CRUX_SEARCH"):
             if k not in (env or {}):
                 e.pop(k, None)
         args = ["--dry-run", "--as-of", day, "--run-id", run_id, *extra]
@@ -85,8 +88,9 @@ class DryRunEndToEnd(unittest.TestCase):
         b = (self.rd(run_id) / "07_daily_brief.md").read_text(encoding="utf-8")
         return [l[4:].strip() for l in b.splitlines() if l.startswith("### ")], b
 
+    # Phase C debate (RECON_DEBATE=c): kept runnable until its code is deleted (phase-d-debate-upgrade.md)
     def test_wide_spread(self):
-        self.run_orch("w1")
+        self.run_orch("w1", env=C)
         self.assertGreaterEqual(len(self.load("w1", "triage")["data"]["questions"]), 3)
         pr = self.load("w1", "pairing")
         self.assertEqual(pr["day_type"], "debate")
@@ -101,7 +105,7 @@ class DryRunEndToEnd(unittest.TestCase):
         self.assertEqual(run["status"], "ok")
 
     def test_narrow_spread_consensus(self):
-        self.run_orch("n1", env={"RECON_DRY_SPREAD": "narrow"})
+        self.run_orch("n1", env={**C, "RECON_DRY_SPREAD": "narrow"})
         self.assertEqual(self.load("n1", "pairing")["day_type"], "consensus")
         chs = list((self.rd("n1") / "phases" / "challenges").glob("*.json"))
         self.assertEqual([c.name.split("__")[0] for c in chs], ["redteam"])
@@ -112,29 +116,29 @@ class DryRunEndToEnd(unittest.TestCase):
         self.assertIn("case against", brief)
 
     def test_budget_and_ceiling(self):
-        self.run_orch("b1", env={"RECON_CALL_BUDGET": "18"})
+        self.run_orch("b1", env={**C, "RECON_CALL_BUDGET": "18"})
         pr = self.load("b1", "pairing")
         self.assertLess(len(pr["pairs"]), 3)
         run = json.loads((self.rd("b1") / "run.json").read_text(encoding="utf-8"))
         self.assertTrue(run["usage"]["budget_skips"])
-        self.run_orch("c1", env={"RECON_CALL_CEILING": "12"})
+        self.run_orch("c1", env={**C, "RECON_CALL_CEILING": "12"})
         run = json.loads((self.rd("c1") / "run.json").read_text(encoding="utf-8"))
         self.assertTrue(any(s["reason"] == "ceiling" for s in run["usage"]["budget_skips"]))
         self.assertTrue((self.rd("c1") / "07_daily_brief.md").exists())
         self.assertLessEqual(run["usage"]["calls_logged"], 12 + 2)   # + the two synthesis calls, never skipped
 
     def test_resume_alias_and_ledger(self):
-        self.run_orch("r1")
+        self.run_orch("r1", env=C)
         calls = (self.rd("r1") / "phases" / "calls.jsonl").read_text(encoding="utf-8").splitlines()
         before = [c for c in calls if json.loads(c)["phase"] in ("triage", "takes", "challenges")]
-        out = self.run_orch("r1", "--from-phase", "responses")
+        out = self.run_orch("r1", "--from-phase", "responses", env=C)
         self.assertIn("[challenges] reused", out)
         after = (self.rd("r1") / "phases" / "calls.jsonl").read_text(encoding="utf-8").splitlines()
         self.assertEqual([c for c in after if json.loads(c)["phase"] in ("triage", "takes", "challenges")], before)
-        out = self.run_orch("r1", "--from-phase", "deepdive")
+        out = self.run_orch("r1", "--from-phase", "deepdive", env=C)
         self.assertIn("--from-phase deepdive → cruxcheck", out)
-        self.run_orch("r1", "--from-phase", "split")
-        self.run_orch("r1", "--from-phase", "split")
+        self.run_orch("r1", "--from-phase", "split", env=C)
+        self.run_orch("r1", "--from-phase", "split", env=C)
         led = (self.rd("r1") / "state" / "questions" / "ledger.jsonl").read_text(encoding="utf-8").splitlines()
         ids = [json.loads(l)["ledger_id"] for l in led]
         self.assertEqual(len(ids), len(set(ids)))
@@ -211,6 +215,9 @@ class DryRunEndToEnd(unittest.TestCase):
         after_second = {f.name: f.read_text(encoding="utf-8") for f in (st / "agent_state").glob("*.md")}
         self.assertEqual(after_first, after_second)          # today's entry written once, not twice
         led = [json.loads(l) for l in (st / "questions" / "ledger.jsonl").read_text(encoding="utf-8").splitlines()]
+        ind = [l for l in led if l["type"] == "indicator"]          # Phase D indicator lines: this run's, once
+        self.assertEqual(len(ind), len({l["ledger_id"] for l in ind}))
+        led = [l for l in led if l["type"] == "question"]
         tri = self.load("m1", "triage")["data"]["questions"]
         self.assertEqual(len(led), len(tri))
         self.assertEqual([l["question"]["text"] for l in led], [q["text"] for q in tri])
@@ -230,7 +237,7 @@ class DryRunEndToEnd(unittest.TestCase):
         self.assertTrue((self.rd("rs1") / "07_daily_brief.md").exists())   # nothing else touched
 
     def test_crux_check_planned_from_staged_pairs(self):
-        self.run_orch("k1", env={"RECON_CALL_BUDGET": "22"})
+        self.run_orch("k1", env={**C, "RECON_CALL_BUDGET": "22"})
         pr = self.load("k1", "pairing")
         cc = self.load("k1", "cruxcheck")
         staged = 4 * len(pr["pairs"])
@@ -238,6 +245,102 @@ class DryRunEndToEnd(unittest.TestCase):
         if cc.get("question_id") and not cc.get("ran"):
             self.assertNotEqual(cc.get("reason"), "dropped by the call budget (§1.1)",
                                 "skipped by budget although it fit") if pr["budget"]["crux_check_planned"] else None
+
+    # ── Phase D (the default debate: RECON_DEBATE on, RECON_CRUX_SEARCH off) ──
+    def calls(self, run_id):
+        return [json.loads(l) for l in (self.rd(run_id) / "phases" / "calls.jsonl").read_text(encoding="utf-8").splitlines()]
+
+    def test_phase_d_split_day(self):
+        self.run_orch("d1")
+        pr = self.load("d1", "pairing")
+        self.assertEqual(pr["day_type"], "debate")
+        self.assertTrue(1 <= len(pr["pairs"]) <= 2)
+        plan = pr["phase_d"]["plan"]
+        calls = self.calls("d1")
+        phases = {c["phase"] for c in calls}
+        self.assertFalse({"challenges", "responses", "cruxcheck"} & phases)     # the Phase C phases never ran
+        self.assertFalse((self.rd("d1") / "phases" / "cruxsearch.json").exists())   # RECON_CRUX_SEARCH off
+        deb = sorted(f.stem.split("__")[0] for f in (self.rd("d1") / "phases" / "debate").glob("*.json"))
+        self.assertEqual(deb.count("open"), 2 * len(pr["pairs"]))
+        self.assertEqual(deb.count("reply"), 2 * len(pr["pairs"]))
+        self.assertEqual(deb.count("delphi"), len(pr["phase_d"]["delphi"]["by_agent"]))
+        self.assertLessEqual(deb.count("delphi"), 6)
+        run = json.loads((self.rd("d1") / "run.json").read_text(encoding="utf-8"))
+        schemas.validate(run, schemas.ARTIFACTS["run"])
+        self.assertEqual(run["status"], "ok")
+        self.assertLessEqual(run["usage"]["calls"], 30)
+        self.assertEqual(run["usage"]["calls"], len([c for c in calls if c.get("ok")]))
+        self.assertEqual(sum(1 for c in calls if c["phase"] in ("debate", "judge")), plan["planned"])
+        self.assertEqual(run["debate_mode"], "d")
+        pos = self.load("d1", "positions")
+        for sc in pos["xexam"]:
+            schemas.validate(json.loads(json.dumps(sc)), schemas.ARTIFACTS["xexam_score"])
+        self.assertEqual(len(pos["xexam"]), len(pr["pairs"]))
+        self.assertIsNotNone(pos["summary"]["argument_only_share"] if pos["summary"]["moves"] else None)
+        jd = self.load("d1", "judge")["judge"]
+        self.assertTrue(jd["ran"])
+        self.assertEqual(sorted(it["question_id"] for it in jd["items"]), sorted(x["question_id"] for x in pr["pairs"]))
+        # the round-0 split stays on the sheet: a debated block counts the take values, whatever moved afterwards
+        sheet = self.load("d1", "split_sheet")
+        take_p = pos["take_p"]
+        for bl in sheet["blocks"]:
+            if bl["debated"]:
+                vals = sorted(v[bl["question_id"]] for v in take_p.values() if bl["question_id"] in v)
+                self.assertEqual(bl["counts"]["range"], [vals[0], vals[-1]])
+        st = self.rd("d1") / "state" / "questions" / "ledger.jsonl"
+        led = [json.loads(l) for l in st.read_text(encoding="utf-8").splitlines()]
+        qlines = [l for l in led if l["type"] == "question"]
+        self.assertTrue(all("stages" in l for l in qlines))
+        self.assertTrue(any(l["type"] == "indicator" for l in led))
+        heads, brief = self.brief_heads("d1")
+        self.assertEqual(heads, schemas.BRIEF_SECTIONS)
+        self.assertEqual(self.load("d1", "checks")["agent_names"], [])
+
+    def test_phase_d_consensus_day(self):
+        self.run_orch("d2", env={"RECON_DRY_SPREAD": "narrow"})
+        pr = self.load("d2", "pairing")
+        self.assertEqual((pr["day_type"], pr["pairs"]), ("consensus", []))
+        self.assertTrue(pr["phase_d"]["premortem"])
+        self.assertFalse(pr["phase_d"]["judge"])
+        self.assertLessEqual(len(pr["phase_d"]["delphi"]["by_agent"]), 3)
+        self.assertEqual(len(pr["phase_d"]["delphi"]["questions"]), 1)
+        jd = self.load("d2", "judge")
+        self.assertEqual(jd["premortem"]["type"], "premortem")
+        self.assertTrue(jd["premortem"]["early_signs"])
+        run = json.loads((self.rd("d2") / "run.json").read_text(encoding="utf-8"))
+        self.assertLessEqual(run["usage"]["calls"], 17)
+        self.assertEqual(run["status"], "ok")
+        self.assertEqual(self.load("d2", "split_sheet")["blocks"][0]["type"], "consensus")
+        _, brief = self.brief_heads("d2")
+        self.assertIn("case against", brief)
+
+    def test_phase_d_budget_and_resume(self):
+        self.run_orch("d3", env={"RECON_CALL_BUDGET": "21"})
+        pr = self.load("d3", "pairing")
+        plan = pr["phase_d"]["plan"]
+        self.assertLessEqual(pr["budget"]["used"] + plan["planned"] + 2, 21)
+        run = json.loads((self.rd("d3") / "run.json").read_text(encoding="utf-8"))
+        self.assertTrue(run["usage"]["budget_skips"])
+        before = [c for c in self.calls("d3") if c["phase"] in ("triage", "takes", "debate")]
+        out = self.run_orch("d3", "--from-phase", "judge", env={"RECON_CALL_BUDGET": "21"})
+        self.assertIn("[debate] reused", out)
+        self.assertEqual([c for c in self.calls("d3") if c["phase"] in ("triage", "takes", "debate")], before)
+
+    def test_phase_d_calibration_gate_turns_a_component_off(self):
+        st = self.tmp / "state_gate"
+        (st / "questions").mkdir(parents=True, exist_ok=True)
+        (st / "questions" / "calibration.json").write_text(json.dumps(
+            {"components": {"delphi": {"on": False}, "xexam": {"on": True}}}), encoding="utf-8")
+        self.run_orch("d4", "--state-dir", str(st))
+        pr = self.load("d4", "pairing")
+        self.assertEqual(pr["phase_d"]["gate"], {"delphi": False, "xexam": True})
+        self.assertEqual(pr["phase_d"]["delphi"]["by_agent"], {})
+        self.assertFalse([c for c in self.calls("d4") if c["key"].startswith("delphi__")])
+        self.run_orch("d5", env={"RECON_XEXAM": "0"})
+        pr = self.load("d5", "pairing")
+        self.assertEqual(pr["pairs"], [])
+        self.assertIn(pr["day_type"], ("split_unpaired", "consensus"))
+        self.assertFalse([c for c in self.calls("d5") if c["key"].startswith(("open__", "reply__"))])
 
     def test_resolve_phase_voids_and_asks_about_events(self):
         """Phase D step 1: the resolve phase writes resolution lines (a void one here: no network on a dry run) and

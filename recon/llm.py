@@ -270,7 +270,8 @@ _DRY_DOMAIN_LENSES = {"markets_crypto": ["trader", "analyst"], "macro_policy": [
 def _dry_day(prompt: str) -> str:
     """The run day: from the triage task line, else the package header of the shared block."""
     for rx in (r"TRIAGE AND QUESTIONS OF THE DAY \((\d{4}-\d\d-\d\d)\)", r"INTELLIGENCE PACKAGE \((\d{4}-\d\d-\d\d)\)",
-               r"Resolves: (\d{4}-\d\d-\d\d)"):
+               r"SECOND LOOK \((\d{4}-\d\d-\d\d)\)", r"You are a neutral judge \((\d{4}-\d\d-\d\d)\)",
+               r"Resolves: (\d{4}-\d\d-\d\d)", r"\(resolves (\d{4}-\d\d-\d\d)\)"):
         m = re.search(rx, prompt)
         if m:
             return m.group(1)
@@ -366,8 +367,12 @@ def _dry_json(schema: dict, prompt: str, agent: str) -> str:
         if key == "quote":
             n = nxt()
             return "dry-run invented figure 123.4%" if n % 5 == 0 else quotes[n % len(quotes)]
-        if key in ("resolves_on", "by_date"):
+        if key == "resolves_on":
             return _plus_days(day, 7) if day else "2026-10-31"
+        if key == "by_date":                 # Phase D indicators: no later than the question resolves (indicator_ok)
+            return day or "2026-10-31"
+        if key == "level":
+            return "100"
         if key == "section":
             return "ON-CHAIN & MARKET DATA"
         if key in ("take", "text", "rebuttal", "case", "reason"):
