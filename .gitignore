@@ -30,3 +30,5 @@ config/questions/
 config/agent_scores/
 config/agent_memory/
 config/agent_state/
+# scripts/deploy.sh writes deploy/last-deploy.json on the droplet (the deployed commit); never committed
+deploy/

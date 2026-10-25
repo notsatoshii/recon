@@ -708,7 +708,7 @@ def main() -> int:
                       "finished": run["finished"], "wall_seconds": run["wall_seconds"], "calls": run["usage"]["calls"],
                       "agents_active": len(run["agents"]), "sources_ok": sum(1 for s in srcs if s["ok"]),
                       "sources_total": len(srcs), "brief_words": run["delivery"]["brief_words"], "path": f"runs/{d}.json",
-                      "pipeline": run.get("pipeline", "bash")})
+                      "pipeline": run.get("pipeline", "bash"), "deployed_sha": run.get("deployed_sha")})
         print(f"  {d}: {run['status']} agents={len(run['agents'])} calls={run['usage']['calls']} words={run['delivery']['brief_words']}")
     (out / "index.json").write_text(json.dumps({"generated_at": datetime.now(KST).isoformat(timespec="seconds"), "runs": index}, ensure_ascii=False, indent=1), encoding="utf-8")
     print(f"exported {len(index)} runs → {out}")

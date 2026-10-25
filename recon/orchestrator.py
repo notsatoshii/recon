@@ -212,6 +212,18 @@ def expiry_note(text: str, made: str) -> str:
     return " (no expiry: no dated horizon)"
 
 
+def deploy_info(home: Path | None = None) -> dict:
+    """Which code made this run: deployed_sha / deployed_at from deploy/last-deploy.json (written by
+    scripts/deploy.sh on the droplet), None when the checkout was never deployed with it (a hand pull, a dev box)."""
+    try:
+        d = json.loads(((home or RECON_HOME) / "deploy" / "last-deploy.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        d = {}
+    if not isinstance(d, dict):
+        d = {}
+    return {"deployed_sha": d.get("deployed_sha"), "deployed_at": d.get("deployed_at")}
+
+
 def run_status(final: str, checks: dict, deliver: dict | None = None) -> str:
     """run.json status (§12.3): 'ok' only with a final brief whose §11.5 checks are clean: all sections in order, no
     agent names, every printed 'N of M' on the sheet and every split-sheet block in WHERE THE VIEWS SPLIT, and,
@@ -2976,6 +2988,7 @@ RAW DATA (for cross-referencing numbers; every package section, each trimmed):
                          "brief_words": len(final.split()),
                          "archived": deliver.get("archived", False)},
             "phases": self.phase_times,
+            **deploy_info(),
         }
         self.check_artifact("run", run, "run.json")
         (self.dir / "run.json").write_text(json.dumps(run, ensure_ascii=False), encoding="utf-8")
