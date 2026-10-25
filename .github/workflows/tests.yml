@@ -1,0 +1,31 @@
+name: tests
+
+# The offline suites (stdlib unittest, committed fixtures, no network, no LLM, no droplet).
+# The droplet stays the live gate: scripts/deploy.sh runs the same suites again before it pulls.
+on:
+  push:
+    branches: [v2]
+  pull_request:
+    branches: [v2]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  offline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      RECON_LLM_PROVIDER: dry-run
+      RECON_NO_TELEGRAM: "1"
+      TZ: Asia/Seoul
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Unit tests
+        run: python -m unittest discover -s tests
+      - name: Collector tests
+        run: python -m unittest discover -s tests/collectors
